@@ -1117,9 +1117,9 @@ pub async fn toggle_linked_tile_window(
     bounds: Option<WindowBounds>,
 ) -> Result<bool, AppError> {
     let label = format!("tile-linked-{}", sanitize_label_part(&binding_id));
-    if app.get_webview_window(&label).is_some() {
-        // 从主窗口发关闭请求，让外部便签沿用自身的保存与关闭流程。
-        app.emit("linked-tile-close-request", binding_id)?;
+    if let Some(window) = app.get_webview_window(&label) {
+        // 与内部磁贴使用同一关闭路径；外部窗口的关闭监听负责保存未提交内容。
+        window.close()?;
         return Ok(false);
     }
     // 新建窗口前才校验绑定，避免为已删除的关联创建空磁贴窗口。
