@@ -70,6 +70,7 @@ env:
 jobs:
   validate-release:
     name: Validate release source
+    if: github.repository_owner == 'Achilng'
     runs-on: ubuntu-latest
     permissions:
       contents: read

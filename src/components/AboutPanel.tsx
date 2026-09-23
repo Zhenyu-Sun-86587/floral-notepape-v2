@@ -2,17 +2,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { UpdateSettingsSection } from "../features/update/UpdateSettingsSection";
-import contributorsData from "../generated/contributors.json";
 import { getTips, parseTip } from "../locales/tips";
-
-interface Contributor {
-  login: string;
-  avatar_url: string;
-  html_url: string;
-}
-
-const contributors = contributorsData as Contributor[];
 
 interface AboutPanelProps {
   onClose: () => void;
@@ -83,7 +73,7 @@ export function AboutPanel({ onClose }: AboutPanelProps) {
       <div className="flex-1 overflow-y-auto scrollbar-hidden px-4 py-4 space-y-5">
         <section className="space-y-1.5">
           <h3 className="text-[20px] font-serif font-medium text-ink-soft">
-            {t("about.productName", { defaultValue: "花笺" })}
+            {t("about.productName", { defaultValue: "Hermes Surface Dev" })}
           </h3>
           <p className="text-[11px] text-ink-ghost font-body">
             {t("about.summary", { defaultValue: "轻量、优雅、现代化的本地便签工具" })}
@@ -100,13 +90,11 @@ export function AboutPanel({ onClose }: AboutPanelProps) {
           )}
         </section>
 
-        <UpdateSettingsSection mode="checkOnly" />
-
         <div className="space-y-2">
           <section className="space-y-1 py-2 border-y border-paper-deep/25">
             <button
               type="button"
-              onClick={() => void openUrl("https://github.com/Achilng/floral-notepaper")}
+              onClick={() => void openUrl("https://github.com/Zhenyu-Sun-86587/floral-notepape-v2")}
               className="w-full h-8 px-1 flex items-center justify-between text-[11px] text-ink-faint hover:text-bamboo cursor-pointer transition-colors"
             >
               <span className="inline-flex items-center gap-1.5">
@@ -140,7 +128,9 @@ export function AboutPanel({ onClose }: AboutPanelProps) {
             </button>
             <button
               type="button"
-              onClick={() => void openUrl("https://github.com/Achilng/floral-notepaper/issues")}
+              onClick={() =>
+                void openUrl("https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues")
+              }
               className="w-full h-8 px-1 flex items-center justify-between text-[11px] text-ink-faint hover:text-bamboo cursor-pointer transition-colors"
             >
               <span className="inline-flex items-center gap-1.5">
@@ -210,27 +200,12 @@ export function AboutPanel({ onClose }: AboutPanelProps) {
             </button>
           </section>
 
-          <section className="space-y-2">
-            <h3 className="text-[11px] font-body text-ink-faint">
-              {t("about.contributors", { defaultValue: "贡献者" })}
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {contributors.map((c) => (
-                <button
-                  key={c.login}
-                  type="button"
-                  onClick={() => void openUrl(c.html_url)}
-                  className="flex items-center gap-1.5 group cursor-pointer rounded-md px-1 py-0.5 hover:bg-bamboo-mist/40 transition-colors"
-                  title={c.login}
-                >
-                  <img src={c.avatar_url} alt={c.login} className="w-6 h-6 rounded-full" />
-                  <span className="text-[10px] text-ink-ghost group-hover:text-bamboo transition-colors">
-                    {c.login}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
+          <p className="text-[10px] text-ink-ghost font-body">
+            {t("about.upstream", {
+              defaultValue:
+                "基于 Achilng/floral-notepaper 开发；原作者与第三方许可见仓库的 LICENSE 和 THIRD_PARTY_NOTICES.md。",
+            })}
+          </p>
         </div>
       </div>
 

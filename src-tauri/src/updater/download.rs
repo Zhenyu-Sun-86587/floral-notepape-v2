@@ -1380,7 +1380,7 @@ mod tests {
         let manifest = format!(
             r#"{{
   "schemaVersion": 1,
-  "appId": "com.floral-notepaper.app",
+  "appId": "dev.hermes.surface",
   "productName": "花笺",
   "channel": "stable",
   "version": "1.0.5",
@@ -1448,7 +1448,7 @@ mod tests {
         let manifest = format!(
             r#"{{
   "schemaVersion": 1,
-  "appId": "com.floral-notepaper.app",
+  "appId": "dev.hermes.surface",
   "productName": "花笺",
   "channel": "stable",
   "version": "1.0.5",
@@ -1506,7 +1506,7 @@ mod tests {
         let manifest = format!(
             r#"{{
   "schemaVersion": 1,
-  "appId": "com.floral-notepaper.app",
+  "appId": "dev.hermes.surface",
   "productName": "花笺",
   "channel": "stable",
   "version": "1.0.5",

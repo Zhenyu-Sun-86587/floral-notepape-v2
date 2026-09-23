@@ -442,7 +442,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if let Some(file_path) = desktop::extract_file_arg(&args) {
-                let _ = app.emit("open-external-file", file_path);
+                if app.get_webview_window("main").is_some() {
+                    let _ = app.emit("open-external-file", file_path);
+                } else {
+                    // 静默启动没有主 WebView；先缓存文件，待新窗口初始化后读取。
+                    desktop::set_startup_file(file_path);
+                }
             }
             let _ = desktop::show_main_window(app);
         }))
@@ -458,11 +463,7 @@ pub fn run() {
                 eprintln!("failed to initialize updater infrastructure: {error}");
             }
             app.manage(updater_state);
-            // MSIX installs are updated by the Microsoft Store; the scheduler
-            // must never drive in-app updates against a read-only package.
-            if !updater::platform::has_package_identity() {
-                updater::start_auto_check_scheduler(app.handle().clone());
-            }
+            // Fork 的构建由仓库产物分发，启动时不访问原版更新服务。
             desktop::setup_desktop(app)?;
             Ok(())
         })
@@ -502,16 +503,6 @@ pub fn run() {
             toggle_tile_window,
             open_note_in_editor,
             updater::commands::update_status,
-            updater::commands::update_settings_get,
-            updater::commands::update_settings_save,
-            updater::commands::update_mirror_chyan_cdk_set,
-            updater::commands::update_mirror_chyan_cdk_clear,
-            updater::commands::update_mirror_chyan_cdk_get,
-            updater::commands::update_check,
-            updater::commands::update_download,
-            updater::commands::update_install,
-            updater::commands::update_install_prepare_report,
-            updater::commands::update_cancel,
             take_startup_file
         ])
         .build(tauri::generate_context!())

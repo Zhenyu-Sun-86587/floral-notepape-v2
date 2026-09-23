@@ -1,10 +1,10 @@
 [package]
-name = "floral-notepaper"
+name = "hermes-surface-dev"
 version = "1.2.0"
 description = "A lightweight cross-platform desktop note app"
 authors = ["Achilng"]
 edition = "2021"
-default-run = "floral-notepaper"
+default-run = "hermes-surface-dev"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

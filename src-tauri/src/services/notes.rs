@@ -226,20 +226,20 @@ pub fn default_store() -> Result<NoteStore, AppError> {
 }
 
 pub(crate) fn default_config_dir() -> Result<PathBuf, AppError> {
-    if let Ok(path) = env::var("FLORAL_NOTEPAPER_CONFIG_DIR") {
+    if let Ok(path) = env::var("HERMES_SURFACE_CONFIG_DIR") {
         let trimmed = path.trim();
         if !trimmed.is_empty() {
             return Ok(PathBuf::from(trimmed));
         }
     }
     if let Some(dir) = dirs::config_dir() {
-        return Ok(dir.join("floral-notepaper"));
+        return Ok(dir.join("hermes-surface-dev"));
     }
-    Ok(env::current_dir()?.join("floral-notepaper"))
+    Ok(env::current_dir()?.join("hermes-surface-dev"))
 }
 
 fn default_data_dir() -> Result<PathBuf, AppError> {
-    if let Ok(path) = env::var("FLORAL_NOTEPAPER_DATA_DIR") {
+    if let Ok(path) = env::var("HERMES_SURFACE_DATA_DIR") {
         let trimmed = path.trim();
         if !trimmed.is_empty() {
             return Ok(PathBuf::from(trimmed));
@@ -248,18 +248,18 @@ fn default_data_dir() -> Result<PathBuf, AppError> {
 
     #[cfg(target_os = "macos")]
     if let Some(dir) = dirs::data_dir() {
-        return Ok(dir.join("花笺"));
+        return Ok(dir.join("Hermes Surface Dev"));
     }
 
     if let Some(dir) = dirs::document_dir() {
-        return Ok(dir.join("花笺"));
+        return Ok(dir.join("Hermes Surface Dev"));
     }
 
-    Ok(env::current_dir()?.join("data"))
+    Ok(env::current_dir()?.join("hermes-surface-dev-data"))
 }
 
 fn resolve_data_dir(config_dir: &Path) -> Result<PathBuf, AppError> {
-    if let Ok(path) = env::var("FLORAL_NOTEPAPER_DATA_DIR") {
+    if let Ok(path) = env::var("HERMES_SURFACE_DATA_DIR") {
         let trimmed = path.trim();
         if !trimmed.is_empty() {
             return Ok(PathBuf::from(trimmed));
@@ -294,21 +294,7 @@ fn resolve_data_dir(config_dir: &Path) -> Result<PathBuf, AppError> {
         }
     }
 
-    for old_dir in known_data_migration_candidates() {
-        let old_config = old_dir.join("config.json");
-        if !old_config.exists() {
-            continue;
-        }
-        if let Ok(content) = fs::read_to_string(&old_config) {
-            if let Ok(partial) = serde_json::from_str::<PartialConfig>(&content) {
-                if let Some(dir) = data_dir_from_partial(&partial) {
-                    return Ok(dir);
-                }
-            }
-        }
-        return Ok(old_dir);
-    }
-
+    // Fork 首次启动不能扫描或迁移原版花笺目录。
     default_data_dir()
 }
 
@@ -326,6 +312,7 @@ const DATA_DIR_ITEMS: [&str; 4] = ["metadata.json", "notes", "images", "backgrou
 
 // 旧版无论 notesDir 指向哪里，metadata.json、images、backgrounds 都固定存放在旧主目录；
 // 数据目录解析到其他位置时必须一并带走，否则笔记内图片引用全部失效、created_at 丢失
+#[cfg(test)]
 fn migrate_legacy_aux_data(legacy_base_dir: &Path, data_dir: &Path) {
     for item in ["metadata.json", "images", "backgrounds"] {
         let src = legacy_base_dir.join(item);
@@ -346,6 +333,7 @@ fn migrate_legacy_aux_data(legacy_base_dir: &Path, data_dir: &Path) {
 
 // v1.0.4 之前没有 ensure_notes_suffix，自定义笔记目录下 .md 直接位于目录顶层、
 // 分类是顶层子目录；新布局要求笔记位于 data_dir/notes 下，这里按旧 metadata 归位
+#[cfg(test)]
 fn rescue_loose_legacy_notes(legacy_base_dir: &Path, data_dir: &Path) {
     let notes_dir = data_dir.join("notes");
     let tracked = fs::read_to_string(legacy_base_dir.join("metadata.json"))
@@ -397,6 +385,7 @@ fn rescue_loose_legacy_notes(legacy_base_dir: &Path, data_dir: &Path) {
     }
 }
 
+#[cfg(test)]
 fn move_loose_note_files_in(from: &Path, to: &Path) {
     let Ok(entries) = fs::read_dir(from) else {
         return;
@@ -412,6 +401,7 @@ fn move_loose_note_files_in(from: &Path, to: &Path) {
 
 // legacy 数据搬运：尽力而为，单个文件失败不中断整体迁移，故吞掉错误。
 // 与下方 move_path 的"错误传播"语义刻意相反——调用方需据此选择
+#[cfg(test)]
 fn move_loose_note_file(src: &Path, dst: &Path) {
     if !src.is_file() || dst.exists() {
         return;
@@ -556,10 +546,7 @@ fn paths_refer_to_same_entry(first: &Path, second: &Path) -> bool {
     }
 }
 
-fn known_data_migration_candidates() -> Vec<PathBuf> {
-    known_data_migration_candidates_for(env::var("HOME").ok(), env::var("USERPROFILE").ok())
-}
-
+#[cfg(test)]
 fn known_data_migration_candidates_for(
     home: Option<String>,
     userprofile: Option<String>,
@@ -702,9 +689,7 @@ impl NoteStore {
     pub fn load_config(&self) -> Result<AppConfig, AppError> {
         self.ensure_config_dir()?;
         let path = self.config_path();
-        if !path.exists() {
-            self.migrate_config_from_legacy()?;
-        }
+        // Fork 不读取原版配置；新目录首次运行时直接创建独立默认配置。
         if !path.exists() {
             let config = self.default_config();
             self.save_config(config.clone())?;
@@ -1130,9 +1115,9 @@ impl NoteStore {
             locale: default_locale(),
             data_dir: Some(self.data_dir.to_string_lossy().to_string()),
             #[cfg(target_os = "macos")]
-            global_shortcut: DEFAULT_MACOS_GLOBAL_SHORTCUT.into(),
+            global_shortcut: String::new(),
             #[cfg(not(target_os = "macos"))]
-            global_shortcut: "Ctrl+Space".into(),
+            global_shortcut: String::new(),
             close_to_tray: true,
             autostart: false,
             default_view_mode: "split".into(),
@@ -1161,26 +1146,14 @@ impl NoteStore {
             split_scroll_sync: true,
             surface_width: None,
             surface_height: None,
-            toggle_visibility_shortcut: default_toggle_visibility_shortcut(),
+            toggle_visibility_shortcut: String::new(),
             open_at_cursor: default_open_at_cursor(),
             notes_dir: None,
             last_known_base_dir: None,
         }
     }
 
-    #[cfg(not(test))]
-    fn migrate_config_from_legacy(&self) -> Result<(), AppError> {
-        self.migrate_config_from_candidates(&known_data_migration_candidates())
-    }
-
     #[cfg(test)]
-    fn migrate_config_from_legacy(&self) -> Result<(), AppError> {
-        // Unit tests build stores under temporary directories. Never let an
-        // empty fixture fall through to production candidate discovery, which
-        // could move a developer's real notes into that temporary directory.
-        Ok(())
-    }
-
     fn migrate_config_from_candidates(&self, candidates: &[PathBuf]) -> Result<(), AppError> {
         if self.config_path().exists() {
             return Ok(());
@@ -1874,10 +1847,7 @@ mod tests {
             .expect("write default config");
 
         let default_config = store.load_config().expect("load default config");
-        #[cfg(target_os = "macos")]
-        assert_eq!(default_config.global_shortcut, "Command+Option+N");
-        #[cfg(not(target_os = "macos"))]
-        assert_eq!(default_config.global_shortcut, "Ctrl+Space");
+        assert!(default_config.global_shortcut.is_empty());
         assert!(default_config.note_auto_save);
         assert!(default_config.note_surface_auto_save);
         assert_eq!(default_config.tile_color, "#f6f3ec");

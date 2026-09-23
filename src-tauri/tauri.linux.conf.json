@@ -1,7 +1,7 @@
 {
-  "productName": "floral-notepaper",
-  "version": "1.0.4",
-  "identifier": "com.floral-notepaper.app",
+  "productName": "hermes-surface-dev",
+  "version": "1.2.0",
+  "identifier": "dev.hermes.surface",
   "bundle": {
     "linux": {
       "deb": {

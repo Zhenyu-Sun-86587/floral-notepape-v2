@@ -228,7 +228,7 @@ mod tests {
     fn rejects_unsupported_schema() {
         let invalid = r#"{
           "schemaVersion": 2,
-          "appId": "com.floral-notepaper.app",
+          "appId": "dev.hermes.surface",
           "productName": "花笺",
           "channel": "stable",
           "version": "1.0.5",

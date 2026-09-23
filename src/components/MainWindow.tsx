@@ -1983,7 +1983,7 @@ export function MainWindow({
         >
           <div className="flex items-center gap-3 min-w-0">
             <span className="text-[15px] font-serif font-medium text-ink-soft tracking-wide leading-none">
-              花笺
+              Hermes Surface Dev
             </span>
             <span className="text-[11px] text-ink-ghost font-body leading-none translate-y-px">
               —

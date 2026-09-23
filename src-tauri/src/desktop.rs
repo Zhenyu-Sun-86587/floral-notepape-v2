@@ -427,7 +427,8 @@ const TRAY_QUIT_ID: &str = "quit";
 
 #[cfg(target_os = "macos")]
 static FULLSCREEN_HIDING: AtomicBool = AtomicBool::new(false);
-const NOTEPAD_POOL_CAPACITY: usize = 2;
+// 按需创建便签；回收时立即销毁，避免托盘空闲状态保留 WebView。
+const NOTEPAD_POOL_CAPACITY: usize = 0;
 
 /// Stores the file path passed as a command-line argument on cold start.
 /// The frontend retrieves and clears this value after initialization via
@@ -1126,6 +1127,12 @@ pub fn take_startup_file() -> Option<String> {
     STARTUP_FILE.lock().ok()?.take()
 }
 
+pub fn set_startup_file(path: String) {
+    if let Ok(mut pending) = STARTUP_FILE.lock() {
+        *pending = Some(path);
+    }
+}
+
 pub fn setup_desktop(app: &mut App) -> Result<(), Box<dyn Error>> {
     app.manage(RuntimeState::default());
     app.manage(NotepadPool::default());
@@ -1142,16 +1149,15 @@ pub fn setup_desktop(app: &mut App) -> Result<(), Box<dyn Error>> {
     setup_tray(app)?;
     schedule_notepad_prewarm(app.handle());
 
+    let args: Vec<String> = std::env::args().collect();
+    if let Some(file_path) = extract_file_arg(&args) {
+        // 主窗口按需创建后可能立即读取启动文件，先缓存以避免初始化竞态。
+        set_startup_file(file_path);
+    }
+
     if !std::env::args().any(|a| a == "--silent") {
         if let Err(error) = show_main_window(app.handle()) {
             eprintln!("failed to show main window on startup: {error}");
-        }
-    }
-
-    let args: Vec<String> = std::env::args().collect();
-    if let Some(file_path) = extract_file_arg(&args) {
-        if let Ok(mut guard) = STARTUP_FILE.lock() {
-            *guard = Some(file_path);
         }
     }
 
@@ -1410,7 +1416,7 @@ pub fn show_main_window(app: &AppHandle) -> Result<(), AppError> {
             },
             // On macOS, tauri.macos.conf.json sets titleBarStyle: "Overlay"
             // with native traffic lights; decorations: false would conflict.
-            decorations: !cfg!(target_os = "macos"),
+            decorations: cfg!(target_os = "macos"),
             always_on_top: false,
             shadow: true,
             skip_taskbar: false,
