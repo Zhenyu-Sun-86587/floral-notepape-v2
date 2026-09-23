@@ -2120,9 +2120,10 @@ export function MainWindow({
       const pinned = selectedExternalFile
         ? await toggleLinkedTileWindow(selectedExternalFile.bindingId!)
         : await toggleTileWindow(selectedId);
-      setPinnedTileIds((previous) => {
-        return syncPinnedTileIds(previous, selectedId, pinned);
-      });
+      // 外部窗口可能先保存草稿再关闭；以销毁事件确认取消固定，避免按钮提前反转。
+      if (pinned || !selectedExternalFile) {
+        setPinnedTileIds((previous) => syncPinnedTileIds(previous, selectedId, pinned));
+      }
     } catch (error) {
       showToast(getErrorMessage(error));
     }

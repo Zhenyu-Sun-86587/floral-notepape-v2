@@ -1116,13 +1116,14 @@ pub async fn toggle_linked_tile_window(
     binding_id: String,
     bounds: Option<WindowBounds>,
 ) -> Result<bool, AppError> {
-    // 先校验绑定，避免为已删除的关联创建空磁贴窗口。
-    crate::linked::read(&binding_id)?;
     let label = format!("tile-linked-{}", sanitize_label_part(&binding_id));
-    if let Some(window) = app.get_webview_window(&label) {
-        window.close()?;
+    if app.get_webview_window(&label).is_some() {
+        // 从主窗口发关闭请求，让外部便签沿用自身的保存与关闭流程。
+        app.emit("linked-tile-close-request", binding_id)?;
         return Ok(false);
     }
+    // 新建窗口前才校验绑定，避免为已删除的关联创建空磁贴窗口。
+    crate::linked::read(&binding_id)?;
     let locale = configured_locale();
     let specs = saved_surface_specs(&app);
     let url = format!("index.html?view=tile&bindingId={binding_id}");

@@ -711,9 +711,9 @@ export function NotePad({
 
   const handleClose = useCallback(() => {
     setIsExiting(true);
-    if (surfaceMode === "tile") {
+    if (initialBindingId || surfaceMode === "tile") {
       void (async () => {
-        // 外部磁贴必须等原文件保存完成后再销毁 WebView。
+        // 外部绑定的小窗也要真正销毁；回收隐藏窗口会占住 bindingId 的磁贴标签。
         if (initialBindingId && statusRef.current === "dirty") await saveNote();
         allowLinkedCloseRef.current = true;
         await closeCurrentWindow();
@@ -760,6 +760,15 @@ export function NotePad({
 
   const handleCloseRef = useRef(handleClose);
   handleCloseRef.current = handleClose;
+  useEffect(() => {
+    if (!initialBindingId) return undefined;
+    const unlisten = listen<string>("linked-tile-close-request", (event) => {
+      if (event.payload === initialBindingId) handleCloseRef.current();
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [initialBindingId]);
   const copyTileContentRef = useRef(copyTileContent);
   copyTileContentRef.current = copyTileContent;
   const switchSurfaceModeRef = useRef(switchSurfaceMode);
