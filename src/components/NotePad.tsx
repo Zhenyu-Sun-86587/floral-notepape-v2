@@ -22,6 +22,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   animateCurrentWindowBounds,
   closeCurrentWindow,
+  destroyCurrentWindow,
   getCurrentWindowBounds,
   recycleCurrentNotepad,
   setCurrentWindowAlwaysOnTop,
@@ -140,7 +141,7 @@ export function NotePad({
   const [notes, setNotes] = useState<NoteMetadata[]>([]);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const linkedRevisionRef = useRef("");
-  const allowLinkedCloseRef = useRef(false);
+  const linkedClosingRef = useRef(false);
   const [linkedConflict, setLinkedConflict] = useState<LinkedContent | null>(null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -452,28 +453,30 @@ export function NotePad({
   const saveNoteRef = useRef(saveNote);
   saveNoteRef.current = saveNote;
 
+  const closeLinkedWindow = useCallback(async () => {
+    if (!initialBindingId || linkedClosingRef.current) return;
+    linkedClosingRef.current = true;
+    try {
+      if (statusRef.current === "dirty") await saveNoteRef.current();
+      // 外部文件窗口必须销毁原生窗口；close() 会再次触发关闭监听，失败时还会留下透明遮挡层。
+      await destroyCurrentWindow();
+    } catch (error) {
+      linkedClosingRef.current = false;
+      setStatus("saveFailed");
+      showToast(getErrorMessage(error));
+    }
+  }, [initialBindingId]);
+
   useEffect(() => {
     if (!initialBindingId) return undefined;
     const unlisten = getCurrentWindow().onCloseRequested(async (event) => {
-      if (allowLinkedCloseRef.current || statusRef.current !== "dirty") {
-        await emitTileWindowUnpinned(initialBindingId).catch(() => undefined);
-        return;
-      }
       event.preventDefault();
-      try {
-        await saveNoteRef.current();
-        allowLinkedCloseRef.current = true;
-        await emitTileWindowUnpinned(initialBindingId).catch(() => undefined);
-        await closeCurrentWindow();
-      } catch (error) {
-        setStatus("saveFailed");
-        showToast(getErrorMessage(error));
-      }
+      await closeLinkedWindow();
     });
     return () => {
       void unlisten.then((fn) => fn());
     };
-  }, [initialBindingId]);
+  }, [closeLinkedWindow, initialBindingId]);
 
   useEffect(() => {
     const unlisten = listen<UpdateInstallPrepareRequest>("update://prepare-install", (event) => {
@@ -714,15 +717,13 @@ export function NotePad({
   };
 
   const handleClose = useCallback(() => {
+    if (initialBindingId) {
+      void closeLinkedWindow();
+      return;
+    }
     setIsExiting(true);
-    if (initialBindingId || surfaceMode === "tile") {
+    if (surfaceMode === "tile") {
       void (async () => {
-        // 外部绑定的小窗也要真正销毁；回收隐藏窗口会占住 bindingId 的磁贴标签。
-        if (initialBindingId && statusRef.current === "dirty") await saveNote();
-        allowLinkedCloseRef.current = true;
-        if (initialBindingId) {
-          await emitTileWindowUnpinned(initialBindingId).catch(() => undefined);
-        }
         await closeCurrentWindow();
       })().catch((error) => {
         setIsExiting(false);
@@ -750,7 +751,7 @@ export function NotePad({
         setIsExiting(false);
         showToast(getErrorMessage(error));
       });
-  }, [initialBindingId, saveNote, surfaceMode]);
+  }, [closeLinkedWindow, initialBindingId, surfaceMode]);
 
   const copyTileContent = useCallback(async () => {
     try {
