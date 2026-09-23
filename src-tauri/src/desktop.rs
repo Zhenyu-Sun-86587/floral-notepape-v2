@@ -1198,7 +1198,7 @@ pub fn setup_desktop(app: &mut App) -> Result<(), Box<dyn Error>> {
 
 pub fn handle_window_event(window: &Window, event: &WindowEvent) {
     if matches!(event, WindowEvent::Destroyed) {
-        if let Some(note_id) = window.label().strip_prefix("tile-") {
+        if let Some(note_id) = closed_tile_id(window.label()) {
             let _ = window
                 .app_handle()
                 .emit("tile-window-closed", note_id.to_string());
@@ -1921,6 +1921,13 @@ fn notepad_window_label(note_id: Option<&str>) -> String {
 
 fn tile_window_label(note_id: &str) -> String {
     format!("tile-{}", sanitize_label_part(note_id))
+}
+
+fn closed_tile_id(label: &str) -> Option<&str> {
+    // 外部磁贴的窗口标签多一层 linked 前缀；关闭事件要回传绑定 ID。
+    label
+        .strip_prefix("tile-linked-")
+        .or_else(|| label.strip_prefix("tile-"))
 }
 
 fn dynamic_window_visual_options(label: &str) -> DynamicWindowVisualOptions {
@@ -2786,6 +2793,9 @@ mod tests {
         assert_eq!(notepad_window_label(Some("abc-123")), "notepad-abc-123");
         assert!(notepad_window_label(None).starts_with("notepad-"));
         assert_eq!(tile_window_label("note-1"), "tile-note-1");
+        assert_eq!(closed_tile_id("tile-note-1"), Some("note-1"));
+        assert_eq!(closed_tile_id("tile-linked-binding-1"), Some("binding-1"));
+        assert_eq!(closed_tile_id("notepad-note-1"), None);
     }
 
     #[test]

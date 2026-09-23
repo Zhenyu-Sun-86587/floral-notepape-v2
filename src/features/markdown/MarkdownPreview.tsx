@@ -205,7 +205,13 @@ const staticComponents: Components = {
       {children}
     </ol>
   ),
-  li: ({ children }) => <li className="text-ink-soft leading-[1.9]">{children}</li>,
+  li: ({ children, className }) => (
+    <li
+      className={`text-ink-soft leading-[1.9] ${className?.includes("task-list-item") ? "list-none" : ""}`}
+    >
+      {children}
+    </li>
+  ),
   hr: () => (
     <hr className="my-6 border-none h-px bg-gradient-to-r from-transparent via-paper-deep to-transparent" />
   ),

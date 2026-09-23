@@ -29,4 +29,11 @@ describe("MarkdownPreview", () => {
     expect(preCloseIndex).toBeGreaterThan(-1);
     expect(buttonIndex).toBeGreaterThan(preCloseIndex);
   });
+
+  test("hides the list marker only for Markdown task items", () => {
+    const markup = renderToStaticMarkup(<MarkdownPreview content={"- [ ] 待办\n- 普通列表"} />);
+
+    expect(markup).toMatch(/<li class="[^"]*list-none[^"]*"><input/);
+    expect(markup).toMatch(/<li class="text-ink-soft leading-\[1\.9\] ">普通列表<\/li>/);
+  });
 });
