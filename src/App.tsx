@@ -86,7 +86,7 @@ function App() {
         ) : activeView === "notepad" ? (
           <NotePad initialNoteId={route.noteId} />
         ) : (
-          <TileShowcase noteId={route.noteId} />
+          <TileShowcase noteId={route.noteId} bindingId={route.bindingId} />
         )}
         <ToastContainer />
       </div>

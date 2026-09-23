@@ -1,5 +1,7 @@
 pub mod desktop;
 pub mod json_io;
+pub mod linked;
+pub mod linked_watcher;
 pub mod locales;
 pub mod services;
 pub mod updater;
@@ -8,6 +10,109 @@ use locales::Locale;
 use services::notes::{default_store, AppConfig, AppError, Note, NoteMetadata, SaveNoteRequest};
 use std::{env, fs, io::Write, path::PathBuf};
 use tauri::{AppHandle, Emitter, Manager};
+
+#[tauri::command]
+fn linked_bind(path: String) -> Result<linked::LinkedBinding, AppError> {
+    let binding = linked::bind(&path)?;
+    linked_watcher::watch_binding(&binding.path)?;
+    Ok(binding)
+}
+
+#[tauri::command]
+fn linked_list() -> Result<Vec<linked::LinkedBinding>, AppError> {
+    linked::list()
+}
+
+#[tauri::command]
+fn linked_roots() -> Result<Vec<linked::LinkedRoot>, AppError> {
+    linked::list_roots()
+}
+
+#[tauri::command]
+fn linked_bind_root(
+    app: AppHandle,
+    path: String,
+    recursive: bool,
+) -> Result<linked::LinkedRoot, AppError> {
+    let root = linked::bind_root(&path, recursive)?;
+    linked_watcher::watch_root(&root.path, root.recursive)?;
+    let _ = linked::scan_roots()?;
+    let _ = app.emit("bindings-changed", ());
+    Ok(root)
+}
+
+#[tauri::command]
+fn linked_unbind(app: AppHandle, id: String) -> Result<(), AppError> {
+    linked::unbind(&id)?;
+    linked_watcher::sync_watches()?;
+    let _ = app.emit("bindings-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+fn linked_unbind_root(app: AppHandle, id: String) -> Result<(), AppError> {
+    linked::unbind_root(&id)?;
+    linked_watcher::sync_watches()?;
+    let _ = app.emit("bindings-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+fn linked_create_in_root(
+    app: AppHandle,
+    root_id: String,
+    name: String,
+) -> Result<linked::LinkedBinding, AppError> {
+    let binding = linked::create_in_root(&root_id, &name)?;
+    linked_watcher::watch_binding(&binding.path)?;
+    let _ = app.emit("bindings-changed", ());
+    Ok(binding)
+}
+
+#[tauri::command]
+fn linked_scan_roots(app: AppHandle) -> Result<Vec<linked::LinkedBinding>, AppError> {
+    let added = linked::scan_roots()?;
+    let _ = app.emit("bindings-changed", ());
+    Ok(added)
+}
+
+#[tauri::command]
+fn linked_read(id: String) -> Result<linked::LinkedContent, AppError> {
+    linked::read(&id)
+}
+
+#[tauri::command]
+fn linked_read_draft(id: String) -> Result<Option<linked::LinkedDraft>, AppError> {
+    linked::read_draft(&id)
+}
+
+#[tauri::command]
+fn linked_write_draft(
+    id: String,
+    content: Option<String>,
+    base_revision: String,
+) -> Result<(), AppError> {
+    linked::write_draft(&id, content, base_revision)
+}
+
+#[tauri::command]
+fn linked_save(
+    id: String,
+    content: String,
+    expected_revision: String,
+    overwrite: bool,
+) -> Result<String, AppError> {
+    linked::save(&id, &content, &expected_revision, overwrite)
+}
+
+#[tauri::command]
+async fn toggle_linked_tile_window(
+    app: AppHandle,
+    binding_id: String,
+    bounds: Option<desktop::WindowBounds>,
+) -> Result<bool, AppError> {
+    desktop::toggle_linked_tile_window(app, binding_id, bounds).await
+}
 
 #[tauri::command]
 fn app_name() -> Result<String, AppError> {
@@ -465,6 +570,9 @@ pub fn run() {
             app.manage(updater_state);
             // Fork 的构建由仓库产物分发，启动时不访问原版更新服务。
             desktop::setup_desktop(app)?;
+            if let Err(error) = linked_watcher::start(app.handle().clone()) {
+                eprintln!("linked watcher startup failed: {error}");
+            }
             Ok(())
         })
         .on_window_event(desktop::handle_window_event)
@@ -478,6 +586,19 @@ pub fn run() {
             notes_import_markdown,
             notes_export_markdown,
             notes_move_category,
+            linked_bind,
+            linked_list,
+            linked_roots,
+            linked_bind_root,
+            linked_unbind,
+            linked_unbind_root,
+            linked_create_in_root,
+            linked_scan_roots,
+            linked_read,
+            linked_read_draft,
+            linked_write_draft,
+            linked_save,
+            toggle_linked_tile_window,
             read_external_file,
             save_external_file,
             get_file_modified_time,

@@ -14,3 +14,4 @@
 - 在 Mac 上执行 lockfile 安装、TypeScript 检查、Rust 检查、DMG 构建，并记录 commit SHA 与 artifact。
 - 实测新建、中文输入、保存、磁贴、窗口缩放、静默启动、快捷键、Dock/托盘找回和外部文件入口；特别检查关闭后保存与重开。
 - 明确区分“CI 构建通过”和“macOS GUI 已验证”。将平台差异、资源数据与签名状态写入状态文档。
+- Windows P3 新增 `linked.rs`、`linked_watcher.rs` 与独立外部文件 Tile；请在完成 Mac 身份及数据隔离后，使用虚构目录验证文件绑定、目录新增、原子替换、冲突与草稿。Unix 路径使用 rename 替换，不能把 Windows GUI 结果作为 Mac 验收。

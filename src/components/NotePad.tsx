@@ -3,6 +3,13 @@ import type { MouseEvent } from "react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { createNote, getErrorMessage, getNote, listNotes, updateNote } from "../features/notes/api";
+import {
+  readLinkedDraft,
+  readLinkedFile,
+  saveLinkedFile,
+  writeLinkedDraft,
+  type LinkedContent,
+} from "../features/linked/api";
 import { useImagePaste } from "../features/images/useImagePaste";
 import { useImageBaseDir } from "../features/images/useImageBaseDir";
 import { reportInstallPreparation } from "../features/update/api";
@@ -58,6 +65,7 @@ type NotePadStatus = "empty" | "opened" | "saved" | "dirty" | "saveFailed" | "co
 
 interface NotePadProps {
   initialNoteId?: string;
+  initialBindingId?: string;
   initialSurfaceMode?: NoteSurfaceMode;
   initialAutoSave?: boolean;
   initialTileColor?: string;
@@ -121,6 +129,7 @@ function SurfaceResizeHandles() {
 
 export function NotePad({
   initialNoteId,
+  initialBindingId,
   initialSurfaceMode = "pad",
   initialAutoSave = true,
   initialTileColor = DEFAULT_TILE_COLOR,
@@ -130,6 +139,9 @@ export function NotePad({
   const [mode, setMode] = useState<OpenMode>("new");
   const [notes, setNotes] = useState<NoteMetadata[]>([]);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const linkedRevisionRef = useRef("");
+  const allowLinkedCloseRef = useRef(false);
+  const [linkedConflict, setLinkedConflict] = useState<LinkedContent | null>(null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [status, setStatus] = useState<NotePadStatus>("empty");
@@ -220,7 +232,25 @@ export function NotePad({
             resolveTileColor(loadedConfig.tileColorMode ?? "system", loadedConfig.tileColor),
           );
         }
-        if (initialNoteId) {
+        if (initialBindingId) {
+          const [linked, draft] = await Promise.all([
+            readLinkedFile(initialBindingId),
+            readLinkedDraft(initialBindingId),
+          ]);
+          if (!cancelled) {
+            const recovered = draft?.content != null && draft.content !== linked.content;
+            linkedRevisionRef.current = recovered ? draft.baseRevision : linked.revision;
+            setTitle(
+              linked.binding.path
+                .split(/[\\/]/)
+                .pop()
+                ?.replace(/\.(md|markdown)$/i, "") ?? "",
+            );
+            setContent(recovered ? draft.content! : linked.content);
+            setStatus(recovered ? "dirty" : "opened");
+            if (recovered && draft.baseRevision !== linked.revision) setLinkedConflict(linked);
+          }
+        } else if (initialNoteId) {
           const note = await getNote(initialNoteId);
           if (!cancelled) applyNote(note);
         }
@@ -233,7 +263,57 @@ export function NotePad({
     return () => {
       cancelled = true;
     };
-  }, [applyNote, initialNoteId, refreshNotes]);
+  }, [applyNote, initialBindingId, initialNoteId, refreshNotes]);
+
+  useEffect(() => {
+    if (!initialBindingId || status !== "dirty") return undefined;
+    const timer = window.setTimeout(() => {
+      void writeLinkedDraft(initialBindingId, content, linkedRevisionRef.current).catch((error) =>
+        showToast(getErrorMessage(error)),
+      );
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [content, initialBindingId, status]);
+
+  useEffect(() => {
+    if (!initialBindingId) return undefined;
+    let active = true;
+    const refresh = () => {
+      void readLinkedFile(initialBindingId)
+        .then((latest) => {
+          if (!active || latest.revision === linkedRevisionRef.current) return;
+          if (statusRef.current === "dirty" || statusRef.current === "saveFailed") {
+            setLinkedConflict(latest);
+            return;
+          }
+          // 只有干净的窗口才自动刷新；用户输入中的正文始终留在本地。
+          linkedRevisionRef.current = latest.revision;
+          setContent(latest.content);
+          setStatus("opened");
+        })
+        .catch((error) => {
+          if (active) showToast(getErrorMessage(error));
+        });
+    };
+    const unlisten = listen<{ bindingId: string; revision: string }>(
+      "linked-content-changed",
+      (event) => {
+        if (event.payload.bindingId === initialBindingId) refresh();
+      },
+    );
+    const unavailable = listen<string>("linked-file-unavailable", (event) => {
+      if (event.payload === initialBindingId)
+        showToast("原文件暂不可用，当前内容已保留", "warning");
+    });
+    const onFocus = () => refresh();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", onFocus);
+      void unlisten.then((fn) => fn());
+      void unavailable.then((fn) => fn());
+    };
+  }, [initialBindingId]);
 
   useEffect(() => {
     const unlisten = listen("notes-changed", () => {
@@ -334,6 +414,19 @@ export function NotePad({
   }, [refreshNotes]);
 
   const saveNote = useCallback(async () => {
+    if (initialBindingId) {
+      const contentSnapshot = content;
+      const nextRevision = await saveLinkedFile(
+        initialBindingId,
+        contentSnapshot,
+        linkedRevisionRef.current,
+      );
+      linkedRevisionRef.current = nextRevision;
+      void writeLinkedDraft(initialBindingId, null, nextRevision).catch(() => undefined);
+      setLinkedConflict(null);
+      setStatus(contentValueRef.current === contentSnapshot ? "saved" : "dirty");
+      return { id: initialBindingId };
+    }
     const existingCategory = notes.find((n) => n.id === editingNoteId)?.category ?? "";
     const request = { title, content, category: existingCategory };
     const note = editingNoteId
@@ -352,12 +445,31 @@ export function NotePad({
     const contentChanged = contentValueRef.current !== content || titleValueRef.current !== title;
     setStatus(contentChanged ? "dirty" : "saved");
     return note;
-  }, [content, editingNoteId, notes, title]);
+  }, [content, editingNoteId, initialBindingId, notes, title]);
 
   // 通过 ref 持有最新的 saveNote，让下方的 Tauri 监听只注册一次，
   // 避免每次输入（content 变化）都注销再重注册事件监听
   const saveNoteRef = useRef(saveNote);
   saveNoteRef.current = saveNote;
+
+  useEffect(() => {
+    if (!initialBindingId) return undefined;
+    const unlisten = getCurrentWindow().onCloseRequested(async (event) => {
+      if (allowLinkedCloseRef.current || statusRef.current !== "dirty") return;
+      event.preventDefault();
+      try {
+        await saveNoteRef.current();
+        allowLinkedCloseRef.current = true;
+        await closeCurrentWindow();
+      } catch (error) {
+        setStatus("saveFailed");
+        showToast(getErrorMessage(error));
+      }
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [initialBindingId]);
 
   useEffect(() => {
     const unlisten = listen<UpdateInstallPrepareRequest>("update://prepare-install", (event) => {
@@ -428,7 +540,7 @@ export function NotePad({
     t,
   });
 
-  const tileNoteId = editingNoteId ?? initialNoteId ?? "";
+  const tileNoteId = editingNoteId ?? initialBindingId ?? initialNoteId ?? "";
 
   const switchSurfaceMode = useCallback(
     async (nextMode: NoteSurfaceMode) => {
@@ -488,10 +600,15 @@ export function NotePad({
         }
       } catch (error) {
         setStatus("saveFailed");
+        if (initialBindingId) {
+          void readLinkedFile(initialBindingId)
+            .then(setLinkedConflict)
+            .catch(() => undefined);
+        }
         showToast(getErrorMessage(error));
       }
     },
-    [saveNote, surfaceMode, switchSurfaceMode, tileSaveReturnsToPin],
+    [initialBindingId, saveNote, surfaceMode, switchSurfaceMode, tileSaveReturnsToPin],
   );
 
   // 全局监听（Ctrl+S、表面动作）只注册一次，通过 ref 取最新回调，
@@ -595,8 +712,14 @@ export function NotePad({
   const handleClose = useCallback(() => {
     setIsExiting(true);
     if (surfaceMode === "tile") {
-      void closeCurrentWindow().catch((error) => {
+      void (async () => {
+        // 外部磁贴必须等原文件保存完成后再销毁 WebView。
+        if (initialBindingId && statusRef.current === "dirty") await saveNote();
+        allowLinkedCloseRef.current = true;
+        await closeCurrentWindow();
+      })().catch((error) => {
         setIsExiting(false);
+        setStatus("saveFailed");
         showToast(getErrorMessage(error));
       });
       return;
@@ -620,7 +743,7 @@ export function NotePad({
         setIsExiting(false);
         showToast(getErrorMessage(error));
       });
-  }, [surfaceMode]);
+  }, [initialBindingId, saveNote, surfaceMode]);
 
   const copyTileContent = useCallback(async () => {
     try {
@@ -702,6 +825,7 @@ export function NotePad({
   };
 
   const resetDraft = () => {
+    if (initialBindingId) return;
     setEditingNoteId(null);
     setTitle("");
     setContent("");
@@ -766,6 +890,7 @@ export function NotePad({
               <div className="flex items-center gap-0.5">
                 <button
                   onClick={resetDraft}
+                  disabled={Boolean(initialBindingId)}
                   className={`relative px-3.5 py-1.5 text-[13px] rounded-t-lg transition-all duration-200 cursor-pointer ${
                     mode === "new"
                       ? "text-bamboo font-medium"
@@ -779,6 +904,7 @@ export function NotePad({
                 </button>
                 <button
                   onClick={() => setMode("open")}
+                  disabled={Boolean(initialBindingId)}
                   className={`relative px-3.5 py-1.5 text-[13px] rounded-t-lg transition-all duration-200 cursor-pointer ${
                     mode === "open"
                       ? "text-bamboo font-medium"
@@ -844,6 +970,7 @@ export function NotePad({
                   ref={titleRef}
                   type="text"
                   value={title}
+                  readOnly={Boolean(initialBindingId)}
                   onChange={(event) => {
                     setTitle(event.target.value);
                     setStatus("dirty");
@@ -888,12 +1015,55 @@ export function NotePad({
                 />
 
                 <div className="flex items-center justify-between mt-auto pt-2 border-t border-paper-deep/30 shrink-0">
+                  {linkedConflict && initialBindingId && (
+                    <div className="flex items-center gap-2 text-[11px] text-red-600">
+                      <span>原文件已变化</span>
+                      <button
+                        onClick={() => {
+                          linkedRevisionRef.current = linkedConflict.revision;
+                          setContent(linkedConflict.content);
+                          setStatus("opened");
+                          setLinkedConflict(null);
+                          void writeLinkedDraft(
+                            initialBindingId,
+                            null,
+                            linkedConflict.revision,
+                          ).catch(() => undefined);
+                        }}
+                      >
+                        载入磁盘
+                      </button>
+                      <button
+                        onClick={() => {
+                          void saveLinkedFile(
+                            initialBindingId,
+                            content,
+                            linkedRevisionRef.current,
+                            true,
+                          )
+                            .then((revision) => {
+                              linkedRevisionRef.current = revision;
+                              setLinkedConflict(null);
+                              setStatus(contentValueRef.current === content ? "saved" : "dirty");
+                              void writeLinkedDraft(initialBindingId, null, revision).catch(
+                                () => undefined,
+                              );
+                            })
+                            .catch((error) => showToast(getErrorMessage(error)));
+                        }}
+                      >
+                        覆盖原文件
+                      </button>
+                      <button onClick={() => setLinkedConflict(null)}>保留草稿</button>
+                    </div>
+                  )}
                   <span className="text-[11px] text-ink-ghost font-mono tabular-nums truncate max-w-[170px]">
                     {`${countNoteChars(content)} ${t("common.wordCountUnit", { defaultValue: "字" })} · ${statusLabel[status]}`}
                   </span>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={resetDraft}
+                      disabled={Boolean(initialBindingId)}
                       className="px-4 py-1.5 text-[12px] text-ink-faint hover:text-ink-soft rounded-lg hover:bg-paper-warm transition-all duration-200 cursor-pointer"
                     >
                       {t("notepad.button.clear", { defaultValue: "清空" })}

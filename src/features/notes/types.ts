@@ -23,4 +23,5 @@ export interface ExternalFile {
   id: string;
   title: string;
   filePath: string;
+  bindingId?: string;
 }

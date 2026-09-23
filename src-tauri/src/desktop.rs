@@ -1111,6 +1111,38 @@ pub async fn toggle_tile_window(
     toggle_tile_window_now(&app, &note_id, bounds)
 }
 
+pub async fn toggle_linked_tile_window(
+    app: AppHandle,
+    binding_id: String,
+    bounds: Option<WindowBounds>,
+) -> Result<bool, AppError> {
+    // 先校验绑定，避免为已删除的关联创建空磁贴窗口。
+    crate::linked::read(&binding_id)?;
+    let label = format!("tile-linked-{}", sanitize_label_part(&binding_id));
+    if let Some(window) = app.get_webview_window(&label) {
+        window.close()?;
+        return Ok(false);
+    }
+    let locale = configured_locale();
+    let specs = saved_surface_specs(&app);
+    let url = format!("index.html?view=tile&bindingId={binding_id}");
+    open_or_focus_window(
+        &app,
+        &label,
+        WindowOpenOptions {
+            url,
+            title: locales::tile_window_title(locale).to_string(),
+            specs,
+            decorations: false,
+            always_on_top: true,
+            shadow: false,
+            skip_taskbar: true,
+            bounds,
+        },
+    )?;
+    Ok(true)
+}
+
 pub fn extract_file_arg(args: &[String]) -> Option<String> {
     args.iter()
         .find(|arg| {

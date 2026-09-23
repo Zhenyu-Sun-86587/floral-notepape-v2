@@ -13,7 +13,26 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { exportMarkdownNote, importMarkdownNote } from "../features/importExport/api";
+import {
+  bindLinkedFile,
+  bindLinkedRoot,
+  createLinkedFile,
+  listLinkedFiles,
+  listLinkedRoots,
+  readLinkedDraft,
+  readLinkedFile,
+  saveLinkedFile,
+  scanLinkedRoots,
+  toggleLinkedTileWindow,
+  unbindLinkedFile,
+  unbindLinkedRoot,
+  writeLinkedDraft,
+  type LinkedBinding,
+  type LinkedRoot,
+  type LinkedContent,
+} from "../features/linked/api";
 import { MarkdownPreviewLazy as MarkdownPreview } from "../features/markdown/MarkdownPreviewLazy";
 import { showToast } from "./Toast";
 import {
@@ -349,6 +368,9 @@ export function MainWindow({
   const { t } = useTranslation();
   const [notes, setNotes] = useState<NoteMetadata[]>([]);
   const [externalFiles, setExternalFiles] = useState<ExternalFile[]>([]);
+  const externalRevisionRef = useRef("");
+  const [linkedConflict, setLinkedConflict] = useState<LinkedContent | null>(null);
+  const [linkedRoots, setLinkedRoots] = useState<LinkedRoot[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>(
@@ -662,44 +684,115 @@ export function MainWindow({
     setTitle("");
     setContent("");
     setSaveState("idle");
+    setLinkedConflict(null);
   }, [loadEpoch]);
+
+  const externalEntry = (binding: LinkedBinding): ExternalFile => ({
+    id: binding.path,
+    title:
+      binding.path
+        .split(/[\\/]/)
+        .pop()
+        ?.replace(/\.(md|markdown)$/i, "") ?? binding.path,
+    filePath: binding.path,
+    bindingId: binding.id,
+  });
+
+  const refreshLinkedEntries = useCallback(async () => {
+    const [bindings, roots] = await Promise.all([listLinkedFiles(), listLinkedRoots()]);
+    setExternalFiles(
+      bindings.map((binding) => ({
+        id: binding.path,
+        title:
+          binding.path
+            .split(/[\\/]/)
+            .pop()
+            ?.replace(/\.(md|markdown)$/i, "") ?? binding.path,
+        filePath: binding.path,
+        bindingId: binding.id,
+      })),
+    );
+    setLinkedRoots(roots);
+  }, []);
+
+  useEffect(() => {
+    const unlisten = listen("bindings-changed", () => {
+      void refreshLinkedEntries().catch((error) => showToast(getErrorMessage(error)));
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [refreshLinkedEntries]);
+
+  const handleBindDirectory = async (recursive = false) => {
+    try {
+      const path = await openDialog({ directory: true, multiple: false });
+      if (typeof path !== "string") return;
+      await bindLinkedRoot(path, recursive);
+      await refreshLinkedEntries();
+    } catch (error) {
+      showToast(getErrorMessage(error));
+    }
+  };
+
+  const handleCreateLinkedFile = async (rootId: string) => {
+    const name = window.prompt("新建 Markdown 文件名");
+    if (!name) return;
+    try {
+      const binding = await createLinkedFile(rootId, name);
+      await refreshLinkedEntries();
+      await loadExternalFile(binding.path);
+    } catch (error) {
+      showToast(getErrorMessage(error));
+    }
+  };
 
   const loadExternalFile = useCallback(
     async (filePath: string) => {
       const epoch = loadEpoch.bump();
       try {
-        const [fileContent, mtime] = await Promise.all([
-          readExternalFile(filePath),
-          getFileModifiedTime(filePath),
-        ]);
-        const fileName = filePath.split(/[\\/]/).pop() ?? filePath;
-        const displayTitle = fileName.replace(/\.(md|txt)$/i, "");
+        const binding = /\.(md|markdown)$/i.test(filePath) ? await bindLinkedFile(filePath) : null;
+        const actualPath = binding?.path ?? filePath;
+        const linked = binding ? await readLinkedFile(binding.id) : null;
+        const draft = binding ? await readLinkedDraft(binding.id) : null;
+        const recovered = Boolean(
+          linked && draft?.content != null && draft.content !== linked.content,
+        );
+        const fileContent = recovered
+          ? draft!.content!
+          : (linked?.content ?? (await readExternalFile(actualPath)));
+        const mtime = linked ? 0 : await getFileModifiedTime(actualPath);
+        const fileName = actualPath.split(/[\\/]/).pop() ?? actualPath;
+        const displayTitle = fileName.replace(/\.(md|markdown|txt)$/i, "");
 
         setExternalFiles((current) => {
-          if (current.some((f) => f.id === filePath)) {
+          if (current.some((f) => f.id === actualPath)) {
             return current;
           }
           return [
             ...current,
             {
-              id: filePath,
+              id: actualPath,
               title: displayTitle,
-              filePath,
+              filePath: actualPath,
+              bindingId: binding?.id,
             },
           ];
         });
 
         if (!loadEpoch.isCurrent(epoch)) return;
-        selectedIdRef.current = filePath;
+        selectedIdRef.current = actualPath;
         titleValueRef.current = displayTitle;
         contentValueRef.current = fileContent;
-        saveStateRef.current = "saved";
-        setSelectedId(filePath);
+        saveStateRef.current = recovered ? "dirty" : "saved";
+        setSelectedId(actualPath);
         setTitle(displayTitle);
         setContent(fileContent);
-        setSaveState("saved");
+        setSaveState(recovered ? "dirty" : "saved");
         setNoteTransitionKey((k) => k + 1);
         externalFileMtimeRef.current = mtime;
+        externalRevisionRef.current = recovered ? draft!.baseRevision : (linked?.revision ?? "");
+        setLinkedConflict(recovered && draft!.baseRevision !== linked?.revision ? linked : null);
       } catch (error) {
         showToast(getErrorMessage(error));
       }
@@ -721,16 +814,17 @@ export function MainWindow({
     async function bootstrap() {
       setIsLoading(true);
       try {
-        const [loadedConfig, loadedNotes, loadedCategories] = await Promise.all([
-          getConfig(),
-          listNotes(),
-          listCategories(),
-        ]);
+        const [loadedConfig, loadedNotes, loadedCategories, linkedFiles, roots] = await Promise.all(
+          [getConfig(), listNotes(), listCategories(), listLinkedFiles(), listLinkedRoots()],
+        );
         if (cancelled) return;
         setSettingsConfig(loadedConfig);
         setSavedDataDir(loadedConfig.dataDir);
         setViewMode(normalizeViewMode(loadedConfig.defaultViewMode));
         setNotes(loadedNotes);
+        // 绑定只保存路径与身份；启动时不把外部正文复制进应用数据目录。
+        setExternalFiles(linkedFiles.map(externalEntry));
+        setLinkedRoots(roots);
         setCategories(loadedCategories);
         setCollapsedCategories(new Set(loadedCategories));
         if (loadedNotes[0]) {
@@ -1024,7 +1118,10 @@ export function MainWindow({
 
   useEffect(() => {
     const unlisten = listen<string>(TILE_WINDOW_CLOSED_EVENT, (event) => {
-      setPinnedTileIds((previous) => syncPinnedTileIds(previous, event.payload, false));
+      const binding = externalFilesRef.current.find((file) => file.bindingId === event.payload);
+      setPinnedTileIds((previous) =>
+        syncPinnedTileIds(previous, binding?.id ?? event.payload, false),
+      );
     });
     return () => {
       void unlisten.then((fn) => fn());
@@ -1033,7 +1130,10 @@ export function MainWindow({
 
   useEffect(() => {
     const unlisten = listen<string>(TILE_WINDOW_UNPINNED_EVENT, (event) => {
-      setPinnedTileIds((previous) => syncPinnedTileIds(previous, event.payload, false));
+      const binding = externalFilesRef.current.find((file) => file.bindingId === event.payload);
+      setPinnedTileIds((previous) =>
+        syncPinnedTileIds(previous, binding?.id ?? event.payload, false),
+      );
     });
     return () => {
       void unlisten.then((fn) => fn());
@@ -1043,6 +1143,42 @@ export function MainWindow({
   useEffect(() => {
     if (!selectedExternalFile) return;
 
+    if (selectedExternalFile.bindingId) {
+      const bindingId = selectedExternalFile.bindingId;
+      const refresh = async () => {
+        try {
+          const linked = await readLinkedFile(bindingId);
+          if (
+            selectedIdRef.current !== selectedExternalFile.id ||
+            linked.revision === externalRevisionRef.current
+          )
+            return;
+          if (saveStateRef.current === "dirty" || saveStateRef.current === "error") {
+            setLinkedConflict(linked);
+            return;
+          }
+          externalRevisionRef.current = linked.revision;
+          setLinkedConflict(null);
+          contentValueRef.current = linked.content;
+          setContent(linked.content);
+          setSaveState("saved");
+        } catch (error) {
+          showToast(getErrorMessage(error));
+        }
+      };
+      const unlisten = listen<{ bindingId: string }>("linked-content-changed", (event) => {
+        if (event.payload.bindingId === bindingId) void refresh();
+      });
+      const onFocus = () => {
+        void refresh();
+      };
+      window.addEventListener("focus", onFocus);
+      return () => {
+        window.removeEventListener("focus", onFocus);
+        void unlisten.then((fn) => fn());
+      };
+    }
+
     const interval = window.setInterval(async () => {
       // 窗口隐藏（托盘/最小化）时跳过探测，恢复可见后 1s 内自动追上
       if (document.visibilityState === "hidden") return;
@@ -1051,6 +1187,7 @@ export function MainWindow({
         const mtime = await getFileModifiedTime(selectedExternalFile.filePath);
         if (selectedIdRef.current !== selectedExternalFile.id) return;
         if (mtime !== externalFileMtimeRef.current) {
+          if (saveStateRef.current === "dirty" || saveStateRef.current === "error") return;
           externalFileMtimeRef.current = mtime;
           const fileContent = await readExternalFile(selectedExternalFile.filePath);
           if (selectedIdRef.current !== selectedExternalFile.id) return;
@@ -1146,11 +1283,22 @@ export function MainWindow({
       settleSaveState("saving");
       try {
         if (externalFile) {
-          await saveExternalFile(externalFile.filePath, contentSnapshot);
-          lastExternalSaveRef.current = Date.now();
-          const mtime = await getFileModifiedTime(externalFile.filePath);
-          if (stillCurrent()) {
-            externalFileMtimeRef.current = mtime;
+          if (externalFile.bindingId) {
+            const revision = await saveLinkedFile(
+              externalFile.bindingId,
+              contentSnapshot,
+              externalRevisionRef.current,
+            );
+            if (stillCurrent()) {
+              externalRevisionRef.current = revision;
+              setLinkedConflict(null);
+            }
+            void writeLinkedDraft(externalFile.bindingId, null, revision).catch(() => undefined);
+          } else {
+            await saveExternalFile(externalFile.filePath, contentSnapshot);
+            lastExternalSaveRef.current = Date.now();
+            const mtime = await getFileModifiedTime(externalFile.filePath);
+            if (stillCurrent()) externalFileMtimeRef.current = mtime;
           }
           settleSaveState(contentValueRef.current === contentSnapshot ? "saved" : "dirty");
         } else {
@@ -1168,6 +1316,13 @@ export function MainWindow({
         return true;
       } catch (error) {
         settleSaveState("error");
+        if (externalFile?.bindingId) {
+          void readLinkedFile(externalFile.bindingId)
+            .then((latest) => {
+              if (stillCurrent()) setLinkedConflict(latest);
+            })
+            .catch(() => undefined);
+        }
         showToast(getErrorMessage(error));
         return false;
       }
@@ -1262,8 +1417,19 @@ export function MainWindow({
     settingsConfig?.externalFileAutoSave,
   ]);
 
+  useEffect(() => {
+    if (!selectedExternalFile?.bindingId || saveState !== "dirty") return undefined;
+    const bindingId = selectedExternalFile.bindingId;
+    const timer = window.setTimeout(() => {
+      void writeLinkedDraft(bindingId, content, externalRevisionRef.current).catch((error) =>
+        showToast(getErrorMessage(error)),
+      );
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [content, saveState, selectedExternalFile]);
+
   const handleNewNote = async () => {
-    await saveCurrentNote();
+    if (!(await saveCurrentNote())) return;
     try {
       const note = await createNote({ title: "", content: "", category: activeCategory });
       replaceNoteMetadata(note);
@@ -1402,7 +1568,7 @@ export function MainWindow({
     if (id === selectedId) return;
     setDeleteConfirm(false);
     // 排队保存：等待可能在途的自动保存，并把尚未落盘的修改一并存掉
-    await saveCurrentNote();
+    if (!(await saveCurrentNote())) return;
 
     setIsLoading(true);
     try {
@@ -1417,7 +1583,7 @@ export function MainWindow({
   const handleSelectExternalFile = async (id: string) => {
     if (id === selectedId) return;
     setDeleteConfirm(false);
-    await saveCurrentNote();
+    if (!(await saveCurrentNote())) return;
 
     const file = externalFiles.find((f) => f.id === id);
     if (!file) return;
@@ -1425,21 +1591,28 @@ export function MainWindow({
     setIsLoading(true);
     const epoch = loadEpoch.bump();
     try {
-      const [fileContent, mtime] = await Promise.all([
-        readExternalFile(file.filePath),
-        getFileModifiedTime(file.filePath),
-      ]);
+      const linked = file.bindingId ? await readLinkedFile(file.bindingId) : null;
+      const draft = file.bindingId ? await readLinkedDraft(file.bindingId) : null;
+      const recovered = Boolean(
+        linked && draft?.content != null && draft.content !== linked.content,
+      );
+      const fileContent = recovered
+        ? draft!.content!
+        : (linked?.content ?? (await readExternalFile(file.filePath)));
+      const mtime = linked ? 0 : await getFileModifiedTime(file.filePath);
       if (!loadEpoch.isCurrent(epoch)) return;
       selectedIdRef.current = id;
       titleValueRef.current = file.title;
       contentValueRef.current = fileContent;
-      saveStateRef.current = "saved";
+      saveStateRef.current = recovered ? "dirty" : "saved";
       setSelectedId(id);
       setTitle(file.title);
       setContent(fileContent);
-      setSaveState("saved");
+      setSaveState(recovered ? "dirty" : "saved");
       setNoteTransitionKey((k) => k + 1);
       externalFileMtimeRef.current = mtime;
+      externalRevisionRef.current = recovered ? draft!.baseRevision : (linked?.revision ?? "");
+      setLinkedConflict(recovered && draft!.baseRevision !== linked?.revision ? linked : null);
     } catch (error) {
       showToast(getErrorMessage(error));
     } finally {
@@ -1460,6 +1633,16 @@ export function MainWindow({
         if (!saved) return;
       }
     }
+    const bindingId = externalFiles.find((file) => file.id === id)?.bindingId;
+    if (bindingId) {
+      try {
+        // 目录扫描项需要写入排除记录，否则下一次扫描会把它重新加回列表。
+        await unbindLinkedFile(bindingId);
+      } catch (error) {
+        showToast(getErrorMessage(error));
+        return;
+      }
+    }
     setExternalFiles((current) => current.filter((f) => f.id !== id));
     if (selectedId === id) {
       clearCurrentNote();
@@ -1467,7 +1650,7 @@ export function MainWindow({
   };
 
   const handleDeleteNote = async (noteId = selectedId) => {
-    if (!noteId) return;
+    if (!noteId || externalFiles.some((file) => file.id === noteId)) return;
 
     setDeleteConfirm(false);
     try {
@@ -1926,10 +2109,17 @@ export function MainWindow({
     if (!selectedId) return;
     const isPinned = pinnedTileIds.has(selectedId);
     if (!isPinned) {
-      await saveCurrentNote();
+      const saved = await saveCurrentNote();
+      if (!saved) return;
     }
     try {
-      const pinned = await toggleTileWindow(selectedId);
+      if (selectedExternalFile && !selectedExternalFile.bindingId) {
+        showToast("此类外部文件暂不支持钉屏");
+        return;
+      }
+      const pinned = selectedExternalFile
+        ? await toggleLinkedTileWindow(selectedExternalFile.bindingId!)
+        : await toggleTileWindow(selectedId);
       setPinnedTileIds((previous) => {
         return syncPinnedTileIds(previous, selectedId, pinned);
       });
@@ -2246,6 +2436,54 @@ export function MainWindow({
                   </svg>
                   <span>{t("main.sidebar.importMarkdown", { defaultValue: "导入 Markdown" })}</span>
                 </button>
+                <button
+                  onClick={() => void handleBindDirectory(false)}
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-[12px] text-ink-faint hover:text-bamboo hover:bg-bamboo-mist/50"
+                >
+                  绑定 Markdown 目录
+                </button>
+                <button
+                  onClick={() => void handleBindDirectory(true)}
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-[12px] text-ink-faint hover:text-bamboo hover:bg-bamboo-mist/50"
+                >
+                  绑定目录（含子目录）
+                </button>
+                {linkedRoots.map((root) => (
+                  <div
+                    key={root.id}
+                    className="flex items-center gap-1 px-2.5 text-[11px] text-ink-faint"
+                  >
+                    <span className="min-w-0 flex-1 truncate" title={root.path}>
+                      {root.path.replace(/^\\\\\?\\/, "")}
+                    </span>
+                    <button
+                      title="在此目录新建 Markdown"
+                      onClick={() => void handleCreateLinkedFile(root.id)}
+                    >
+                      新建
+                    </button>
+                    <button
+                      title="扫描目录"
+                      onClick={() =>
+                        void scanLinkedRoots()
+                          .then(refreshLinkedEntries)
+                          .catch((error) => showToast(getErrorMessage(error)))
+                      }
+                    >
+                      刷新
+                    </button>
+                    <button
+                      title="解除目录绑定，不删除文件"
+                      onClick={() =>
+                        void unbindLinkedRoot(root.id)
+                          .then(refreshLinkedEntries)
+                          .catch((error) => showToast(getErrorMessage(error)))
+                      }
+                    >
+                      解绑
+                    </button>
+                  </div>
+                ))}
               </div>
 
               <div className="flex items-center justify-between px-5 pb-1.5 shrink-0">
@@ -2387,7 +2625,7 @@ export function MainWindow({
                             </div>
 
                             <p className="text-[11px] text-ink-ghost leading-relaxed line-clamp-2 group-hover:text-ink-faint transition-colors pl-[18px]">
-                              {file.filePath}
+                              {file.filePath.replace(/^\\\\\?\\/, "")}
                             </p>
                           </button>
                         );
@@ -2846,7 +3084,7 @@ export function MainWindow({
                 ) : (
                   <button
                     onClick={() => setDeleteConfirm(true)}
-                    disabled={!selectedId}
+                    disabled={!selectedId || Boolean(selectedExternalFile)}
                     className="w-7 h-7 flex items-center justify-center rounded-lg text-ink-ghost hover:text-red-400 hover:bg-danger-bg transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                     title={t("noteMenu.delete", { defaultValue: "删除笔记" })}
                   >
@@ -2882,6 +3120,7 @@ export function MainWindow({
               <input
                 type="text"
                 value={title}
+                readOnly={Boolean(selectedExternalFile)}
                 onChange={(event) => {
                   setTitle(event.target.value);
                   markDirty();
@@ -2896,11 +3135,58 @@ export function MainWindow({
                 disabled={!selectedId}
                 className="w-full text-[20px] font-display font-bold text-ink placeholder:text-ink-ghost/50 tracking-wide disabled:opacity-60"
               />
+              {linkedConflict && selectedExternalFile?.bindingId && (
+                <div className="flex items-center gap-3 py-2 text-[11px] text-red-600">
+                  <span>原文件已变化</span>
+                  <button
+                    onClick={() => {
+                      externalRevisionRef.current = linkedConflict.revision;
+                      contentValueRef.current = linkedConflict.content;
+                      setContent(linkedConflict.content);
+                      saveStateRef.current = "saved";
+                      setSaveState("saved");
+                      setLinkedConflict(null);
+                      void writeLinkedDraft(
+                        selectedExternalFile.bindingId!,
+                        null,
+                        linkedConflict.revision,
+                      ).catch(() => undefined);
+                    }}
+                  >
+                    载入磁盘
+                  </button>
+                  <button
+                    onClick={() => {
+                      const snapshot = contentValueRef.current;
+                      void saveLinkedFile(
+                        selectedExternalFile.bindingId!,
+                        snapshot,
+                        externalRevisionRef.current,
+                        true,
+                      )
+                        .then((revision) => {
+                          externalRevisionRef.current = revision;
+                          setLinkedConflict(null);
+                          setSaveState(contentValueRef.current === snapshot ? "saved" : "dirty");
+                          void writeLinkedDraft(
+                            selectedExternalFile.bindingId!,
+                            null,
+                            revision,
+                          ).catch(() => undefined);
+                        })
+                        .catch((error) => showToast(getErrorMessage(error)));
+                    }}
+                  >
+                    覆盖原文件
+                  </button>
+                  <button onClick={() => setLinkedConflict(null)}>保留草稿</button>
+                </div>
+              )}
               <div className="flex items-center gap-3 mt-1.5">
                 <span className="text-[10px] text-ink-ghost font-mono tabular-nums truncate max-w-[200px]">
                   {selectedExternalFile
                     ? t("main.externalFile.label", {
-                        path: selectedExternalFile.filePath,
+                        path: selectedExternalFile.filePath.replace(/^\\\\\?\\/, ""),
                         defaultValue: "外部文件 · {{path}}",
                       })
                     : selectedNote
