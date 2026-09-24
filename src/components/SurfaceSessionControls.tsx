@@ -130,7 +130,11 @@ export function SurfaceSessionControls({ sessionKey }: { sessionKey: string }) {
           >
             {session?.locked ? "解除鼠标穿透锁定" : "锁定便签并允许鼠标穿透"}
           </button>
-          <p className="mb-3 text-xs text-ink-faint">锁定后便签置顶且不接收鼠标；从这里解锁。</p>
+          <p className="mb-3 text-xs text-ink-faint">
+            {navigator.userAgent.includes("Windows")
+              ? "锁定后仅右上角“解锁”按钮接收点击，其余区域穿透；也可从这里解锁。"
+              : "锁定后便签置顶且不接收鼠标；从这里解锁。"}
+          </p>
           <div className="mb-1 text-ink-faint">全局快捷键（默认不占用）</div>
           <div className="flex items-center gap-2">
             <button

@@ -5,6 +5,8 @@ pub mod json_io;
 pub mod linked;
 pub mod linked_watcher;
 pub mod locales;
+#[cfg(target_os = "windows")]
+pub mod lock_overlay;
 pub mod services;
 pub mod surface_sessions;
 pub mod updater;

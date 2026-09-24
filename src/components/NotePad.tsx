@@ -1054,85 +1054,87 @@ export function NotePad({
           onMouseDown={handleDrag}
           onDoubleClick={handleTileDoubleClick}
         >
-          <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
-            <button
-              type="button"
-              aria-label={tileWriting ? "保存并切换阅读模式" : "切换写作模式"}
-              title={tileWriting ? "保存并切换阅读模式" : "切换写作模式"}
-              onMouseDown={(event) => event.stopPropagation()}
-              onClick={() => void (tileWriting ? finishTileWriting() : startTileWriting())}
-              className="w-6 h-6 flex items-center justify-center rounded-full text-ink-ghost/70 hover:text-ink hover:bg-paper-warm/80 transition-colors cursor-pointer"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+          {!tileLocked && (
+            <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+              <button
+                type="button"
+                aria-label={tileWriting ? "保存并切换阅读模式" : "切换写作模式"}
+                title={tileWriting ? "保存并切换阅读模式" : "切换写作模式"}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={() => void (tileWriting ? finishTileWriting() : startTileWriting())}
+                className="w-6 h-6 flex items-center justify-center rounded-full text-ink-ghost/70 hover:text-ink hover:bg-paper-warm/80 transition-colors cursor-pointer"
               >
-                {tileWriting ? (
-                  <path d="M4 19h16M6 5h12v10H6zM9 5v5h6" />
-                ) : (
-                  <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L9 17l-4 1 1-4z" />
-                )}
-              </svg>
-            </button>
-            <button
-              type="button"
-              aria-label="锁定便签并允许鼠标穿透"
-              title="锁定便签；从主界面解锁"
-              onMouseDown={(event) => event.stopPropagation()}
-              onClick={() => void lockTile()}
-              className="w-6 h-6 flex items-center justify-center rounded-full text-ink-ghost/70 hover:text-ink hover:bg-paper-warm/80 transition-colors cursor-pointer"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  {tileWriting ? (
+                    <path d="M4 19h16M6 5h12v10H6zM9 5v5h6" />
+                  ) : (
+                    <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L9 17l-4 1 1-4z" />
+                  )}
+                </svg>
+              </button>
+              <button
+                type="button"
+                aria-label="锁定便签并允许鼠标穿透"
+                title="锁定便签；锁定后点击右上角解锁"
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={() => void lockTile()}
+                className="w-6 h-6 flex items-center justify-center rounded-full text-ink-ghost/70 hover:text-ink hover:bg-paper-warm/80 transition-colors cursor-pointer"
               >
-                <rect x="5" y="10" width="14" height="11" rx="2" />
-                <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              aria-label="取消钉屏"
-              title="取消钉屏"
-              onMouseDown={(event) => event.stopPropagation()}
-              onClick={() =>
-                void (async () => {
-                  try {
-                    if (tileWriting && statusRef.current === "dirty") await saveNote();
-                    handleClose();
-                  } catch (error) {
-                    showToast(getErrorMessage(error));
-                  }
-                })()
-              }
-              className="w-6 h-6 flex items-center justify-center rounded-full text-ink-ghost/70 hover:text-red-400 hover:bg-danger-bg/80 transition-colors cursor-pointer"
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="5" y="10" width="14" height="11" rx="2" />
+                  <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                aria-label="取消钉屏"
+                title="取消钉屏"
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={() =>
+                  void (async () => {
+                    try {
+                      if (tileWriting && statusRef.current === "dirty") await saveNote();
+                      handleClose();
+                    } catch (error) {
+                      showToast(getErrorMessage(error));
+                    }
+                  })()
+                }
+                className="w-6 h-6 flex items-center justify-center rounded-full text-ink-ghost/70 hover:text-red-400 hover:bg-danger-bg/80 transition-colors cursor-pointer"
               >
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          <SurfaceResizeHandles />
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                >
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
+          {!tileLocked && <SurfaceResizeHandles />}
         </Tile>
       ) : (
         <div className={padSurfaceClassName} data-surface-mode={surfaceMode}>
