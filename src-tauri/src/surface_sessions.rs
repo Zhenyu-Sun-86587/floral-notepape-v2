@@ -34,6 +34,7 @@ pub enum WindowMode {
     Normal,
     #[default]
     AlwaysOnTop,
+    DesktopAttached,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

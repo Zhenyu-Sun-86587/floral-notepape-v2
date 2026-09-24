@@ -1917,19 +1917,28 @@ fn open_or_focus_window(
     }
 
     let visual_options = dynamic_window_visual_options(label);
-    let always_on_top = session_key_from_label(label)
+    let session_mode = session_key_from_label(label)
         .and_then(|key| crate::surface_sessions::get(&key).ok())
-        .map(|session| session.window_mode == crate::surface_sessions::WindowMode::AlwaysOnTop)
+        .map(|session| session.window_mode);
+    let always_on_top = session_mode
+        .map(|mode| mode == crate::surface_sessions::WindowMode::AlwaysOnTop)
         .unwrap_or(opts.always_on_top);
 
     if let Some(window) = app.get_webview_window(label) {
         window.set_title(&opts.title)?;
+        #[cfg(target_os = "windows")]
+        crate::desktop_attachment::detach(&window)?;
         apply_window_bounds(&window, opts.bounds)?;
         window.set_shadow(opts.shadow)?;
         window.set_always_on_top(always_on_top)?;
+        if let Some(mode) = session_mode {
+            apply_surface_window_mode(&window, mode)?;
+        }
         window.unminimize()?;
         window.show()?;
-        if opts.focus_on_show {
+        if opts.focus_on_show
+            && session_mode != Some(crate::surface_sessions::WindowMode::DesktopAttached)
+        {
             window.set_focus()?;
             if let Some(key) = session_key_from_label(label) {
                 let _ = crate::surface_sessions::mutate(&key, |session| {
@@ -1975,6 +1984,12 @@ fn open_or_focus_window(
             .and_then(|bounds| resolve_session_bounds(app, &bounds))
     });
     apply_window_bounds(&window, restored_bounds)?;
+    if let Some(mode) = session_mode {
+        if let Err(error) = apply_surface_window_mode(&window, mode) {
+            let _ = window.close();
+            return Err(error);
+        }
+    }
 
     if opts.focus_on_show {
         if let Some(key) = session_key_from_label(label) {
@@ -2021,6 +2036,15 @@ pub fn save_session_bounds(window: &tauri::WebviewWindow) {
     };
     let (Ok(position), Ok(size)) = (window.outer_position(), window.inner_size()) else {
         return;
+    };
+    #[cfg(target_os = "windows")]
+    let position = if crate::desktop_attachment::is_attached(window) {
+        match crate::desktop_attachment::screen_bounds(window) {
+            Ok((x, y)) => PhysicalPosition::new(x, y),
+            Err(_) => return,
+        }
+    } else {
+        position
     };
     let work = monitor.work_area();
     let scale = monitor.scale_factor();
@@ -2123,29 +2147,98 @@ pub fn save_surface_session(
     current.startup_behavior = session.startup_behavior;
     current.shortcut = session.shortcut;
     current.window_mode = session.window_mode;
-    if let Err(error) = crate::surface_sessions::update(current) {
-        #[cfg(desktop)]
-        if shortcut_changed {
-            let _ = validate_and_install_session_shortcut(app, &previous);
-        }
-        return Err(error);
+    #[cfg(not(target_os = "windows"))]
+    if session.window_mode == crate::surface_sessions::WindowMode::DesktopAttached {
+        return Err(surface_mode_error("桌面附着目前仅支持 Windows"));
     }
     let label = if let Some(id) = session.key.strip_prefix("linked:") {
         format!("tile-linked-{}", sanitize_label_part(id))
     } else {
         tile_window_label(session.key.strip_prefix("note:").unwrap_or_default())
     };
-    if let Some(window) = app.get_webview_window(&label) {
-        let _ = window.set_always_on_top(
-            session.window_mode == crate::surface_sessions::WindowMode::AlwaysOnTop,
-        );
-    }
-    if let Some(id) = session.key.strip_prefix("note:") {
-        if let Some(window) = app.get_webview_window(&notepad_window_label(Some(id))) {
-            let _ = window.set_always_on_top(
-                session.window_mode == crate::surface_sessions::WindowMode::AlwaysOnTop,
-            );
+    let windows: Vec<_> = [
+        app.get_webview_window(&label),
+        session
+            .key
+            .strip_prefix("note:")
+            .and_then(|id| app.get_webview_window(&notepad_window_label(Some(id)))),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if session.window_mode != previous.window_mode {
+        for window in &windows {
+            if let Err(error) = apply_surface_window_mode(window, session.window_mode) {
+                for previous_window in &windows {
+                    let _ = apply_surface_window_mode(previous_window, previous.window_mode);
+                }
+                #[cfg(desktop)]
+                if shortcut_changed {
+                    let _ = validate_and_install_session_shortcut(app, &previous);
+                }
+                return Err(error);
+            }
         }
+    }
+    if let Err(error) = crate::surface_sessions::update(current) {
+        for window in &windows {
+            let _ = apply_surface_window_mode(window, previous.window_mode);
+        }
+        #[cfg(desktop)]
+        if shortcut_changed {
+            let _ = validate_and_install_session_shortcut(app, &previous);
+        }
+        return Err(error);
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn surface_mode_error(message: &str) -> AppError {
+    AppError {
+        code: "desktopAttachment".into(),
+        message: message.into(),
+        details: Default::default(),
+    }
+}
+
+fn apply_surface_window_mode(
+    window: &tauri::WebviewWindow,
+    mode: crate::surface_sessions::WindowMode,
+) -> Result<(), AppError> {
+    #[cfg(target_os = "windows")]
+    if mode == crate::surface_sessions::WindowMode::DesktopAttached
+        && crate::desktop_attachment::is_attached(window)
+    {
+        return Ok(());
+    }
+    #[cfg(target_os = "windows")]
+    crate::desktop_attachment::detach(window)?;
+    window.set_always_on_top(mode == crate::surface_sessions::WindowMode::AlwaysOnTop)?;
+    if mode == crate::surface_sessions::WindowMode::DesktopAttached {
+        #[cfg(target_os = "windows")]
+        return crate::desktop_attachment::attach(window);
+        #[cfg(not(target_os = "windows"))]
+        return Err(surface_mode_error("桌面附着目前仅支持 Windows"));
+    }
+    Ok(())
+}
+
+pub fn set_surface_edit_mode(window: &tauri::WebviewWindow, editing: bool) -> Result<(), AppError> {
+    let Some(key) = session_key_from_label(window.label()) else {
+        return Ok(());
+    };
+    let mode = crate::surface_sessions::get(&key)?.window_mode;
+    if mode != crate::surface_sessions::WindowMode::DesktopAttached {
+        return Ok(());
+    }
+    if editing {
+        #[cfg(target_os = "windows")]
+        crate::desktop_attachment::detach(window)?;
+        window.set_always_on_top(false)?;
+        window.set_focus()?;
+    } else {
+        apply_surface_window_mode(window, mode)?;
     }
     Ok(())
 }

@@ -1,4 +1,6 @@
 pub mod desktop;
+#[cfg(target_os = "windows")]
+pub mod desktop_attachment;
 pub mod json_io;
 pub mod linked;
 pub mod linked_watcher;
@@ -72,6 +74,11 @@ fn surface_bounds_save(window: tauri::WebviewWindow) {
 #[tauri::command]
 fn surface_session_close_current(window: tauri::WebviewWindow) {
     desktop::record_surface_close(&window);
+}
+
+#[tauri::command]
+fn surface_edit_mode(window: tauri::WebviewWindow, editing: bool) -> Result<(), AppError> {
+    desktop::set_surface_edit_mode(&window, editing)
 }
 
 #[tauri::command]
@@ -741,6 +748,7 @@ pub fn run() {
             linked_bind,
             surface_session_get,
             surface_session_save,
+            surface_edit_mode,
             surface_bounds_save,
             surface_session_close_current,
             show_silent_surface,

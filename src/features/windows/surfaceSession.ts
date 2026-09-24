@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type StartupBehavior = "hidden" | "restoreLast" | "expanded";
 export type Presentation = "hidden" | "expanded";
-export type WindowMode = "normal" | "alwaysOnTop";
+export type WindowMode = "normal" | "alwaysOnTop" | "desktopAttached";
 
 export interface SurfaceSession {
   key: string;

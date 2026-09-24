@@ -26,12 +26,12 @@ import {
   destroyCurrentWindow,
   getCurrentWindowBounds,
   recycleCurrentNotepad,
-  setCurrentWindowAlwaysOnTop,
   showCurrentWindow,
   startCurrentWindowDrag,
   startCurrentWindowDragWithOffset,
   startCurrentWindowResize,
 } from "../features/windows/controls";
+import { getSurfaceSession } from "../features/windows/surfaceSession";
 import type { ResizeDirection } from "../features/windows/controls";
 import { getConfig } from "../features/settings/api";
 import {
@@ -358,18 +358,29 @@ export function NotePad({
       requestAnimationFrame(() => {
         if (!cancelled) {
           hasEnteredOnce.current = true;
-          void (silentRestore ? invoke("show_silent_surface") : showCurrentWindow())
-            .then(() => {
-              if (!silentRestore) contentRef.current?.focus();
-            })
-            .catch(() => undefined);
+          void (async () => {
+            const key = initialBindingId
+              ? `linked:${initialBindingId}`
+              : initialNoteId
+                ? `note:${initialNoteId}`
+                : null;
+            const desktopAttached = key
+              ? (await getSurfaceSession(key).catch(() => null))?.windowMode === "desktopAttached"
+              : false;
+            if (silentRestore || desktopAttached) {
+              await invoke("show_silent_surface");
+            } else {
+              await showCurrentWindow();
+              contentRef.current?.focus();
+            }
+          })().catch(() => undefined);
         }
       });
     });
     return () => {
       cancelled = true;
     };
-  }, [bootstrapReady]);
+  }, [bootstrapReady, initialBindingId, initialNoteId]);
 
   useEffect(() => {
     if (!initialNoteId && !initialBindingId) return;
@@ -616,20 +627,17 @@ export function NotePad({
   const switchSurfaceMode = useCallback(
     async (nextMode: NoteSurfaceMode) => {
       const unpinnedNoteId = tileSurfaceModeUnpinNoteId(surfaceMode, nextMode, tileNoteId);
-      setSurfaceMode(nextMode);
-      if (unpinnedNoteId) {
-        void emitTileWindowUnpinned(unpinnedNoteId).catch(() => undefined);
-      }
-
       try {
+        // 桌面子窗口使用父窗口坐标；编辑前先脱离，回到磁贴后再附着。
+        if (nextMode === "pad") await invoke("surface_edit_mode", { editing: true });
         const currentBounds = await getCurrentWindowBounds();
         const targetBounds = getSurfaceTargetBounds(nextMode, currentBounds);
-
-        if (nextMode === "tile") {
-          await setCurrentWindowAlwaysOnTop(true);
-        }
-
         await animateCurrentWindowBounds(targetBounds);
+        if (nextMode === "tile") await invoke("surface_edit_mode", { editing: false });
+        setSurfaceMode(nextMode);
+        if (unpinnedNoteId) {
+          void emitTileWindowUnpinned(unpinnedNoteId).catch(() => undefined);
+        }
       } catch (error) {
         showToast(getErrorMessage(error));
       }
@@ -650,18 +658,17 @@ export function NotePad({
     };
   }, [switchSurfaceMode]);
 
-  useEffect(() => {
-    if (surfaceMode !== "tile") return;
-    void setCurrentWindowAlwaysOnTop(true).catch(() => undefined);
-  }, [surfaceMode]);
-
   const handleSave = useCallback(
     async ({ isAutoSave = false }: { isAutoSave?: boolean } = {}) => {
       try {
         const savedNote = await saveNote();
+        const key = initialBindingId ? `linked:${initialBindingId}` : `note:${savedNote.id}`;
+        const desktopAttached =
+          !isAutoSave &&
+          (await getSurfaceSession(key).catch(() => null))?.windowMode === "desktopAttached";
         if (
           shouldReturnToTileAfterManualSave({
-            enabled: tileSaveReturnsToPin,
+            enabled: tileSaveReturnsToPin || desktopAttached,
             noteId: savedNote.id,
             currentMode: surfaceMode,
             isAutoSave,

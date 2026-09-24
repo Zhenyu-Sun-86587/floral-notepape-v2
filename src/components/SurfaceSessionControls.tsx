@@ -98,7 +98,15 @@ export function SurfaceSessionControls({ sessionKey }: { sessionKey: string }) {
           >
             <option value="alwaysOnTop">置顶</option>
             <option value="normal">普通窗口</option>
+            <option value="desktopAttached" disabled={!navigator.userAgent.includes("Windows")}>
+              附着桌面（Windows）
+            </option>
           </select>
+          {!navigator.userAgent.includes("Windows") && (
+            <p className="mb-2 text-xs text-ink-faint">
+              桌面附着暂仅支持 Windows；Mac 适配由协作者验收。
+            </p>
+          )}
           <div className="mb-1 text-ink-faint">全局快捷键（默认不占用）</div>
           <div className="flex items-center gap-2">
             <button
