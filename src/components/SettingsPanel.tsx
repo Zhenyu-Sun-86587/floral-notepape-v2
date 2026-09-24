@@ -273,6 +273,15 @@ export function SettingsPanel({
               onChange={(v) => setConfigValue("toggleVisibilityShortcut", v)}
             />
           </div>
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-body text-ink-faint/70 px-0.5">
+              打开笔记列表快捷键
+            </label>
+            <ShortcutRecorder
+              value={config.mainShortcut ?? ""}
+              onChange={(value) => setConfigValue("mainShortcut", value)}
+            />
+          </div>
         </section>
 
         <section className="space-y-2">

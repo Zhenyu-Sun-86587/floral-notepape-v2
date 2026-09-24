@@ -31,6 +31,8 @@ pub struct AppConfig {
     #[serde(default)]
     pub data_dir: Option<String>,
     pub global_shortcut: String,
+    #[serde(default)]
+    pub main_shortcut: String,
     pub close_to_tray: bool,
     pub autostart: bool,
     pub default_view_mode: String,
@@ -1120,6 +1122,7 @@ impl NoteStore {
             data_dir: Some(self.data_dir.to_string_lossy().to_string()),
             #[cfg(target_os = "macos")]
             global_shortcut: String::new(),
+            main_shortcut: String::new(),
             #[cfg(not(target_os = "macos"))]
             global_shortcut: String::new(),
             close_to_tray: true,
@@ -1871,6 +1874,7 @@ mod tests {
             locale: "en-US".into(),
             data_dir: None,
             global_shortcut: "Alt+Space".into(),
+            main_shortcut: String::new(),
             close_to_tray: false,
             autostart: true,
             default_view_mode: "preview".into(),

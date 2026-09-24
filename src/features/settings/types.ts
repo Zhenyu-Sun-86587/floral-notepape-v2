@@ -37,6 +37,7 @@ export interface AppConfig {
   locale: string;
   dataDir: string;
   globalShortcut: string;
+  mainShortcut: string;
   closeToTray: boolean;
   autostart: boolean;
   defaultViewMode: string;

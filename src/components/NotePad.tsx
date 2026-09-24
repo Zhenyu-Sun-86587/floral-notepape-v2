@@ -18,6 +18,7 @@ import { showToast } from "./Toast";
 import type { Note, NoteMetadata } from "../features/notes/types";
 import { countNoteChars, metadataFromNote } from "../features/notes/noteUtils";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   animateCurrentWindowBounds,
@@ -169,6 +170,7 @@ export function NotePad({
     resolveTileColor("system", normalizeTileColor(initialTileColor)),
   );
   const [isExiting, setIsExiting] = useState(false);
+  const [bootstrapReady, setBootstrapReady] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const tileDragIntentRef = useRef<{ x: number; y: number } | null>(null);
@@ -276,6 +278,8 @@ export function NotePad({
         }
       } catch (error) {
         if (!cancelled) showToast(getErrorMessage(error));
+      } finally {
+        if (!cancelled) setBootstrapReady(true);
       }
     }
 
@@ -346,13 +350,18 @@ export function NotePad({
 
   useEffect(() => {
     if (isStandby.current) return;
+    if (hasEnteredOnce.current) return;
+    const silentRestore = new URLSearchParams(window.location.search).has("silentRestore");
+    if (silentRestore && !bootstrapReady) return;
     let cancelled = false;
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         if (!cancelled) {
           hasEnteredOnce.current = true;
-          void showCurrentWindow()
-            .then(() => contentRef.current?.focus())
+          void (silentRestore ? invoke("show_silent_surface") : showCurrentWindow())
+            .then(() => {
+              if (!silentRestore) contentRef.current?.focus();
+            })
             .catch(() => undefined);
         }
       });
@@ -360,7 +369,26 @@ export function NotePad({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [bootstrapReady]);
+
+  useEffect(() => {
+    if (!initialNoteId && !initialBindingId) return;
+    const current = getCurrentWindow();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const save = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        void invoke("surface_bounds_save").catch(() => undefined);
+      }, 500);
+    };
+    const moved = current.onMoved(save);
+    const resized = current.onResized(save);
+    return () => {
+      clearTimeout(timer);
+      void moved.then((off) => off());
+      void resized.then((off) => off());
+    };
+  }, [initialNoteId, initialBindingId]);
 
   useEffect(() => {
     const unlisten = listen<{
@@ -494,6 +522,7 @@ export function NotePad({
     try {
       if (statusRef.current === "dirty") await saveNoteRef.current();
       // 外部文件窗口必须销毁原生窗口；close() 会再次触发关闭监听，失败时还会留下透明遮挡层。
+      await invoke("surface_session_close_current");
       await destroyCurrentWindow();
     } catch (error) {
       linkedClosingRef.current = false;

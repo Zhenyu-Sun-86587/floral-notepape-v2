@@ -13,6 +13,7 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { exportMarkdownNote, importMarkdownNote } from "../features/importExport/api";
 import {
@@ -38,6 +39,7 @@ import { markdownImageDirectory, markdownImageRoot } from "../features/markdown/
 import { toggleTaskMarker } from "../features/markdown/taskMarker";
 import { continueMarkdownList } from "../features/markdown/listEnter";
 import { showToast } from "./Toast";
+import { SurfaceSessionControls } from "./SurfaceSessionControls";
 import {
   createScrollSyncMap,
   interpolateScrollOffset,
@@ -1134,6 +1136,11 @@ export function MainWindow({
   }, [openAboutPanel]);
 
   useEffect(() => {
+    void invoke<string | null>("shortcut_startup_error")
+      .then((message) => {
+        if (message) showToast(message, "warning");
+      })
+      .catch(() => undefined);
     const unlisten = listen<string>("shortcut-register-failed", (event) => {
       showToast(event.payload, "warning");
     });
@@ -3031,6 +3038,16 @@ export function MainWindow({
                     <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z" />
                   </svg>
                 </button>
+
+                {selectedId && (!selectedExternalFile || selectedExternalFile.bindingId) && (
+                  <SurfaceSessionControls
+                    sessionKey={
+                      selectedExternalFile
+                        ? `linked:${selectedExternalFile.bindingId}`
+                        : `note:${selectedId}`
+                    }
+                  />
+                )}
 
                 <button
                   onMouseDown={(event) => event.preventDefault()}

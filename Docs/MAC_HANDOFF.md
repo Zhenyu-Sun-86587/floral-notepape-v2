@@ -21,3 +21,9 @@
 - Windows 新增主题 token、逐字段的全局/单便签覆盖、便签背景图和透明度；请在 Mac 上确认 WebKit 对 `color-mix`、CSS 变量背景图以及字体回退的表现。Windows NSIS 构建通过不代表 Mac GUI 已验证。
 - `set_native_material` 当前只在 Windows 调用 Tauri Acrylic；非 Windows 返回“不可用”。Mac 协作者在完成应用身份和数据隔离后，再实现并实测 Vibrancy，核对关闭/恢复、圆角、缩放和多屏行为。不要把 CSS `backdrop-filter` 当作原生 Vibrancy 验收证据。
 - 主题 JSON 不携带本机图片路径。请验证导入/导出、深浅主题、代码和 Mermaid、单便签字体继承及窗口透明背景；记录可用/降级状态。未完成前在状态文档保持 Mac 材质“未实现/未测”。
+
+## P6 静默恢复与逐便签快捷键交接
+
+- Windows 的 `surface-sessions.json` 位于本机配置目录，记录内部笔记与外部绑定各自的启动策略、显示状态、展开位置和快捷键。Mac 完成独立身份/数据目录后，再验证该文件不会与原版或 Windows 配置混用。
+- `--silent` 会创建已配置恢复的便签，前端载入正文后显示且不请求焦点。Mac 上请实测登录项、Dock、菜单栏/托盘、全屏空间和多显示器缩放；Windows 构建结果不代表 Mac 行为。
+- 验证 Mac 快捷键映射、系统冲突、录制中注销与恢复、关闭后重开。Mac 不具备 Windows 的键盘钩子路径，需单独确认快捷键录制体验。

@@ -4,6 +4,7 @@ pub mod linked;
 pub mod linked_watcher;
 pub mod locales;
 pub mod services;
+pub mod surface_sessions;
 pub mod updater;
 
 use locales::Locale;
@@ -44,9 +45,43 @@ fn linked_bind_root(
 #[tauri::command]
 fn linked_unbind(app: AppHandle, id: String) -> Result<(), AppError> {
     linked::unbind(&id)?;
+    desktop::remove_surface_session(&app, &format!("linked:{id}"));
     linked_watcher::sync_watches()?;
     let _ = app.emit("bindings-changed", ());
     Ok(())
+}
+
+#[tauri::command]
+fn surface_session_get(key: String) -> Result<surface_sessions::SurfaceSession, AppError> {
+    surface_sessions::get(&key)
+}
+
+#[tauri::command]
+fn surface_session_save(
+    app: AppHandle,
+    session: surface_sessions::SurfaceSession,
+) -> Result<(), AppError> {
+    desktop::save_surface_session(&app, session)
+}
+
+#[tauri::command]
+fn surface_bounds_save(window: tauri::WebviewWindow) {
+    desktop::save_session_bounds(&window);
+}
+
+#[tauri::command]
+fn surface_session_close_current(window: tauri::WebviewWindow) {
+    desktop::record_surface_close(&window);
+}
+
+#[tauri::command]
+fn show_silent_surface(window: tauri::WebviewWindow) -> Result<(), AppError> {
+    desktop::show_silent_surface(&window)
+}
+
+#[tauri::command]
+fn shortcut_startup_error(app: AppHandle) -> Option<String> {
+    desktop::shortcut_startup_error(&app)
 }
 
 #[tauri::command]
@@ -151,6 +186,7 @@ fn notes_update(app: AppHandle, id: String, request: SaveNoteRequest) -> Result<
 #[tauri::command]
 fn notes_delete(app: AppHandle, id: String) -> Result<(), AppError> {
     default_store()?.delete_note(&id)?;
+    desktop::remove_surface_session(&app, &format!("note:{id}"));
     let _ = app.emit("notes-changed", ());
     Ok(())
 }
@@ -703,6 +739,12 @@ pub fn run() {
             notes_export_markdown,
             notes_move_category,
             linked_bind,
+            surface_session_get,
+            surface_session_save,
+            surface_bounds_save,
+            surface_session_close_current,
+            show_silent_surface,
+            shortcut_startup_error,
             linked_list,
             linked_roots,
             linked_bind_root,
@@ -748,6 +790,9 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(move |_app_handle, _event| {
+            if matches!(_event, tauri::RunEvent::ExitRequested { .. }) {
+                desktop::mark_app_exiting(_app_handle);
+            }
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen {
                 has_visible_windows,

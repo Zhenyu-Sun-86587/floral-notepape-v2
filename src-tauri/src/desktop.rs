@@ -484,6 +484,7 @@ pub struct RuntimeConfigChanges {
     pub autostart_changed: bool,
     pub global_shortcut_changed: bool,
     pub toggle_visibility_shortcut_changed: bool,
+    pub main_shortcut_changed: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -541,6 +542,7 @@ struct WindowOpenOptions {
     shadow: bool,
     skip_taskbar: bool,
     bounds: Option<WindowBounds>,
+    focus_on_show: bool,
 }
 
 #[derive(Default)]
@@ -550,6 +552,8 @@ struct RuntimeState {
     hidden_window_labels: Mutex<Vec<String>>,
     #[cfg(desktop)]
     shortcut_bindings: Mutex<ShortcutBindings>,
+    #[cfg(desktop)]
+    shortcut_error: Mutex<Option<String>>,
 }
 
 #[cfg(desktop)]
@@ -557,13 +561,17 @@ struct RuntimeState {
 struct ShortcutBindings {
     open_notepad: Option<Shortcut>,
     toggle_visibility: Option<Shortcut>,
+    open_main: Option<Shortcut>,
+    surfaces: Vec<(Shortcut, String)>,
 }
 
 #[cfg(desktop)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum ShortcutAction {
     OpenNotepad,
     ToggleVisibility,
+    OpenMain,
+    Surface(String),
 }
 
 #[derive(Default)]
@@ -641,15 +649,17 @@ impl RuntimeState {
         if let Ok(mut guard) = self.shortcut_bindings.lock() {
             *guard = bindings;
         }
+        if let Ok(mut error) = self.shortcut_error.lock() {
+            *error = None;
+        }
     }
 
     #[cfg(desktop)]
-    fn shortcut_action(&self, shortcut: &Shortcut) -> ShortcutAction {
+    fn shortcut_action(&self, shortcut: &Shortcut) -> Option<ShortcutAction> {
         self.shortcut_bindings
             .lock()
             .ok()
             .and_then(|bindings| bindings.action_for(shortcut))
-            .unwrap_or(ShortcutAction::OpenNotepad)
     }
 }
 
@@ -664,8 +674,13 @@ impl ShortcutBindings {
             Some(ShortcutAction::ToggleVisibility)
         } else if self.open_notepad.as_ref().is_some_and(|s| s == shortcut) {
             Some(ShortcutAction::OpenNotepad)
+        } else if self.open_main.as_ref().is_some_and(|s| s == shortcut) {
+            Some(ShortcutAction::OpenMain)
         } else {
-            None
+            self.surfaces
+                .iter()
+                .find(|(registered, _)| registered == shortcut)
+                .map(|(_, key)| ShortcutAction::Surface(key.clone()))
         }
     }
 }
@@ -1005,6 +1020,7 @@ pub fn runtime_config_changes(previous: &AppConfig, next: &AppConfig) -> Runtime
         global_shortcut_changed: previous.global_shortcut != next.global_shortcut,
         toggle_visibility_shortcut_changed: previous.toggle_visibility_shortcut
             != next.toggle_visibility_shortcut,
+        main_shortcut_changed: previous.main_shortcut != next.main_shortcut,
     }
 }
 
@@ -1037,6 +1053,11 @@ fn toggle_app_visibility(app: &AppHandle) {
             if let Some(window) = app.get_webview_window(label) {
                 let _ = window.unminimize();
                 let _ = window.show();
+                if let Some(key) = session_key_from_label(label) {
+                    let _ = crate::surface_sessions::mutate(&key, |session| {
+                        session.presentation = crate::surface_sessions::Presentation::Expanded;
+                    });
+                }
                 if focus_target.is_none() || label == MAIN_WINDOW_LABEL {
                     focus_target = Some(label.clone());
                 }
@@ -1055,7 +1076,13 @@ fn toggle_app_visibility(app: &AppHandle) {
     for (label, window) in app.webview_windows() {
         if window.is_visible().unwrap_or(false) {
             labels.push(label.clone());
+            save_session_bounds(&window);
             let _ = window.hide();
+            if let Some(key) = session_key_from_label(&label) {
+                let _ = crate::surface_sessions::mutate(&key, |session| {
+                    session.presentation = crate::surface_sessions::Presentation::Hidden;
+                });
+            }
         }
     }
 
@@ -1076,7 +1103,10 @@ pub fn apply_runtime_config(
 ) -> Result<(), Box<dyn Error>> {
     let changes = runtime_config_changes(previous, next);
 
-    if changes.global_shortcut_changed || changes.toggle_visibility_shortcut_changed {
+    if changes.global_shortcut_changed
+        || changes.toggle_visibility_shortcut_changed
+        || changes.main_shortcut_changed
+    {
         apply_global_shortcut_config(app, next)?;
     }
 
@@ -1122,14 +1152,23 @@ pub async fn toggle_linked_tile_window(
         window.close()?;
         return Ok(false);
     }
+    open_linked_tile_window_now(&app, &binding_id, bounds)?;
+    Ok(true)
+}
+
+fn open_linked_tile_window_now(
+    app: &AppHandle,
+    binding_id: &str,
+    bounds: Option<WindowBounds>,
+) -> Result<String, AppError> {
     // 新建窗口前才校验绑定，避免为已删除的关联创建空磁贴窗口。
     crate::linked::read(&binding_id)?;
     let locale = configured_locale();
-    let specs = saved_surface_specs(&app);
+    let specs = saved_surface_specs(app);
     let url = format!("index.html?view=tile&bindingId={binding_id}");
     open_or_focus_window(
-        &app,
-        &label,
+        app,
+        &format!("tile-linked-{}", sanitize_label_part(binding_id)),
         WindowOpenOptions {
             url,
             title: locales::tile_window_title(locale).to_string(),
@@ -1139,9 +1178,9 @@ pub async fn toggle_linked_tile_window(
             shadow: false,
             skip_taskbar: true,
             bounds,
+            focus_on_show: true,
         },
-    )?;
-    Ok(true)
+    )
 }
 
 pub fn extract_file_arg(args: &[String]) -> Option<String> {
@@ -1188,7 +1227,9 @@ pub fn setup_desktop(app: &mut App) -> Result<(), Box<dyn Error>> {
         set_startup_file(file_path);
     }
 
-    if !std::env::args().any(|a| a == "--silent") {
+    if std::env::args().any(|a| a == "--silent") {
+        restore_silent_sessions(app.handle());
+    } else {
         if let Err(error) = show_main_window(app.handle()) {
             eprintln!("failed to show main window on startup: {error}");
         }
@@ -1212,6 +1253,14 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
     {
         if let Some(webview) = window.app_handle().get_webview_window(window.label()) {
             save_surface_size(&webview);
+            save_session_bounds(&webview);
+        }
+        if !app_is_exiting(window.app_handle()) {
+            if let Some(key) = session_key_from_label(window.label()) {
+                let _ = crate::surface_sessions::mutate(&key, |session| {
+                    session.presentation = crate::surface_sessions::Presentation::Hidden;
+                });
+            }
         }
     }
 
@@ -1454,6 +1503,7 @@ pub fn show_main_window(app: &AppHandle) -> Result<(), AppError> {
             shadow: true,
             skip_taskbar: false,
             bounds: None,
+            focus_on_show: true,
         },
     )?;
     if let Some(window) = app.get_webview_window(&label) {
@@ -1496,6 +1546,7 @@ fn open_notepad_window_now(
             shadow: false,
             skip_taskbar: true,
             bounds,
+            focus_on_show: true,
         },
     )
 }
@@ -1559,6 +1610,12 @@ pub fn recycle_notepad_window(app: &AppHandle, label: &str) -> Result<(), AppErr
     };
 
     save_surface_size(&window);
+    save_session_bounds(&window);
+    if let Some(key) = session_key_from_label(label) {
+        let _ = crate::surface_sessions::mutate(&key, |session| {
+            session.presentation = crate::surface_sessions::Presentation::Hidden;
+        });
+    }
 
     window.hide()?;
 
@@ -1830,6 +1887,7 @@ fn open_tile_window_now(
             shadow: false,
             skip_taskbar: true,
             bounds,
+            focus_on_show: true,
         },
     )
 }
@@ -1854,17 +1912,31 @@ fn open_or_focus_window(
     label: &str,
     opts: WindowOpenOptions,
 ) -> Result<String, AppError> {
-    clear_hidden_window_state(app);
+    if opts.focus_on_show {
+        clear_hidden_window_state(app);
+    }
 
     let visual_options = dynamic_window_visual_options(label);
+    let always_on_top = session_key_from_label(label)
+        .and_then(|key| crate::surface_sessions::get(&key).ok())
+        .map(|session| session.window_mode == crate::surface_sessions::WindowMode::AlwaysOnTop)
+        .unwrap_or(opts.always_on_top);
 
     if let Some(window) = app.get_webview_window(label) {
         window.set_title(&opts.title)?;
         apply_window_bounds(&window, opts.bounds)?;
         window.set_shadow(opts.shadow)?;
+        window.set_always_on_top(always_on_top)?;
         window.unminimize()?;
         window.show()?;
-        window.set_focus()?;
+        if opts.focus_on_show {
+            window.set_focus()?;
+            if let Some(key) = session_key_from_label(label) {
+                let _ = crate::surface_sessions::mutate(&key, |session| {
+                    session.presentation = crate::surface_sessions::Presentation::Expanded;
+                });
+            }
+        }
         return Ok(label.to_string());
     }
 
@@ -1875,7 +1947,7 @@ fn open_or_focus_window(
         .resizable(true)
         .decorations(opts.decorations)
         .transparent(visual_options.transparent)
-        .always_on_top(opts.always_on_top)
+        .always_on_top(always_on_top)
         .shadow(opts.shadow)
         .skip_taskbar(opts.skip_taskbar)
         .visible(false);
@@ -1896,7 +1968,21 @@ fn open_or_focus_window(
 
     let window = builder.build()?;
 
-    apply_window_bounds(&window, opts.bounds)?;
+    let restored_bounds = opts.bounds.or_else(|| {
+        session_key_from_label(label)
+            .and_then(|key| crate::surface_sessions::get(&key).ok())
+            .and_then(|session| session.expanded_bounds)
+            .and_then(|bounds| resolve_session_bounds(app, &bounds))
+    });
+    apply_window_bounds(&window, restored_bounds)?;
+
+    if opts.focus_on_show {
+        if let Some(key) = session_key_from_label(label) {
+            let _ = crate::surface_sessions::mutate(&key, |session| {
+                session.presentation = crate::surface_sessions::Presentation::Expanded;
+            });
+        }
+    }
 
     Ok(label.to_string())
 }
@@ -1911,6 +1997,240 @@ fn apply_window_bounds(
     }
 
     Ok(())
+}
+
+fn session_key_from_label(label: &str) -> Option<String> {
+    if let Some(id) = label.strip_prefix("tile-linked-") {
+        return Some(format!("linked:{id}"));
+    }
+    let id = label
+        .strip_prefix("tile-")
+        .or_else(|| label.strip_prefix("notepad-"))?;
+    let key = format!("note:{id}");
+    crate::surface_sessions::validate_key(&key).ok()?;
+    default_store().ok()?.read_note(id).ok()?;
+    Some(key)
+}
+
+pub fn save_session_bounds(window: &tauri::WebviewWindow) {
+    let Some(key) = session_key_from_label(window.label()) else {
+        return;
+    };
+    let Ok(Some(monitor)) = window.current_monitor() else {
+        return;
+    };
+    let (Ok(position), Ok(size)) = (window.outer_position(), window.inner_size()) else {
+        return;
+    };
+    let work = monitor.work_area();
+    let scale = monitor.scale_factor();
+    if size.width == 0 || size.height == 0 || scale <= 0.0 {
+        return;
+    }
+    let bounds = crate::surface_sessions::ExpandedBounds {
+        monitor_name: monitor.name().cloned(),
+        offset_x: f64::from(position.x - work.position.x) / scale,
+        offset_y: f64::from(position.y - work.position.y) / scale,
+        width: f64::from(size.width) / scale,
+        height: f64::from(size.height) / scale,
+        saved_scale: scale,
+    };
+    let _ = crate::surface_sessions::mutate(&key, |session| session.expanded_bounds = Some(bounds));
+}
+
+pub fn record_surface_close(window: &tauri::WebviewWindow) {
+    save_session_bounds(window);
+    if let Some(key) = session_key_from_label(window.label()) {
+        let _ = crate::surface_sessions::mutate(&key, |session| {
+            session.presentation = crate::surface_sessions::Presentation::Hidden;
+        });
+    }
+}
+
+pub fn show_silent_surface(window: &tauri::WebviewWindow) -> Result<(), AppError> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_SHOWNOACTIVATE};
+        let hwnd = window.hwnd()?;
+        // ShowWindow(SW_SHOWNOACTIVATE) 避免登录启动时 WebView2 抢走前台应用焦点。
+        unsafe {
+            ShowWindow(hwnd.0, SW_SHOWNOACTIVATE);
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    window.show()?;
+    Ok(())
+}
+
+fn resolve_session_bounds(
+    app: &AppHandle,
+    saved: &crate::surface_sessions::ExpandedBounds,
+) -> Option<WindowBounds> {
+    let monitors = app.available_monitors().ok()?;
+    let monitor = monitors
+        .iter()
+        .find(|m| m.name().map(String::as_str) == saved.monitor_name.as_deref())
+        .or_else(|| monitors.first())?;
+    let work = monitor.work_area();
+    let scale = monitor.scale_factor();
+    let width = (saved.width * scale).round().max(1.0) as u32;
+    let height = (saved.height * scale).round().max(1.0) as u32;
+    let mut x = work.position.x + (saved.offset_x * scale).round() as i32;
+    let mut y = work.position.y + (saved.offset_y * scale).round() as i32;
+    // 仍在工作区内的便签保持原位；屏幕断开或越界时才移动到可见区域。
+    let right = work.position.x + work.size.width as i32;
+    let bottom = work.position.y + work.size.height as i32;
+    if x + width as i32 <= work.position.x
+        || x >= right
+        || y + height as i32 <= work.position.y
+        || y >= bottom
+    {
+        x = x.clamp(
+            work.position.x,
+            right.saturating_sub(width as i32).max(work.position.x),
+        );
+        y = y.clamp(
+            work.position.y,
+            bottom.saturating_sub(height as i32).max(work.position.y),
+        );
+    }
+    Some(WindowBounds {
+        x,
+        y,
+        width,
+        height,
+    })
+}
+
+pub fn save_surface_session(
+    app: &AppHandle,
+    session: crate::surface_sessions::SurfaceSession,
+) -> Result<(), AppError> {
+    crate::surface_sessions::validate_key(&session.key)?;
+    if let Some(id) = session.key.strip_prefix("note:") {
+        default_store()?.read_note(id)?;
+    } else if let Some(id) = session.key.strip_prefix("linked:") {
+        crate::linked::read(id)?;
+    }
+    let mut current = crate::surface_sessions::get(&session.key)?;
+    let previous = current.clone();
+    let shortcut_changed = session.shortcut != current.shortcut;
+    // 快捷键更新先完成注册，成功后才持久化；失败时旧绑定继续有效。
+    #[cfg(desktop)]
+    if shortcut_changed {
+        validate_and_install_session_shortcut(app, &session)?;
+    }
+    current.startup_behavior = session.startup_behavior;
+    current.shortcut = session.shortcut;
+    current.window_mode = session.window_mode;
+    if let Err(error) = crate::surface_sessions::update(current) {
+        #[cfg(desktop)]
+        if shortcut_changed {
+            let _ = validate_and_install_session_shortcut(app, &previous);
+        }
+        return Err(error);
+    }
+    let label = if let Some(id) = session.key.strip_prefix("linked:") {
+        format!("tile-linked-{}", sanitize_label_part(id))
+    } else {
+        tile_window_label(session.key.strip_prefix("note:").unwrap_or_default())
+    };
+    if let Some(window) = app.get_webview_window(&label) {
+        let _ = window.set_always_on_top(
+            session.window_mode == crate::surface_sessions::WindowMode::AlwaysOnTop,
+        );
+    }
+    if let Some(id) = session.key.strip_prefix("note:") {
+        if let Some(window) = app.get_webview_window(&notepad_window_label(Some(id))) {
+            let _ = window.set_always_on_top(
+                session.window_mode == crate::surface_sessions::WindowMode::AlwaysOnTop,
+            );
+        }
+    }
+    Ok(())
+}
+
+pub fn remove_surface_session(app: &AppHandle, key: &str) {
+    if crate::surface_sessions::remove(key).is_err() {
+        return;
+    }
+    #[cfg(desktop)]
+    if let Ok(config) = load_config() {
+        if let Err(error) = install_global_shortcut_bindings(app, &config, true, None) {
+            eprintln!("failed to remove shortcut for {key}: {error}");
+        }
+    }
+    #[cfg(not(desktop))]
+    let _ = app;
+}
+
+fn restore_silent_sessions(app: &AppHandle) {
+    let Ok(sessions) = crate::surface_sessions::list() else {
+        return;
+    };
+    let note_ids: std::collections::HashSet<String> = default_store()
+        .and_then(|store| store.list_notes())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|note| note.id)
+        .collect();
+    let binding_ids: std::collections::HashSet<String> = crate::linked::list()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|binding| binding.id)
+        .collect();
+    for session in sessions {
+        use crate::surface_sessions::{Presentation, StartupBehavior};
+        let should_open = match session.startup_behavior {
+            StartupBehavior::Hidden => false,
+            StartupBehavior::Expanded => true,
+            StartupBehavior::RestoreLast => session.presentation == Presentation::Expanded,
+        };
+        if !should_open {
+            continue;
+        }
+        let Some((kind, id)) = session.key.split_once(':') else {
+            continue;
+        };
+        let valid = match kind {
+            "note" => note_ids.contains(id),
+            "linked" => binding_ids.contains(id),
+            _ => false,
+        };
+        if !valid {
+            continue;
+        }
+        let locale = configured_locale();
+        let (label, url) = if kind == "note" {
+            (
+                tile_window_label(id),
+                format!("index.html?view=tile&noteId={id}&silentRestore=1"),
+            )
+        } else {
+            (
+                format!("tile-linked-{}", sanitize_label_part(id)),
+                format!("index.html?view=tile&bindingId={id}&silentRestore=1"),
+            )
+        };
+        let result = open_or_focus_window(
+            app,
+            &label,
+            WindowOpenOptions {
+                url,
+                title: locales::tile_window_title(locale).to_string(),
+                specs: saved_surface_specs(app),
+                decorations: false,
+                always_on_top: true,
+                shadow: false,
+                skip_taskbar: true,
+                bounds: None,
+                focus_on_show: false,
+            },
+        );
+        if let Err(error) = result {
+            eprintln!("failed to restore {}: {error}", session.key);
+        }
+    }
 }
 
 fn notepad_window_label(note_id: Option<&str>) -> String {
@@ -1975,6 +2295,12 @@ pub(crate) fn mark_app_exiting(app: &AppHandle) {
     if let Some(state) = app.try_state::<RuntimeState>() {
         state.allow_exit();
     }
+    // 退出不改变显示状态，只补存布局；下次 restoreLast 才能恢复退出前的便签。
+    for (label, window) in app.webview_windows() {
+        if session_key_from_label(&label).is_some() && window.is_visible().unwrap_or(false) {
+            save_session_bounds(&window);
+        }
+    }
 }
 
 #[cfg(desktop)]
@@ -1999,13 +2325,54 @@ fn setup_global_shortcut_plugin(app: &AppHandle) -> tauri::Result<()> {
                     return;
                 }
 
-                let action = app
+                let Some(action) = app
                     .try_state::<RuntimeState>()
                     .map(|state| state.shortcut_action(shortcut))
-                    .unwrap_or(ShortcutAction::OpenNotepad);
+                    .flatten()
+                else {
+                    return;
+                };
 
                 let app_for_closure = app.clone();
                 match action {
+                    ShortcutAction::OpenMain => {
+                        if let Err(error) = app.run_on_main_thread(move || {
+                            let _ = show_main_window(&app_for_closure);
+                        }) {
+                            eprintln!("failed to open main window from shortcut: {error}");
+                        }
+                    }
+                    ShortcutAction::Surface(key) => {
+                        if let Err(error) = app.run_on_main_thread(move || {
+                            let Some((kind, id)) = key.split_once(':') else {
+                                return;
+                            };
+                            let label = if kind == "linked" {
+                                format!("tile-linked-{}", sanitize_label_part(id))
+                            } else {
+                                tile_window_label(id)
+                            };
+                            if let Some(window) = app_for_closure.get_webview_window(&label) {
+                                if window.is_focused().unwrap_or(false) {
+                                    let _ = window.close();
+                                } else {
+                                    clear_hidden_window_state(&app_for_closure);
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                    let _ = crate::surface_sessions::mutate(&key, |session| {
+                                        session.presentation =
+                                            crate::surface_sessions::Presentation::Expanded;
+                                    });
+                                }
+                            } else if kind == "linked" {
+                                let _ = open_linked_tile_window_now(&app_for_closure, id, None);
+                            } else {
+                                let _ = open_tile_window_now(&app_for_closure, id, None);
+                            }
+                        }) {
+                            eprintln!("failed to dispatch surface shortcut: {error}");
+                        }
+                    }
                     ShortcutAction::ToggleVisibility => {
                         if let Err(error) = app.run_on_main_thread(move || {
                             toggle_app_visibility(&app_for_closure);
@@ -2047,10 +2414,31 @@ fn register_configured_global_shortcut(app: &AppHandle) {
         return;
     };
 
-    if let Err(error) = install_global_shortcut_bindings(app, &config, false) {
+    if let Err(error) = install_global_shortcut_bindings(app, &config, false, None) {
         let msg = format!("快捷键注册失败：{error}");
         eprintln!("{msg}");
+        if let Some(state) = app.try_state::<RuntimeState>() {
+            if let Ok(mut current) = state.shortcut_error.lock() {
+                *current = Some(msg.clone());
+            }
+        }
         let _ = app.emit("shortcut-register-failed", &msg);
+    }
+}
+
+pub fn shortcut_startup_error(app: &AppHandle) -> Option<String> {
+    #[cfg(desktop)]
+    return app.try_state::<RuntimeState>().and_then(|state| {
+        state
+            .shortcut_error
+            .lock()
+            .ok()
+            .and_then(|value| value.clone())
+    });
+    #[cfg(not(desktop))]
+    {
+        let _ = app;
+        None
     }
 }
 
@@ -2187,7 +2575,11 @@ fn parse_configured_shortcut(field: &str, value: &str) -> Result<Shortcut, Box<d
 }
 
 #[cfg(desktop)]
-fn shortcut_bindings_from_config(config: &AppConfig) -> Result<ShortcutBindings, Box<dyn Error>> {
+fn shortcut_bindings_from_config(
+    config: &AppConfig,
+    sessions: Vec<crate::surface_sessions::SurfaceSession>,
+    override_session: Option<&crate::surface_sessions::SurfaceSession>,
+) -> Result<ShortcutBindings, Box<dyn Error>> {
     // 允许用户主动清空快捷键；空值表示不注册对应的全局快捷键。
     let open_notepad = if config.global_shortcut.is_empty() {
         None
@@ -2205,6 +2597,14 @@ fn shortcut_bindings_from_config(config: &AppConfig) -> Result<ShortcutBindings,
             &config.toggle_visibility_shortcut,
         )?)
     };
+    let open_main = if config.main_shortcut.is_empty() {
+        None
+    } else {
+        Some(parse_configured_shortcut(
+            "mainShortcut",
+            &config.main_shortcut,
+        )?)
+    };
 
     // 只有两个快捷键都已设置时才需要检查重复，避免清空快捷键时误报配置冲突。
     if open_notepad
@@ -2219,9 +2619,48 @@ fn shortcut_bindings_from_config(config: &AppConfig) -> Result<ShortcutBindings,
         }));
     }
 
+    let mut surfaces = Vec::new();
+    for mut session in sessions {
+        if let Some(replacement) =
+            override_session.filter(|replacement| replacement.key == session.key)
+        {
+            session = replacement.clone();
+        }
+        if session.shortcut.is_empty() {
+            continue;
+        }
+        let shortcut = parse_configured_shortcut("surfaceShortcut", &session.shortcut)?;
+        surfaces.push((shortcut, session.key));
+    }
+    if let Some(session) = override_session {
+        if !surfaces.iter().any(|(_, key)| key == &session.key) && !session.shortcut.is_empty() {
+            surfaces.push((
+                parse_configured_shortcut("surfaceShortcut", &session.shortcut)?,
+                session.key.clone(),
+            ));
+        }
+    }
+    let mut used = std::collections::HashSet::new();
+    for shortcut in open_notepad
+        .iter()
+        .chain(toggle_visibility.iter())
+        .chain(open_main.iter())
+        .chain(surfaces.iter().map(|(shortcut, _)| shortcut))
+    {
+        if !used.insert(*shortcut) {
+            return Err(Box::new(AppError {
+                code: "duplicateShortcut".into(),
+                message: "快捷键与其他便签或应用快捷键重复".into(),
+                details: Default::default(),
+            }));
+        }
+    }
+
     Ok(ShortcutBindings {
         open_notepad,
         toggle_visibility,
+        open_main,
+        surfaces,
     })
 }
 
@@ -2230,18 +2669,41 @@ fn install_global_shortcut_bindings(
     app: &AppHandle,
     config: &AppConfig,
     replace_existing: bool,
+    override_session: Option<&crate::surface_sessions::SurfaceSession>,
 ) -> Result<(), Box<dyn Error>> {
-    let bindings = shortcut_bindings_from_config(config)?;
+    let bindings =
+        shortcut_bindings_from_config(config, crate::surface_sessions::list()?, override_session)?;
+    let old = app
+        .try_state::<RuntimeState>()
+        .and_then(|state| {
+            state
+                .shortcut_bindings
+                .lock()
+                .ok()
+                .map(|guard| guard.clone())
+        })
+        .unwrap_or_default();
 
     if replace_existing {
         app.global_shortcut().unregister_all()?;
     }
 
-    if let Some(shortcut) = &bindings.open_notepad {
-        app.global_shortcut().register(*shortcut)?;
-    }
-    if let Some(shortcut) = &bindings.toggle_visibility {
-        app.global_shortcut().register(*shortcut)?;
+    let register = |bindings: &ShortcutBindings| -> Result<(), Box<dyn Error>> {
+        for shortcut in bindings
+            .open_notepad
+            .iter()
+            .chain(bindings.toggle_visibility.iter())
+            .chain(bindings.open_main.iter())
+            .chain(bindings.surfaces.iter().map(|(shortcut, _)| shortcut))
+        {
+            app.global_shortcut().register(*shortcut)?;
+        }
+        Ok(())
+    };
+    if let Err(error) = register(&bindings) {
+        let _ = app.global_shortcut().unregister_all();
+        let _ = register(&old);
+        return Err(error);
     }
 
     if let Some(state) = app.try_state::<RuntimeState>() {
@@ -2253,7 +2715,25 @@ fn install_global_shortcut_bindings(
 
 #[cfg(desktop)]
 fn apply_global_shortcut_config(app: &AppHandle, config: &AppConfig) -> Result<(), Box<dyn Error>> {
-    install_global_shortcut_bindings(app, config, true)
+    install_global_shortcut_bindings(app, config, true, None)
+}
+
+#[cfg(desktop)]
+fn validate_and_install_session_shortcut(
+    app: &AppHandle,
+    session: &crate::surface_sessions::SurfaceSession,
+) -> Result<(), AppError> {
+    let config = load_config()?;
+    install_global_shortcut_bindings(app, &config, true, Some(session)).map_err(|error| {
+        match error.downcast::<AppError>() {
+            Ok(app_error) => *app_error,
+            Err(other) => AppError {
+                code: "shortcutConflict".into(),
+                message: other.to_string(),
+                details: Default::default(),
+            },
+        }
+    })
 }
 
 #[cfg(not(desktop))]
@@ -2446,7 +2926,7 @@ pub fn stop_shortcut_recording(app: &AppHandle) -> Result<(), Box<dyn Error>> {
     keyboard_hook::stop();
 
     let config = load_config()?;
-    if let Err(e) = install_global_shortcut_bindings(app, &config, false) {
+    if let Err(e) = install_global_shortcut_bindings(app, &config, true, None) {
         eprintln!("failed to re-register global shortcuts after recording: {e}");
     }
 
@@ -2615,6 +3095,7 @@ mod tests {
             locale: "zh-CN".into(),
             data_dir: Some("D:\\notes".into()),
             global_shortcut: global_shortcut.into(),
+            main_shortcut: String::new(),
             close_to_tray: true,
             autostart: false,
             default_view_mode: "split".into(),
@@ -2657,7 +3138,7 @@ mod tests {
     fn rejects_duplicate_shortcut_bindings() {
         let config = test_app_config("Ctrl+Shift+K", "Ctrl+Shift+K");
 
-        let error = match shortcut_bindings_from_config(&config) {
+        let error = match shortcut_bindings_from_config(&config, Vec::new(), None) {
             Ok(_) => panic!("expected duplicate shortcut error"),
             Err(error) => error,
         };
@@ -2670,7 +3151,8 @@ mod tests {
     fn accepts_empty_shortcut_bindings() {
         let config = test_app_config("", "");
 
-        let bindings = shortcut_bindings_from_config(&config).expect("empty shortcuts are valid");
+        let bindings = shortcut_bindings_from_config(&config, Vec::new(), None)
+            .expect("empty shortcuts are valid");
 
         assert!(bindings.open_notepad.is_none());
         assert!(bindings.toggle_visibility.is_none());
@@ -2681,8 +3163,8 @@ mod tests {
     fn accepts_visibility_shortcut_when_quick_note_shortcut_is_empty() {
         let config = test_app_config("", "Ctrl+Shift+H");
 
-        let bindings =
-            shortcut_bindings_from_config(&config).expect("single visibility shortcut is valid");
+        let bindings = shortcut_bindings_from_config(&config, Vec::new(), None)
+            .expect("single visibility shortcut is valid");
 
         assert!(bindings.open_notepad.is_none());
         assert!(bindings.toggle_visibility.is_some());
@@ -2702,6 +3184,7 @@ mod tests {
             locale: "zh-CN".into(),
             data_dir: Some("D:\\notes".into()),
             global_shortcut: "Ctrl+Space".into(),
+            main_shortcut: String::new(),
             close_to_tray: true,
             autostart: false,
             default_view_mode: "split".into(),
@@ -2741,6 +3224,7 @@ mod tests {
             locale: "en-US".into(),
             data_dir: Some("D:\\other-notes".into()),
             global_shortcut: "Alt+Space".into(),
+            main_shortcut: String::new(),
             close_to_tray: false,
             autostart: true,
             default_view_mode: "preview".into(),
@@ -2783,6 +3267,7 @@ mod tests {
                 autostart_changed: true,
                 global_shortcut_changed: true,
                 toggle_visibility_shortcut_changed: true,
+                main_shortcut_changed: false,
             }
         );
         assert_eq!(
@@ -2791,6 +3276,7 @@ mod tests {
                 autostart_changed: false,
                 global_shortcut_changed: false,
                 toggle_visibility_shortcut_changed: false,
+                main_shortcut_changed: false,
             }
         );
     }

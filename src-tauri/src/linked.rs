@@ -118,7 +118,7 @@ pub fn write_draft(
     )
 }
 
-fn write_linked_json<T: Serialize>(path: &Path, value: &T) -> Result<(), AppError> {
+pub(crate) fn write_linked_json<T: Serialize>(path: &Path, value: &T) -> Result<(), AppError> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
