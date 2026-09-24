@@ -4,7 +4,7 @@ Windows 收尾版本：完善桌面便签、锁定与贴边收纳，并完成 P8
 
 ## 下载
 
-- `Hermes Surface Dev_1.6.0_x64-setup.exe`：Windows x64 NSIS 安装包，19,375,727 字节；未签名。
+- `Hermes.Surface.Dev_1.6.0_x64-setup.exe`：Windows x64 NSIS 安装包，19,375,727 字节；未签名。
 - `SHA256SUMS.txt`：安装包校验和。
 - `MAC_HANDOFF.md`：面向 Mac 协作者的实现与验收文档；本次没有 Mac 安装包。
 
