@@ -1,137 +1,58 @@
-<!-- markdownlint-disable -->
+# Hermes Surface Dev
 
-> **Hermes Surface Dev fork（Windows 1.6.0）**：当前功能、安装包、性能复查及保留项见 [P8 收尾报告](Docs/P8_FINAL.md)，历史阶段见 [STATUS](Docs/STATUS.md)，macOS 见 [协作者交接](Docs/MAC_HANDOFF.md)。下方保留上游花笺介绍与来源，其 Release/签名/商店说明不代表本 fork 的发布状态。
+**简体中文** · [繁體中文](README_zh-HK.md) · [English](README_en-US.md)
 
-**简体中文** | [繁體中文](README_zh-HK.md) | [English](README_en-US.md)
+把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。
 
-<div align="center">
+[下载 Windows 1.6.0](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.6.0) · [反馈问题](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [Mac 开发交接](Docs/MAC_HANDOFF.md)
 
-<img src="./src-tauri/icons/icon.png" width="120" alt="花笺图标">
+> **平台状态**：Windows x64 已提供 NSIS 安装包。macOS 正由协作者适配，当前没有本项目的 Mac 安装包。Windows 1.6.0 的收纳拖动、阴影等新增交互仍待人工 GUI 验收，详情见 [项目状态](Docs/STATUS.md)。
 
-# 花笺 Floral Notepaper
+## 能做什么
 
-轻量、优雅、现代化的本地便签工具<br>
-基于 Tauri 2 + React 构建
+- **独立便签**：从笔记列表固定内部笔记或已绑定的外部 Markdown 文件。每张便签有自己的内容、位置和显示状态。
+- **原文件写回**：绑定 Markdown 目录后，在应用内编辑外部 `.md` 会保存到该文件；外部编辑器的修改会通知对应便签。导入 Markdown 则创建应用内副本，两种入口各有用途。
+- **同窗读写**：在便签上切换阅读与写作，不改变窗口的位置和尺寸。阅读支持 Markdown 预览、任务列表、代码、公式、图片与按需加载的 Mermaid。
+- **桌面窗口**：Windows 提供普通、置顶和桌面附着模式。桌面附着跟随桌面层；锁定后便签可见、主体鼠标穿透，原锁图标位置可解锁。
+- **贴边收纳**：把便签收成左、右或顶部色条，拖动色条可换边或跨屏。悬停预览，单击恢复原窗口位置和尺寸。
+- **外观与唤起**：主题、字体、背景与透明度可调整；支持托盘、静默启动和应用/单便签快捷键。Windows Acrylic 由系统控制，桌面附着模式不使用 Acrylic。
 
-[反馈问题](https://github.com/Achilng/floral-notepaper/issues) · [更新日志](https://github.com/Achilng/floral-notepaper/releases) <br>
-[快速开始](#快速开始) · [FAQ](https://github.com/Achilng/floral-notepaper/wiki) · [构建指南](#从源码构建)
+## 下载安装
 
-[![Version](https://img.shields.io/github/v/release/Achilng/floral-notepaper)](https://github.com/Achilng/floral-notepaper/releases/latest)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![Stars](https://img.shields.io/github/stars/Achilng/floral-notepaper?color=ffcb47&labelColor=black)</br>
-![React 19](https://img.shields.io/badge/React-19-blue?logo=react)
-![Tauri v2](https://img.shields.io/badge/Tauri-v2-%2324C8D8?logo=tauri)
-![Rust Edition 2021](https://img.shields.io/badge/Rust-2021-%23000000?logo=rust)<br>
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Achilng/floral-notepaper)
+下载 [v1.6.0 Windows x64 安装包](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/download/v1.6.0/Hermes.Surface.Dev_1.6.0_x64-setup.exe)。同一 [Release 页面](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.6.0) 提供 `SHA256SUMS.txt`；安装包 SHA-256 为：
 
-</div>
+```text
+8FF47FFCA7EDF1C0759265BA6BA7FF849BD792E2D7E6740A78926A5EDDFF64E7
+```
 
-<!-- markdownlint-restore -->
+安装包未签名，且不内嵌完整 WebView2 Runtime；若电脑尚未安装 Runtime，安装过程需要联网下载。当前没有本 fork 的 Microsoft Store、Mirror 酱、Windows ARM64 或 macOS 产物，请以本仓库的 Release 为准。
 
----
+## 快速上手
 
-## 为什么选择花笺
+1. 新建笔记并保存；需要在桌面查看时，选中笔记并点击图钉。
+2. 如果要编辑已有 `.md` 原文件，选择“绑定 Markdown 目录”；如果只想复制内容进入应用，选择“导入 Markdown”。
+3. 在便签右上角切换写作/阅读；用锁按钮开启穿透，用边缘收纳按钮把便签收成色条。
+4. 在笔记列表的逐便签设置中配置窗口模式、启动行为、快捷键和默认收纳边。普通关闭与主动收纳是两种状态。
 
-市面上现有的笔记或便签软件，要么功能繁重、上手门槛高，要么界面陈旧、久未更新。花笺因此而生，其特点是轻便、随呼随用，同时提供现代化的界面与舒适的编辑体验。
+初次测试外部文件与同步目录时，请先使用虚构测试目录。更完整的 Windows 人工检查见 [验收清单](Docs/MANUAL_ACCEPTANCE.md)。
 
-## 功能特点
+## 开发
 
-- **Markdown 编辑与预览** — 支持 GitHub Flavored Markdown 语法，实时切换编辑和预览模式
+项目使用 Tauri 2、Rust、React 和 TypeScript。Windows 构建使用 PowerShell 7，在仓库根目录执行：
 
-  ![主窗口截图](Docs/images/主窗口截图.png)
+```powershell
+$ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $true
+npm ci
+npm run tauri build -- --bundles nsis
+```
 
-- **快捷便签** — 通过托盘或全局快捷键（默认 `Ctrl+Space`）随时唤出便签窗口
+源码主要位于 `src/`（界面）、`src-tauri/src/`（本机服务和窗口）与 `src-tauri/tauri.conf.json`（打包配置）。Mac 协作者应先按 [交接文档](Docs/MAC_HANDOFF.md) 隔离应用身份，再在 Mac 上构建和验收；Windows 构建成功不能代替 Mac 测试。
 
-  ![小窗多开示例](Docs/images/小窗多开示例.gif)
+## 当前边界
 
-- **磁贴模式** — 将笔记固定在桌面某处，以便快速查阅和复制
+应用内重命名外部文件、缺失文件重新关联和“全部收纳”入口尚未实现。1.6.0 的运行内存、CPU 与首次呼出延迟没有可信实测；Windows GUI 的完整回归也未完成。详细状态和性能复查记录见 [P8 收尾报告](Docs/P8_FINAL.md)。
 
-  ![磁贴示例](Docs/images/AI绘画截图.png)
+## 来源与许可
 
-- **导入导出** — 支持 `.md` 文件的导入和导出
-
-## 应用场景
-
-- 当作随时可见的剪贴板，快速暂存和复制文本
-- 游戏、看视频时随手记点东西
-- 临时记录思路或灵感
-- 桌面待办清单
-
-## 快速开始
-
-### 下载安装
-
-#### 通过Mirror酱下载
-
-> [!TIP]
-> 如您的网络不便访问 GitHub，或下载速度过慢，您可以尝试通过Mirror酱下载花笺<br>
-> 此外，您也可以通过使用Mirror酱下载花笺来赞助花笺的开发者，详见[Mirror酱官网](https://mirrorchyan.com/)
-
-| 系统    | 架构                    | 下载链接                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Windows | x64                     | [![Windows x64 Setup](https://img.shields.io/badge/Setup-x64-blue?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiB2aWV3Qm94PSIwIDAgNTEyIDUxMiI%2BPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTAgMGgyNDJ2MjQySDB6TTI3MCAwaDI0MnYyNDJIMjcwek0wIDI3MGgyNDJ2MjQySDB6TTI3MCAyNzBoMjQydjI0MkgyNzB6Ii8%2BPC9zdmc%2B)](https://mirrorchyan.com/zh/projects?rid=floral&os=windows&arch=x64&channel=stable)           |
-| Windows | AArch64                 | [![Windows AArch64 Setup](https://img.shields.io/badge/Setup-AArch64-blue?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiB2aWV3Qm94PSIwIDAgNTEyIDUxMiI%2BPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTAgMGgyNDJ2MjQySDB6TTI3MCAwaDI0MnYyNDJIMjcwek0wIDI3MGgyNDJ2MjQySDB6TTI3MCAyNzBoMjQydjI0MkgyNzB6Ii8%2BPC9zdmc%2B)](https://mirrorchyan.com/zh/projects?rid=floral&os=windows&arch=arm64&channel=stable) |
-| macOS   | AArch64 (Apple Silicon) | [![macOS Apple Silicon](https://img.shields.io/badge/DMG-Apple%20Silicon-%23000000.svg?logo=apple)](https://mirrorchyan.com/zh/projects?rid=floral&os=macos&channel=stable&arch=arm64)                                                                                                                                                                                                                                                                                       |
-| macOS   | x64 (Intel)             | [![macOS Apple Silicon](https://img.shields.io/badge/DMG-Intel%20X64-%2300A9E0.svg?logo=apple)](https://mirrorchyan.com/zh/projects?rid=floral&os=macos&channel=stable&arch=x64)                                                                                                                                                                                                                                                                                             |
-
-#### 通过 GitHub 下载
-
-请前往 [Release 页](https://github.com/Achilng/floral-notepaper/releases/latest) 下载花笺
-
-##### 下载参考
-
-| 系统    | 架构                    | 类型             | 文件名                                      |
-| ------- | ----------------------- | ---------------- | ------------------------------------------- |
-| Windows | x64                     | 安装程序（推荐） | floral-notepaper\_版本号\_x64-setup.exe     |
-| Windows | x64                     | 便携版           | floral-notepaper\_版本号.exe                |
-| Windows | x64                     | 安装包           | floral-notepaper\_版本号\_x64.msix          |
-| Windows | AArch64                 | 安装程序（推荐） | floral-notepaper\_版本号\_aarch64-setup.exe |
-| Windows | AArch64                 | 安装包           | floral-notepaper\_版本号\_aarch64.msix      |
-| macOS   | AArch64 (Apple Silicon) | DMG              | floral-notepaper\_版本号\_aarch64.dmg       |
-| macOS   | x64 (Intel)             | DMG              | floral-notepaper\_版本号\_x64.dmg           |
-
-#### 通过 Microsoft Store 下载
-
-前往 [Microsoft Store](https://apps.microsoft.com/detail/9NRCC0ZSG81R) 下载花笺
-
-> 注意：MSIX 安装（无论来自 Microsoft Store 还是侧载的 .msix 文件）暂不支持应用内更新，请通过 Microsoft Store 或 GitHub Releases 获取最新版本。
-
-<!-- markdownlint-disable -->
-
-<a href="https://apps.microsoft.com/detail/9NRCC0ZSG81R?referrer=appbadge&mode=full" target="_blank"  rel="noopener noreferrer">
-	<img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200"/>
-</a>
-
-<!-- markdownlint-restore -->
-
-#### macOS 版安装指引
-
-如遇安装问题，请参考：
-
-- Wiki 中的 [macOS 安装指引](https://github.com/Achilng/floral-notepaper/wiki/macOS-%E5%AE%89%E8%A3%85%E6%8C%87%E5%BC%95-%7C-macOS-Installation-Guidance)
-- 或视频（Bilibili）：[Mac云课堂 - 在 Mac 上装软件，要学会和苹果斗智斗勇](https://www.bilibili.com/video/BV1tg411t7hN)
-
-### 从源码构建
-
-请参考 [CONTRIBUTING.md](CONTRIBUTING.md)
-
-## Star History
-
-[![Star History Chart](https://star-history.dera.page/svg?repos=Achilng/floral-notepaper&type=Date&legend=top-left)](https://star-history.dera.page/#Achilng/floral-notepaper&Date)
-
-## 🌟 贡献者
-
-[![contrib.rocks](https://contrib.rocks/image?repo=Achilng/floral-notepaper&max=1000)](https://contrib.rocks/image?repo=Achilng/floral-notepaper&max=1000)
-
-## Sponsors
-
-<!-- markdownlint-disable -->
-
-| <img src="https://signpath.org/assets/favicon.png" alt="SignPath Logo" width=50> | Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org/) |
-| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-
-<!-- markdownlint-restore -->
-
-## 许可证
-
-[MIT](LICENSE)
+本项目从 [Achilng/floral-notepaper](https://github.com/Achilng/floral-notepaper) fork 开发，保留原仓库历史与原作者版权。项目采用 [MIT 许可证](LICENSE)；[上游来源](Docs/UPSTREAM.md)与[第三方资源声明](THIRD_PARTY_NOTICES.md)列出保留的授权信息。本 fork 使用独立的 Windows 应用身份和发布页面，上游的商店、签名与下载渠道不属于本项目。

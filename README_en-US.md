@@ -1,135 +1,36 @@
-[简体中文](README.md) | [繁體中文](README_zh-HK.md) | **English**
+# Hermes Surface Dev
 
-<!-- markdownlint-disable -->
+[简体中文](README.md) · [繁體中文](README_zh-HK.md) · **English**
 
-<div align="center">
+Keep Markdown notes on your desktop, edit them in place, and tuck them into a screen edge when you need space.
 
-<img src="./src-tauri/icons/icon.png" width="120" alt="Floral Notepaper Icon">
+[Download Windows 1.6.0](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.6.0) · [Report an issue](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [中文说明](README.md)
 
-# Floral Notepaper
-
-A lightweight, elegant, and modern sticky note app for your desktop<br>
-Built with Tauri 2 + React
-
-[Report an Issue](https://github.com/Achilng/floral-notepaper/issues) · [Changelog](https://github.com/Achilng/floral-notepaper/releases) <br>
-[Quick Start](#quick-start) · [FAQ](https://github.com/Achilng/floral-notepaper/wiki) · [Building from Source](#building-from-source)
-
-[![Version](https://img.shields.io/github/v/release/Achilng/floral-notepaper)](https://github.com/Achilng/floral-notepaper/releases/latest)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![Stars](https://img.shields.io/github/stars/Achilng/floral-notepaper?color=ffcb47&labelColor=black)</br>
-![React 19](https://img.shields.io/badge/React-19-blue?logo=react)
-![Tauri v2](https://img.shields.io/badge/Tauri-v2-%2324C8D8?logo=tauri)
-![Rust Edition 2021](https://img.shields.io/badge/Rust-2021-%23000000?logo=rust)<br>
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Achilng/floral-notepaper)
-
-</div>
-
-<!-- markdownlint-restore -->
-
----
-
-## Why Floral Notepaper
-
-Most note-taking or sticky note apps out there are either bloated and steep to learn, or dated and long abandoned. Floral Notepaper was built to be different — quick to summon, light to use, and a pleasure to look at.
+**Platform status:** A Windows x64 NSIS installer is available. macOS is being adapted by a collaborator; this fork has no Mac installer yet. The new drag and shadow behavior in 1.6.0 still needs manual GUI validation. See [project status](Docs/STATUS.md).
 
 ## Features
 
-- **Markdown Editing & Preview** — Full GitHub Flavored Markdown support with seamless toggling between edit and preview modes
+- Pin internal notes or bound external Markdown files as independent desktop notes. Bound files are edited in place; importing Markdown creates an internal copy.
+- Switch between reading and writing within the same note window. The preview supports task lists, code, math, images, and Mermaid on demand.
+- On Windows, choose a normal, always-on-top, or desktop-attached window. Locking makes the note body pass mouse input through while leaving the lock icon available for unlocking.
+- Store a note as a slim strip on the left, right, or top edge. Drag it between edges or screens, hover to preview, and click to restore its previous size and position.
+- Adjust themes and appearance; restore notes from the tray, startup policy, or configured shortcuts.
 
-  ![Main window screenshot](Docs/images/主窗口截图.png)
+## Install
 
-- **Quick Note** — Summon a note window instantly from the system tray or via a global hotkey (default: `Ctrl+Space`)
+Get the [Windows x64 installer](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/download/v1.6.0/Hermes.Surface.Dev_1.6.0_x64-setup.exe) and [SHA256SUMS.txt](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/download/v1.6.0/SHA256SUMS.txt) from this fork's release. The installer is unsigned and downloads WebView2 Runtime if it is missing. This fork does not currently distribute a Microsoft Store, MirrorChyan, Windows ARM64, or macOS build.
 
-  ![Multi-window example](Docs/images/小窗多开示例.gif)
+For development, run the following in PowerShell 7 on Windows:
 
-- **Pin Mode** — Pin a note to a fixed spot on your desktop for quick reference and easy copying
+```powershell
+$ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $true
+npm ci
+npm run tauri build -- --bundles nsis
+```
 
-  ![Pin mode example](Docs/images/AI绘画截图.png)
+Mac collaborators should follow the [macOS handoff](Docs/MAC_HANDOFF.md) for app identity, native window behavior, building, and manual acceptance. See the [P8 report](Docs/P8_FINAL.md) for implementation status, limitations, and resource measurement boundaries.
 
-- **Import & Export** — Import and export notes as `.md` files
+## Origin and license
 
-## Use Cases
-
-- Use it as an always-visible clipboard to stash and copy text on the fly
-- Jot things down while gaming or watching videos
-- Capture a quick thought or burst of inspiration
-- Keep a to-do list right on your desktop
-
-## Quick Start
-
-### Download
-
-#### Via MirrorChyan
-
-> [!TIP]
-> If you have trouble accessing GitHub or experience slow downloads, try downloading Floral Notepaper via MirrorChyan.<br>
-> Downloading via MirrorChyan also helps support the developer — see the [MirrorChyan website](https://mirrorchyan.com/) for details.
-
-| Platform | Arch                    | Download                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| -------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Windows  | x64                     | [![Windows x64 Setup](https://img.shields.io/badge/Setup-x64-blue?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiB2aWV3Qm94PSIwIDAgNTEyIDUxMiI%2BPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTAgMGgyNDJ2MjQySDB6TTI3MCAwaDI0MnYyNDJIMjcwek0wIDI3MGgyNDJ2MjQySDB6TTI3MCAyNzBoMjQydjI0MkgyNzB6Ii8%2BPC9zdmc%2B)](https://mirrorchyan.com/zh/projects?rid=floral&os=windows&arch=x64&channel=stable)           |
-| Windows  | AArch64                 | [![Windows AArch64 Setup](https://img.shields.io/badge/Setup-AArch64-blue?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiB2aWV3Qm94PSIwIDAgNTEyIDUxMiI%2BPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTAgMGgyNDJ2MjQySDB6TTI3MCAwaDI0MnYyNDJIMjcwek0wIDI3MGgyNDJ2MjQySDB6TTI3MCAyNzBoMjQydjI0MkgyNzB6Ii8%2BPC9zdmc%2B)](https://mirrorchyan.com/zh/projects?rid=floral&os=windows&arch=arm64&channel=stable) |
-| macOS    | AArch64 (Apple Silicon) | [![macOS Apple Silicon](https://img.shields.io/badge/DMG-Apple%20Silicon-%23000000.svg?logo=apple)](https://mirrorchyan.com/zh/projects?rid=floral&os=macos&channel=stable&arch=arm64)                                                                                                                                                                                                                                                                                       |
-| macOS    | x64 (Intel)             | [![macOS Intel](https://img.shields.io/badge/DMG-Intel%20X64-%2300A9E0.svg?logo=apple)](https://mirrorchyan.com/zh/projects?rid=floral&os=macos&channel=stable&arch=x64)                                                                                                                                                                                                                                                                                                     |
-
-#### Via GitHub
-
-Head over to the [Releases page](https://github.com/Achilng/floral-notepaper/releases/latest) to download.
-
-##### Download Reference
-
-| Platform | Arch                    | Type                    | Filename                                 |
-| -------- | ----------------------- | ----------------------- | ---------------------------------------- |
-| Windows  | x64                     | Installer (Recommended) | floral-notepaper_x.y.z_x64-setup.exe     |
-| Windows  | x64                     | Portable                | floral-notepaper_x.y.z.exe               |
-| Windows  | x64                     | MSIX Package            | floral-notepaper_x.y.z_x64.msix          |
-| Windows  | AArch64                 | Installer (Recommended) | floral-notepaper_x.y.z_aarch64-setup.exe |
-| Windows  | AArch64                 | MSIX Package            | floral-notepaper_x.y.z_aarch64.msix      |
-| macOS    | AArch64 (Apple Silicon) | DMG                     | floral-notepaper_x.y.z_aarch64.dmg       |
-| macOS    | x64 (Intel)             | DMG                     | floral-notepaper_x.y.z_x64.dmg           |
-
-#### Via Microsoft Store
-
-Download Floral Notepaper from the [Microsoft Store](https://apps.microsoft.com/detail/9NRCC0ZSG81R)
-
-> Note: MSIX installs (from the Microsoft Store or sideloaded .msix files) do not support in-app updates. Get the latest version from the Microsoft Store or GitHub Releases.
-
-<!-- markdownlint-disable -->
-
-<a href="https://apps.microsoft.com/detail/9NRCC0ZSG81R?referrer=appbadge&mode=full" target="_blank"  rel="noopener noreferrer">
-	<img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200"/>
-</a>
-
-<!-- markdownlint-restore -->
-
-#### macOS Installation Guidance
-
-If you encounter installation issues, please refer to:
-
-- Wiki: [macOS Installation Guidance](https://github.com/Achilng/floral-notepaper/wiki/macOS-%E5%AE%89%E8%A3%85%E6%8C%87%E5%BC%95-%7C-macOS-Installation-Guidance)
-- Or video (Bilibili): [Mac云课堂 - Installing software on Mac means learning to wrestle with Apple](https://www.bilibili.com/video/BV1tg411t7hN)
-
-### Building from Source
-
-Please refer to [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Star History
-
-[![Star History Chart](https://star-history.dera.page/svg?repos=Achilng/floral-notepaper&type=Date&legend=top-left)](https://star-history.dera.page/#Achilng/floral-notepaper&Date)
-
-## 🌟 Contributors
-
-[![contrib.rocks](https://contrib.rocks/image?repo=Achilng/floral-notepaper&max=1000)](https://contrib.rocks/image?repo=Achilng/floral-notepaper&max=1000)
-
-## Sponsors
-
-<!-- markdownlint-disable -->
-
-| <img src="https://signpath.org/assets/favicon.png" alt="SignPath Logo" width=50> | Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org/) |
-| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-
-<!-- markdownlint-restore -->
-
-## License
-
-[MIT](LICENSE)
+This project is a fork of [Achilng/floral-notepaper](https://github.com/Achilng/floral-notepaper) and retains its history and copyright notices. It is distributed under the [MIT license](LICENSE); see [upstream attribution](Docs/UPSTREAM.md) and [third-party notices](THIRD_PARTY_NOTICES.md). The upstream project's releases, store listing, signing, and mirrors are separate from this fork.

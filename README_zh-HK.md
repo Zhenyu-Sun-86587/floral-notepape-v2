@@ -1,135 +1,36 @@
-[简体中文](README.md) | **繁體中文** | [English](README_en-US.md)
+# Hermes Surface Dev
 
-<!-- markdownlint-disable -->
+[简体中文](README.md) · **繁體中文** · [English](README_en-US.md)
 
-<div align="center">
+將 Markdown 筆記固定在桌面，需要時直接編輯，暫時不用時收納至螢幕邊緣。
 
-<img src="./src-tauri/icons/icon.png" width="120" alt="花箋圖示">
+[下載 Windows 1.6.0](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.6.0) · [回報問題](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [简体中文](README.md)
 
-# 花箋 Floral Notepaper
+**平台狀態：**目前提供 Windows x64 NSIS 安裝程式。macOS 正由協作者適配，本 fork 尚無 Mac 安裝包。1.6.0 新增的拖動和陰影仍待人工 GUI 驗收；詳見[項目狀態](Docs/STATUS.md)。
 
-輕巧、優雅、現代化的本機便箋工具<br>
-基於 Tauri 2 + React 構建
+## 功能
 
-[回報問題](https://github.com/Achilng/floral-notepaper/issues) · [更新日誌](https://github.com/Achilng/floral-notepaper/releases) <br>
-[快速開始](#快速開始) · [FAQ](https://github.com/Achilng/floral-notepaper/wiki) · [構建指南](#從原始碼構建)
+- 將內部筆記或已綁定的外部 Markdown 檔案固定為獨立便箋。綁定檔案會寫回原檔；匯入 Markdown 則建立應用程式內的副本。
+- 在同一便箋視窗切換閱讀與寫作。預覽支援待辦清單、程式碼、公式、圖片與按需載入的 Mermaid。
+- Windows 提供普通、置頂與桌面附著模式。鎖定時便箋主體讓滑鼠事件穿透，原鎖圖示仍可解鎖。
+- 將便箋收納到左側、右側或頂部的細色條；可以拖到其他邊緣或螢幕，懸停預覽，按一下恢復原本的位置與尺寸。
+- 可調整主題和外觀，並透過系統匣、自啟動策略與快捷鍵喚回便箋。
 
-[![Version](https://img.shields.io/github/v/release/Achilng/floral-notepaper)](https://github.com/Achilng/floral-notepaper/releases/latest)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![Stars](https://img.shields.io/github/stars/Achilng/floral-notepaper?color=ffcb47&labelColor=black)</br>
-![React 19](https://img.shields.io/badge/React-19-blue?logo=react)
-![Tauri v2](https://img.shields.io/badge/Tauri-v2-%2324C8D8?logo=tauri)
-![Rust Edition 2021](https://img.shields.io/badge/Rust-2021-%23000000?logo=rust)<br>
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Achilng/floral-notepaper)
+## 下載與開發
 
-</div>
+從本 fork 的 [Release](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.6.0) 下載 [Windows x64 安裝包](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/download/v1.6.0/Hermes.Surface.Dev_1.6.0_x64-setup.exe)與 `SHA256SUMS.txt`。安裝包未簽署；若系統缺少 WebView2 Runtime，安裝時需要連線下載。本 fork 目前沒有 Microsoft Store、Mirror 醬、Windows ARM64 或 macOS 產物。
 
-<!-- markdownlint-restore -->
+在 Windows 的 PowerShell 7 中從原始碼構建：
 
----
+```powershell
+$ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $true
+npm ci
+npm run tauri build -- --bundles nsis
+```
 
-## 為什麼選擇花箋
+Mac 協作者請參閱 [macOS 開發交接](Docs/MAC_HANDOFF.md)；實作狀態與保留項見 [P8 報告](Docs/P8_FINAL.md)。
 
-市面上現有的筆記或便箋軟件，要麼功能繁重、上手門檻高，要麼介面陳舊、久未更新。花箋因此而生，其特點是輕巧、隨呼隨用，同時提供現代化的介面與舒適的編輯體驗。
+## 來源與授權
 
-## 功能特點
-
-- **Markdown 編輯與預覽** — 支援 GitHub Flavored Markdown 語法，可即時切換編輯及預覽模式
-
-  ![主視窗截圖](Docs/images/主窗口截图.png)
-
-- **快速便箋** — 透過系統匣或全域快速鍵（預設 `Ctrl+Space`）隨時喚出便箋視窗
-
-  ![小視窗多開示例](Docs/images/小窗多开示例.gif)
-
-- **磁貼模式** — 將筆記固定於桌面某處，以便快速查閱及複製
-
-  ![磁貼示例](Docs/images/AI绘画截图.png)
-
-- **匯入匯出** — 支援 `.md` 檔案的匯入及匯出
-
-## 應用場景
-
-- 用作隨時可見的剪貼簿，快速暫存及複製文字
-- 遊戲、觀看影片時隨手記錄
-- 臨時記錄思路或靈感
-- 桌面待辦清單
-
-## 快速開始
-
-### 下載安裝
-
-#### 透過 Mirror 醬下載
-
-> [!TIP]
-> 如您的網絡不便訪問 GitHub，或下載速度過慢，您可以嘗試透過 Mirror 醬下載花箋<br>
-> 此外，您也可以透過使用 Mirror 醬下載花箋來贊助花箋的開發者，詳見 [Mirror 醬官網](https://mirrorchyan.com/)
-
-| 系統    | 架構                    | 下載連結                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Windows | x64                     | [![Windows x64 Setup](https://img.shields.io/badge/Setup-x64-blue?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiB2aWV3Qm94PSIwIDAgNTEyIDUxMiI%2BPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTAgMGgyNDJ2MjQySDB6TTI3MCAwaDI0MnYyNDJIMjcwek0wIDI3MGgyNDJ2MjQySDB6TTI3MCAyNzBoMjQydjI0MkgyNzB6Ii8%2BPC9zdmc%2B)](https://mirrorchyan.com/zh/projects?rid=floral&os=windows&arch=x64&channel=stable)           |
-| Windows | AArch64                 | [![Windows AArch64 Setup](https://img.shields.io/badge/Setup-AArch64-blue?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiB2aWV3Qm94PSIwIDAgNTEyIDUxMiI%2BPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTAgMGgyNDJ2MjQySDB6TTI3MCAwaDI0MnYyNDJIMjcwek0wIDI3MGgyNDJ2MjQySDB6TTI3MCAyNzBoMjQydjI0MkgyNzB6Ii8%2BPC9zdmc%2B)](https://mirrorchyan.com/zh/projects?rid=floral&os=windows&arch=arm64&channel=stable) |
-| macOS   | AArch64 (Apple Silicon) | [![macOS Apple Silicon](https://img.shields.io/badge/DMG-Apple%20Silicon-%23000000.svg?logo=apple)](https://mirrorchyan.com/zh/projects?rid=floral&os=macos&channel=stable&arch=arm64)                                                                                                                                                                                                                                                                                       |
-| macOS   | x64 (Intel)             | [![macOS Intel](https://img.shields.io/badge/DMG-Intel%20X64-%2300A9E0.svg?logo=apple)](https://mirrorchyan.com/zh/projects?rid=floral&os=macos&channel=stable&arch=x64)                                                                                                                                                                                                                                                                                                     |
-
-#### 透過 GitHub 下載
-
-請前往 [Release 頁](https://github.com/Achilng/floral-notepaper/releases/latest) 下載花箋
-
-##### 下載參考
-
-| 系統    | 架構                    | 類型             | 檔案名稱                                    |
-| ------- | ----------------------- | ---------------- | ------------------------------------------- |
-| Windows | x64                     | 安裝程式（推薦） | floral-notepaper\_版本號\_x64-setup.exe     |
-| Windows | x64                     | 可攜版           | floral-notepaper\_版本號.exe                |
-| Windows | x64                     | 安裝包           | floral-notepaper\_版本號\_x64.msix          |
-| Windows | AArch64                 | 安裝程式（推薦） | floral-notepaper\_版本號\_aarch64-setup.exe |
-| Windows | AArch64                 | 安裝包           | floral-notepaper\_版本號\_aarch64.msix      |
-| macOS   | AArch64 (Apple Silicon) | DMG              | floral-notepaper\_版本號\_aarch64.dmg       |
-| macOS   | x64 (Intel)             | DMG              | floral-notepaper\_版本號\_x64.dmg           |
-
-#### 透過 Microsoft Store 下載
-
-前往 [Microsoft Store](https://apps.microsoft.com/detail/9NRCC0ZSG81R) 下載花箋
-
-> 注意：MSIX 安裝（無論來自 Microsoft Store 或側載的 .msix 檔案）暫不支援應用程式內更新，請透過 Microsoft Store 或 GitHub Releases 取得最新版本。
-
-<!-- markdownlint-disable -->
-
-<a href="https://apps.microsoft.com/detail/9NRCC0ZSG81R?referrer=appbadge&mode=full" target="_blank"  rel="noopener noreferrer">
-	<img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200"/>
-</a>
-
-<!-- markdownlint-restore -->
-
-#### macOS 版安裝指引
-
-如遇安裝問題，請參考：
-
-- Wiki 中的 [macOS 安裝指引](https://github.com/Achilng/floral-notepaper/wiki/macOS-%E5%AE%89%E8%A3%85%E6%8C%87%E5%BC%95-%7C-macOS-Installation-Guidance)
-- 或影片（Bilibili）：[Mac雲課堂 - 在 Mac 上裝軟件，要學會和蘋果鬥智鬥勇](https://www.bilibili.com/video/BV1tg411t7hN)
-
-### 從原始碼構建
-
-請參考 [CONTRIBUTING.md](CONTRIBUTING.md)
-
-## Star History
-
-[![Star History Chart](https://star-history.dera.page/svg?repos=Achilng/floral-notepaper&type=Date&legend=top-left)](https://star-history.dera.page/#Achilng/floral-notepaper&Date)
-
-## 🌟 貢獻者
-
-[![contrib.rocks](https://contrib.rocks/image?repo=Achilng/floral-notepaper&max=1000)](https://contrib.rocks/image?repo=Achilng/floral-notepaper&max=1000)
-
-## Sponsors
-
-<!-- markdownlint-disable -->
-
-| <img src="https://signpath.org/assets/favicon.png" alt="SignPath Logo" width=50> | Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org/) |
-| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-
-<!-- markdownlint-restore -->
-
-## 授權條款
-
-[MIT](LICENSE)
+本項目從 [Achilng/floral-notepaper](https://github.com/Achilng/floral-notepaper) fork 開發，保留原倉庫歷史與版權聲明。採用 [MIT 授權](LICENSE)；詳見[上游來源](Docs/UPSTREAM.md)及[第三方資源聲明](THIRD_PARTY_NOTICES.md)。上游商店、簽署與下載渠道不屬於本 fork。
