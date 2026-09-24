@@ -790,7 +790,17 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(move |_app_handle, _event| {
-            if matches!(_event, tauri::RunEvent::ExitRequested { .. }) {
+            if let tauri::RunEvent::ExitRequested { code, api, .. } = &_event {
+                #[cfg(target_os = "windows")]
+                if desktop::should_prevent_windowless_exit(
+                    *code,
+                    desktop::app_is_exiting(_app_handle),
+                ) {
+                    api.prevent_exit();
+                } else {
+                    desktop::mark_app_exiting(_app_handle);
+                }
+                #[cfg(not(target_os = "windows"))]
                 desktop::mark_app_exiting(_app_handle);
             }
             #[cfg(target_os = "macos")]

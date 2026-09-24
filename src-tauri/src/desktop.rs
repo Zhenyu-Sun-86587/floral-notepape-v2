@@ -2285,10 +2285,16 @@ fn close_to_tray_enabled() -> bool {
         .unwrap_or(true)
 }
 
-fn app_is_exiting(app: &AppHandle) -> bool {
+pub(crate) fn app_is_exiting(app: &AppHandle) -> bool {
     app.try_state::<RuntimeState>()
         .map(|state| state.is_exiting())
         .unwrap_or(false)
+}
+
+pub(crate) fn should_prevent_windowless_exit(code: Option<i32>, explicitly_exiting: bool) -> bool {
+    // 最后一张便签关闭会触发无退出码的请求；托盘与全局快捷键仍需常驻。
+    // app.exit(0) 的明确退出带有退出码，不在这里拦截。
+    code.is_none() && !explicitly_exiting
 }
 
 pub(crate) fn mark_app_exiting(app: &AppHandle) {
@@ -2946,6 +2952,13 @@ pub fn stop_shortcut_recording(_app: &AppHandle) -> Result<(), Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keeps_tray_alive_after_last_note_closes_but_allows_explicit_quit() {
+        assert!(should_prevent_windowless_exit(None, false));
+        assert!(!should_prevent_windowless_exit(Some(0), false));
+        assert!(!should_prevent_windowless_exit(None, true));
+    }
 
     #[test]
     fn maps_tray_menu_ids_to_actions() {
