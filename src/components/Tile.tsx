@@ -103,7 +103,7 @@ export function Tile({
   }, [tileColor]);
   const mergedStyle: CSSProperties = {
     width,
-    backgroundColor: tileColor,
+    backgroundColor: `color-mix(in srgb, ${tileColor} var(--appearance-opacity-percent, 100%), transparent)`,
     borderColor,
     transition: "box-shadow 0.3s ease",
     ...(rotation ? { transform: `rotate(${rotation}deg)` } : {}),
@@ -141,7 +141,11 @@ export function Tile({
           ) : (
             <div
               className="leading-[1.8] whitespace-pre-wrap font-body"
-              style={{ color: contentColor, fontSize: `${fontSize}px` }}
+              style={{
+                color: contentColor,
+                fontSize: `${fontSize}px`,
+                lineHeight: "var(--appearance-line-height)",
+              }}
             >
               {content}
             </div>

@@ -28,8 +28,12 @@ export function normalizeTileColor(value: string | null | undefined): string {
 
 export function resolveSystemTileColor(): string {
   if (typeof document === "undefined") return SYSTEM_TILE_COLOR_LIGHT;
+  const themed = getComputedStyle(document.documentElement)
+    .getPropertyValue("--color-cloud")
+    .trim();
+  if (FULL_HEX_COLOR.test(themed)) return normalizeTileColor(themed);
   const theme = document.documentElement.getAttribute("data-theme");
-  return theme === "dark" ? SYSTEM_TILE_COLOR_DARK : SYSTEM_TILE_COLOR_LIGHT;
+  return theme && theme !== "light" ? SYSTEM_TILE_COLOR_DARK : SYSTEM_TILE_COLOR_LIGHT;
 }
 
 export function resolveTileColor(mode: TileColorMode, customColor: string): string {

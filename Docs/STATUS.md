@@ -12,6 +12,8 @@ Windows 源码以当前 `main` 为准；上游起点 tag：`baseline-upstream-20
 - P3 隔离 GUI 验证：在 `D:/pinNote/p3-gui-test` 绑定目录，打开并固定 `Today.md`，独立便签编辑内容成功写回同一原文件；使用外部原子替换后，便签自动显示新正文。未使用真实同步目录。TypeScript 检查、前端 110 项测试、Rust 153 项测试及 Windows NSIS 构建通过。
 - P3 后续修复：外部文件便签关闭时保存并销毁原生窗口，避免透明窗口遮挡桌面；用户确认 1.2.3 的 pin 关闭与再次打开正常。
 - P4 第一批：预览隐藏完整的文首 YAML Frontmatter，编辑和原文件保留原文；任务勾选按源位置改动单个 `[ ]`/`[x]`，支持重复任务。1.2.4 的相关测试、TypeScript 检查和 Windows NSIS 构建通过，GUI 尚待用户验收。
+- P4 第二批：代码高亮、按需加载 Mermaid、外部文件相对图片、远程图片开关、列表延续和快捷格式化已进入 1.2.5；用户决定跳过 P4 GUI 验收并进入 P5。该决定不等于 P4 GUI 已通过。
+- P5 Windows：主题 token、Tokyo Night/Everforest、逐字段全局与单便签覆盖、字体/行距/间距/圆角/边框/阴影/背景色、便签图片模糊和透明度、版本化 JSON 主题导入导出、Windows Acrylic 开关及实际可用状态已实现。1.2.6 的 TypeScript、Rust 检查、两项针对性测试及 NSIS 构建通过。Mac 原生材质留待协作者；P5 GUI 尚未验收。
 
 ## 待验收
 
@@ -20,8 +22,8 @@ Windows 源码以当前 `main` 为准；上游起点 tag：`baseline-upstream-20
 - macOS 平台配置、构建工作流和 GUI 验证交由 Mac 协作者处理，交接见 [MAC_HANDOFF.md](MAC_HANDOFF.md)。当前 macOS 覆盖配置仍使用原版 identifier，不能把 Windows 隔离结果套用到 Mac。
 - 主界面关闭到托盘时仍保留隐藏 WebView。此路径涉及现有保存与外部文件监听，本轮没有在缺少 GUI 验证时进一步销毁。
 - P3 尚未实现应用内重命名、缺失文件重新关联和可靠识别外部改名；目录断连恢复、冲突交互、托盘退出时的未保存草稿需进一步 GUI 验收。文件 revision 比较与替换不是跨应用事务锁。
-- P4 第二批：常见语言代码高亮、按需加载的 Mermaid、外部文件相对图片与绑定目录范围检查、默认关闭的 HTTPS 远程图片开关和 CSP、列表 Enter 延续及链接工具按钮已实现；1.2.5 的相关测试、TypeScript/Rust 检查与 Windows NSIS 构建通过，仍需用户 GUI 验收。
+- P4 第二批的 GUI 项按用户决定跳过，后续如发现回归再针对性处理。
 
 ## 范围
 
-Windows 已完成 P3 文件绑定闭环，正在实施 P4 Markdown 与编辑；P5 主题/材质、P6 布局与快捷键、P7 桌面附着和收纳尚未开始。macOS 交接范围不变。
+Windows 已完成 P3 文件绑定闭环、P4 代码交付，正在实施 P5 外观与材质；P6 布局与快捷键、P7 桌面附着和收纳尚未开始。macOS 交接见 `MAC_HANDOFF.md`。

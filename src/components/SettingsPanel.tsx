@@ -20,17 +20,25 @@ import { DEFAULT_TILE_COLOR, normalizeTileColor } from "../features/settings/til
 import { applyTheme, watchSystemTheme } from "../features/settings/theme";
 import { LOCALE_OPTIONS } from "../locales/locale-whitelist";
 import { SlidingButtonGroup } from "./SlidingButtonGroup";
+import { AppearanceSection } from "./AppearanceSection";
 
 const HARMONY_FONT_LICENSE_URL = new URL("../assets/fonts/LICENSE_Fonts", import.meta.url).href;
 
 interface SettingsPanelProps {
   config: AppConfig;
+  selectedNoteId?: string;
   onChange: (config: AppConfig) => void;
   onMigrateDataDir: () => void;
   onClose: () => void;
 }
 
-export function SettingsPanel({ config, onChange, onMigrateDataDir, onClose }: SettingsPanelProps) {
+export function SettingsPanel({
+  config,
+  selectedNoteId,
+  onChange,
+  onMigrateDataDir,
+  onClose,
+}: SettingsPanelProps) {
   const { t } = useTranslation();
   const setConfigValue = <Key extends keyof AppConfig>(key: Key, value: AppConfig[Key]) => {
     onChange({ ...config, [key]: value });
@@ -52,6 +60,8 @@ export function SettingsPanel({ config, onChange, onMigrateDataDir, onClose }: S
     () => [
       { value: "light", label: t("settings.theme.light", { defaultValue: "浅色" }) },
       { value: "dark", label: t("settings.theme.dark", { defaultValue: "深色" }) },
+      { value: "tokyo-night", label: "Tokyo Night" },
+      { value: "everforest", label: "Everforest" },
       {
         value: "system",
         label: t("settings.theme.system", { defaultValue: "跟随系统" }),
@@ -118,16 +128,25 @@ export function SettingsPanel({ config, onChange, onMigrateDataDir, onClose }: S
           <label className="block text-[11px] font-body text-ink-faint">
             {t("settings.theme.label", { defaultValue: "主题" })}
           </label>
-          <SlidingButtonGroup
-            options={themeOptions}
+          <select
+            className="w-full h-9 rounded-lg bg-paper-warm/70 border border-paper-deep/40 px-2 text-[12px] text-ink-soft"
             value={config.theme}
-            onChange={(v: ThemeOption) => {
-              setConfigValue("theme", v);
-              applyTheme(v);
-              watchSystemTheme(v);
+            onChange={(event) => {
+              const value = event.target.value as ThemeOption;
+              setConfigValue("theme", value);
+              applyTheme(value);
+              watchSystemTheme(value);
             }}
-          />
+          >
+            {themeOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </section>
+
+        <AppearanceSection config={config} noteId={selectedNoteId} onChange={onChange} />
 
         <section className="space-y-2">
           <label className="block text-[11px] font-body text-ink-faint">

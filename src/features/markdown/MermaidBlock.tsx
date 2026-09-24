@@ -5,14 +5,7 @@ let mermaidLoader: Promise<(typeof import("mermaid"))["default"]> | null = null;
 
 function loadMermaid() {
   mermaidLoader ??= import("mermaid")
-    .then(({ default: mermaid }) => {
-      mermaid.initialize({
-        startOnLoad: false,
-        securityLevel: "strict",
-        suppressErrorRendering: true,
-      });
-      return mermaid;
-    })
+    .then(({ default: mermaid }) => mermaid)
     .catch((error) => {
       mermaidLoader = null;
       throw error;
@@ -21,15 +14,41 @@ function loadMermaid() {
 }
 
 export function MermaidBlock({ source }: { source: string }) {
+  const [themeRevision, setThemeRevision] = useState(0);
   const [result, setResult] = useState<{ source: string; svg?: string; error?: string }>({
     source,
   });
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => setThemeRevision((value) => value + 1));
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme", "style"],
+    });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     let active = true;
     setResult({ source });
     void loadMermaid()
       .then(async (mermaid) => {
+        const root = getComputedStyle(document.documentElement);
+        const color = (key: string) => root.getPropertyValue(key).trim();
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: "strict",
+          suppressErrorRendering: true,
+          theme:
+            document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default",
+          themeVariables: {
+            background: color("--color-cloud"),
+            primaryColor: color("--color-paper-warm"),
+            primaryTextColor: color("--color-ink"),
+            primaryBorderColor: color("--color-paper-deep"),
+            lineColor: color("--color-bamboo"),
+          },
+        });
         const { svg } = await mermaid.render(`hermes-mermaid-${++diagramSequence}`, source);
         // 编辑期间旧图异步完成时，不能覆盖新源码的预览。
         if (active) setResult({ source, svg });
@@ -40,7 +59,7 @@ export function MermaidBlock({ source }: { source: string }) {
     return () => {
       active = false;
     };
-  }, [source]);
+  }, [source, themeRevision]);
 
   if (result.source === source && result.svg) {
     return (

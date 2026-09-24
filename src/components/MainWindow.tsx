@@ -8,7 +8,7 @@ import {
   Suspense,
   lazy,
 } from "react";
-import type { MouseEvent } from "react";
+import type { CSSProperties, MouseEvent } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -55,6 +55,7 @@ import {
 } from "../features/settings/api";
 import type { AppConfig, ViewMode } from "../features/settings/types";
 import { normalizeTileColor } from "../features/settings/tileColor";
+import { appearanceVariables, resolveAppearance } from "../features/settings/theme";
 import { getUpdateStatus, reportInstallPreparation } from "../features/update/api";
 import {
   ABOUT_UPDATE_LABEL_DURATION_MS,
@@ -385,6 +386,12 @@ export function MainWindow({
   const [linkedConflict, setLinkedConflict] = useState<LinkedContent | null>(null);
   const [linkedRoots, setLinkedRoots] = useState<LinkedRoot[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [systemThemeRevision, setSystemThemeRevision] = useState(0);
+  useEffect(() => {
+    const refresh = () => setSystemThemeRevision((value) => value + 1);
+    window.addEventListener("appearance-system-theme-changed", refresh);
+    return () => window.removeEventListener("appearance-system-theme-changed", refresh);
+  }, []);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>(
     normalizeViewMode(initialConfig?.defaultViewMode ?? "split"),
@@ -2180,10 +2187,29 @@ export function MainWindow({
   const aboutButtonTitle = aboutUpdateReminder.hasPendingUpdate
     ? aboutButtonLabel
     : t("main.window.about", { defaultValue: "关于" });
+  const selectedAppearanceId = selectedExternalFile?.bindingId
+    ? `linked:${selectedExternalFile.bindingId}`
+    : (selectedId ?? undefined);
+  const selectedAppearance = useMemo(
+    () =>
+      resolveAppearance(
+        settingsConfig?.theme ?? "system",
+        settingsConfig?.appearance,
+        selectedAppearanceId,
+      ),
+    [settingsConfig?.theme, settingsConfig?.appearance, selectedAppearanceId, systemThemeRevision],
+  );
+  const editorFontSize =
+    (selectedAppearanceId
+      ? settingsConfig?.appearance?.notes?.[selectedAppearanceId]?.fontSize
+      : undefined) ??
+    settingsConfig?.appearance?.global?.fontSize ??
+    settingsConfig?.fontSize ??
+    14;
 
   return (
     <div className="w-full h-screen flex flex-col">
-      <div className="relative noise-bg bg-cloud overflow-hidden flex flex-col flex-1">
+      <div className="app-main-surface relative noise-bg overflow-hidden flex flex-col flex-1">
         <BackgroundLayer config={settingsConfig} />
         <div
           className={`relative z-10 flex items-center justify-between h-11 bg-paper/55 backdrop-blur-[1px] border-b border-paper-deep/30 shrink-0 select-none cursor-default ${
@@ -3236,7 +3262,18 @@ export function MainWindow({
             <div
               key={viewMode}
               ref={splitContainerRef}
-              className="flex-1 flex min-h-0 animate-view-fade"
+              className="appearance-note-content flex-1 flex min-h-0 animate-view-fade"
+              style={
+                {
+                  ...appearanceVariables(
+                    settingsConfig?.theme ?? "system",
+                    settingsConfig?.appearance,
+                    selectedAppearanceId,
+                  ),
+                  backgroundColor:
+                    "color-mix(in srgb, var(--color-cloud) var(--appearance-opacity-percent), transparent)",
+                } as CSSProperties
+              }
             >
               {!selectedId && !isLoading ? (
                 <div className="flex-1 flex items-center justify-center text-[13px] text-ink-ghost">
@@ -3320,7 +3357,8 @@ export function MainWindow({
                           onScroll={handleEditorScroll}
                           className="w-full h-full leading-[1.9] text-ink-soft font-body placeholder:text-ink-ghost/40"
                           style={{
-                            fontSize: `${settingsConfig?.fontSize ?? 14}px`,
+                            fontSize: `${editorFontSize}px`,
+                            lineHeight: selectedAppearance.lineHeight,
                             tabSize: `var(--tab-indent-size, 2)`,
                           }}
                           placeholder={t("main.editor.contentPlaceholder", {
@@ -3371,7 +3409,7 @@ export function MainWindow({
                       >
                         <MarkdownPreview
                           content={deferredContent}
-                          fontSize={settingsConfig?.fontSize ?? 14}
+                          fontSize={editorFontSize}
                           renderHtml={settingsConfig?.renderHtmlMarkdown ?? false}
                           imageBaseDir={
                             selectedExternalFile
@@ -3479,6 +3517,7 @@ export function MainWindow({
                 <Suspense fallback={null}>
                   <SettingsPanel
                     config={settingsConfig}
+                    selectedNoteId={selectedAppearanceId}
                     onChange={handleSettingsChange}
                     onMigrateDataDir={() => void handleMigrateDataDir()}
                     onClose={handleCloseSettings}

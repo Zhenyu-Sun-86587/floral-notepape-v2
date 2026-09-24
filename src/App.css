@@ -55,6 +55,11 @@
 :root {
   --app-window-radius: 14px;
   --app-surface-radius: 14px;
+  --appearance-opacity-percent: 100%;
+  --appearance-line-height: 1.8;
+  --appearance-padding: 16px;
+  --appearance-shadow: 0 1px 10px rgba(26, 26, 24, 0.06);
+  --appearance-border-width: 1px;
 }
 
 :root[data-theme="dark"] {
@@ -138,8 +143,77 @@ body {
   border-radius: var(--app-window-radius);
 }
 
+.app-main-surface {
+  background-color: color-mix(
+    in srgb,
+    var(--color-cloud) var(--appearance-opacity-percent),
+    transparent
+  );
+}
+
 .app-surface-frame {
   border-radius: var(--app-surface-radius);
+  background-color: color-mix(
+    in srgb,
+    var(--color-cloud) var(--appearance-opacity-percent),
+    transparent
+  );
+  box-shadow: var(--appearance-shadow);
+  line-height: var(--appearance-line-height);
+  isolation: isolate;
+  border-width: var(--appearance-border-width);
+}
+
+.app-surface-frame::before,
+.appearance-note-content::before {
+  content: "";
+  position: absolute;
+  inset: -24px;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--appearance-image, none);
+  background-size: cover;
+  background-position: center;
+  filter: blur(var(--appearance-image-blur, 0px));
+  opacity: 0.65;
+}
+
+.appearance-note-content {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.appearance-note-content > * {
+  z-index: 1;
+}
+
+.app-surface-frame:not([data-surface-mode="tile"]) > * {
+  z-index: 1;
+}
+.app-surface-frame[data-surface-mode="tile"] > div:first-child {
+  position: relative;
+  z-index: 1;
+}
+.app-surface-frame[data-surface-mode="tile"] > svg {
+  z-index: 1;
+}
+
+.app-surface-frame [data-pad-editor-body="true"],
+.app-surface-frame[data-surface-mode="tile"] > div:first-child {
+  padding-left: var(--appearance-padding);
+  padding-right: var(--appearance-padding);
+}
+
+.markdown-selectable p,
+.markdown-selectable ul,
+.markdown-selectable ol,
+.markdown-selectable li,
+.markdown-selectable blockquote {
+  line-height: var(--appearance-line-height);
+}
+
+::selection {
+  background: var(--appearance-selection, #d4e8da);
 }
 
 .mac-window-controls {

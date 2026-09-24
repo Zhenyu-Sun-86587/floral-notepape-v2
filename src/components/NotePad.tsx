@@ -38,7 +38,8 @@ import {
   normalizeTileColor,
   resolveTileColor,
 } from "../features/settings/tileColor";
-import type { TileColorMode } from "../features/settings/types";
+import type { AppearanceConfig, ThemeOption, TileColorMode } from "../features/settings/types";
+import { applyAppearance } from "../features/settings/theme";
 import {
   shouldEnterPadFromTileOnDoubleClick,
   shouldReturnToTileAfterManualSave,
@@ -157,6 +158,8 @@ export function NotePad({
   const [tileColorRaw, setTileColorRaw] = useState(normalizeTileColor(initialTileColor));
   const [tileColorMode, setTileColorMode] = useState<TileColorMode>("system");
   const [surfaceFontSize, setSurfaceFontSize] = useState(14);
+  const [appearanceConfig, setAppearanceConfig] = useState<AppearanceConfig | undefined>();
+  const [appearanceTheme, setAppearanceTheme] = useState<ThemeOption>("system");
   const [tileRenderMarkdown, setTileRenderMarkdown] = useState(false);
   const [allowRemoteImages, setAllowRemoteImages] = useState(false);
   const [tileDoubleClickToEdit, setTileDoubleClickToEdit] = useState(false);
@@ -232,6 +235,8 @@ export function NotePad({
         if (!cancelled) {
           setNoteSurfaceAutoSave(loadedConfig.noteSurfaceAutoSave);
           setSurfaceFontSize(loadedConfig.surfaceFontSize ?? 14);
+          setAppearanceConfig(loadedConfig.appearance);
+          setAppearanceTheme(loadedConfig.theme);
           setTileRenderMarkdown(loadedConfig.tileRenderMarkdown ?? false);
           setAllowRemoteImages(loadedConfig.allowRemoteImages ?? false);
           setTileDoubleClickToEdit(loadedConfig.tileDoubleClickToEdit ?? false);
@@ -361,6 +366,8 @@ export function NotePad({
       tileColor?: string;
       tileColorMode?: TileColorMode;
       surfaceFontSize?: number;
+      appearance?: AppearanceConfig;
+      theme?: ThemeOption;
       tileRenderMarkdown?: boolean;
       allowRemoteImages?: boolean;
       tileDoubleClickToEdit?: boolean;
@@ -372,6 +379,8 @@ export function NotePad({
       setTileColorRaw(normalizeTileColor(raw));
       setTileColor(resolveTileColor(mode, raw));
       if (event.payload.surfaceFontSize != null) setSurfaceFontSize(event.payload.surfaceFontSize);
+      setAppearanceConfig(event.payload.appearance);
+      if (event.payload.theme) setAppearanceTheme(event.payload.theme);
       if (event.payload.tileRenderMarkdown != null)
         setTileRenderMarkdown(event.payload.tileRenderMarkdown);
       if (event.payload.allowRemoteImages != null)
@@ -387,13 +396,18 @@ export function NotePad({
   }, []);
 
   useEffect(() => {
+    const noteId = initialBindingId ? `linked:${initialBindingId}` : (editingNoteId ?? undefined);
+    applyAppearance(appearanceTheme, appearanceConfig, noteId);
+  }, [appearanceTheme, appearanceConfig, editingNoteId, initialBindingId]);
+
+  useEffect(() => {
     if (tileColorMode !== "system") return;
     const observer = new MutationObserver(() => {
       setTileColor(resolveTileColor("system", tileColorRaw));
     });
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-theme"],
+      attributeFilter: ["data-theme", "style"],
     });
     return () => observer.disconnect();
   }, [tileColorMode, tileColorRaw]);
@@ -858,6 +872,13 @@ export function NotePad({
   };
 
   const isTile = surfaceMode === "tile";
+  const appearanceNoteId = initialBindingId
+    ? `linked:${initialBindingId}`
+    : (editingNoteId ?? undefined);
+  const displayFontSize =
+    (appearanceNoteId ? appearanceConfig?.notes?.[appearanceNoteId]?.fontSize : undefined) ??
+    appearanceConfig?.global?.fontSize ??
+    surfaceFontSize;
   const tileTitle = title.trim();
   const enterClass = hasEnteredOnce.current ? "" : "animate-window-enter";
   const surfaceWrapperClassName = `w-full h-screen flex flex-col bg-transparent p-0 ${isExiting ? "animate-window-exit" : enterClass}`;
@@ -871,7 +892,7 @@ export function NotePad({
           title={tileTitle || undefined}
           content={content}
           color={tileColor}
-          fontSize={surfaceFontSize}
+          fontSize={displayFontSize}
           renderMarkdown={tileRenderMarkdown}
           imageBaseDir={linkedImageScope?.baseDir ?? imageBaseDir ?? undefined}
           imageRootDir={linkedImageScope?.rootDir}
@@ -1017,7 +1038,7 @@ export function NotePad({
                   }}
                   placeholder={t("notepad.placeholder.title", { defaultValue: "标题（可选）" })}
                   className="w-full font-display font-medium text-ink placeholder:text-ink-ghost/60 mb-2 tracking-wide shrink-0"
-                  style={{ fontSize: `${surfaceFontSize}px` }}
+                  style={{ fontSize: `${displayFontSize}px` }}
                 />
 
                 <textarea
@@ -1093,7 +1114,11 @@ export function NotePad({
                   }}
                   placeholder={t("notepad.placeholder.content", { defaultValue: "写点什么……" })}
                   className="w-full flex-1 min-h-0 pb-2 leading-relaxed text-ink-soft font-body placeholder:text-ink-ghost/50"
-                  style={{ fontSize: `${surfaceFontSize}px`, tabSize: `var(--tab-indent-size, 2)` }}
+                  style={{
+                    fontSize: `${displayFontSize}px`,
+                    lineHeight: "var(--appearance-line-height)",
+                    tabSize: `var(--tab-indent-size, 2)`,
+                  }}
                 />
 
                 <div className="flex items-center justify-between mt-auto pt-2 border-t border-paper-deep/30 shrink-0">

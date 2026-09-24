@@ -378,6 +378,69 @@ fn config_save(app: AppHandle, config: AppConfig) -> Result<AppConfig, AppError>
 }
 
 #[tauri::command]
+fn set_native_material(window: tauri::WebviewWindow, enabled: bool) -> Result<bool, AppError> {
+    #[cfg(target_os = "windows")]
+    {
+        use tauri::window::{Effect, EffectsBuilder};
+        if enabled {
+            window.set_effects(EffectsBuilder::new().effect(Effect::Acrylic).build())?;
+        } else {
+            let none: Option<tauri::utils::config::WindowEffectsConfig> = None;
+            window.set_effects(none)?;
+        }
+        Ok(enabled)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (window, enabled);
+        Ok(false)
+    }
+}
+
+#[tauri::command]
+fn theme_read(path: String) -> Result<String, AppError> {
+    let file = PathBuf::from(path);
+    if !file
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+    {
+        return Err(AppError {
+            code: "themeFile".into(),
+            message: "请选择 JSON 主题文件".into(),
+            details: Default::default(),
+        });
+    }
+    if std::fs::metadata(&file)?.len() > 64 * 1024 {
+        return Err(AppError {
+            code: "themeFile".into(),
+            message: "主题文件超过 64 KB".into(),
+            details: Default::default(),
+        });
+    }
+    Ok(std::fs::read_to_string(file)?)
+}
+
+#[tauri::command]
+fn theme_write(path: String, content: String) -> Result<(), AppError> {
+    let file = PathBuf::from(path);
+    if !file
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+        || content.len() > 64 * 1024
+    {
+        return Err(AppError {
+            code: "themeFile".into(),
+            message: "只能保存 64 KB 以内的 JSON 主题文件".into(),
+            details: Default::default(),
+        });
+    }
+    // 导出内容由前端按固定 schema 生成；写入前再次验证 JSON 格式。
+    let _: serde_json::Value = serde_json::from_str(&content)?;
+    std::fs::write(file, content)?;
+    Ok(())
+}
+
+#[tauri::command]
 fn config_migrate_data_dir(app: AppHandle, new_data_dir: String) -> Result<AppConfig, AppError> {
     let store = default_store()?;
     let new_path = PathBuf::from(&new_data_dir).join("floral");
@@ -618,6 +681,9 @@ pub fn run() {
             config_get,
             copy_background_image,
             config_save,
+            set_native_material,
+            theme_read,
+            theme_write,
             config_migrate_data_dir,
             global_shortcut_check,
             start_shortcut_recording,

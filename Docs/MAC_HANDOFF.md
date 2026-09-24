@@ -15,3 +15,9 @@
 - 实测新建、中文输入、保存、磁贴、窗口缩放、静默启动、快捷键、Dock/托盘找回和外部文件入口；特别检查关闭后保存与重开。
 - 明确区分“CI 构建通过”和“macOS GUI 已验证”。将平台差异、资源数据与签名状态写入状态文档。
 - Windows P3 新增 `linked.rs`、`linked_watcher.rs` 与独立外部文件 Tile；请在完成 Mac 身份及数据隔离后，使用虚构目录验证文件绑定、目录新增、原子替换、冲突与草稿。Unix 路径使用 rename 替换，不能把 Windows GUI 结果作为 Mac 验收。
+
+## P5 外观与原生材质交接
+
+- Windows 新增主题 token、逐字段的全局/单便签覆盖、便签背景图和透明度；请在 Mac 上确认 WebKit 对 `color-mix`、CSS 变量背景图以及字体回退的表现。Windows NSIS 构建通过不代表 Mac GUI 已验证。
+- `set_native_material` 当前只在 Windows 调用 Tauri Acrylic；非 Windows 返回“不可用”。Mac 协作者在完成应用身份和数据隔离后，再实现并实测 Vibrancy，核对关闭/恢复、圆角、缩放和多屏行为。不要把 CSS `backdrop-filter` 当作原生 Vibrancy 验收证据。
+- 主题 JSON 不携带本机图片路径。请验证导入/导出、深浅主题、代码和 Mermaid、单便签字体继承及窗口透明背景；记录可用/降级状态。未完成前在状态文档保持 Mac 材质“未实现/未测”。

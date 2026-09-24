@@ -44,6 +44,8 @@ pub struct AppConfig {
     pub tile_color_mode: String,
     #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default)]
+    pub appearance: Option<serde_json::Value>,
     #[serde(default = "default_font_size")]
     pub font_size: u32,
     #[serde(default = "default_surface_font_size")]
@@ -1128,6 +1130,7 @@ impl NoteStore {
             tile_color: default_tile_color(),
             tile_color_mode: default_tile_color_mode(),
             theme: default_theme(),
+            appearance: None,
             font_size: default_font_size(),
             surface_font_size: default_surface_font_size(),
             tab_indent_size: default_tab_indent_size(),
@@ -1876,6 +1879,7 @@ mod tests {
             tile_color: "#efe8dc".into(),
             tile_color_mode: "custom".into(),
             theme: "dark".into(),
+            appearance: None,
             font_size: 16,
             surface_font_size: 16,
             tab_indent_size: 2,
