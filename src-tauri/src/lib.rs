@@ -386,20 +386,23 @@ fn set_native_material(
     #[cfg(target_os = "windows")]
     {
         use tauri::window::{Effect, EffectsBuilder};
-        let apply_region = |active| {
-            desktop::set_surface_region(&window, active, radius).map_err(|message| AppError {
-                code: "nativeMaterialRegion".into(),
-                message,
-                details: Default::default(),
-            })
-        };
+        let is_surface =
+            window.label().starts_with("notepad-") || window.label().starts_with("tile-");
         if enabled {
-            apply_region(true)?;
+            if is_surface {
+                // Windows 11 的 DWM 圆角需要无边框窗口保留系统阴影；窗口 Region 会破坏材质合成。
+                window.set_shadow(true)?;
+            }
             window.set_effects(EffectsBuilder::new().effect(Effect::Acrylic).build())?;
+            if is_surface {
+                set_windows_corner_preference(&window, radius);
+            }
         } else {
             let none: Option<tauri::utils::config::WindowEffectsConfig> = None;
             window.set_effects(none)?;
-            apply_region(false)?;
+            if is_surface {
+                window.set_shadow(false)?;
+            }
         }
         Ok(enabled)
     }
@@ -407,6 +410,38 @@ fn set_native_material(
     {
         let _ = (window, enabled, radius);
         Ok(false)
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn set_windows_corner_preference(window: &tauri::WebviewWindow, radius: f64) {
+    use windows_sys::Win32::Graphics::Dwm::{
+        DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE,
+        DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND, DWMWCP_ROUND, DWMWCP_ROUNDSMALL,
+    };
+
+    let Ok(hwnd) = window.hwnd() else { return };
+    let preference = if radius <= 0.0 {
+        DWMWCP_DONOTROUND
+    } else if radius < 7.0 {
+        DWMWCP_ROUNDSMALL
+    } else {
+        DWMWCP_ROUND
+    };
+    // 边框颜色 NONE 隐藏系统默认白边，同时保留系统圆角和 Acrylic。
+    unsafe {
+        DwmSetWindowAttribute(
+            hwnd.0,
+            DWMWA_WINDOW_CORNER_PREFERENCE as u32,
+            (&preference as *const i32).cast(),
+            std::mem::size_of_val(&preference) as u32,
+        );
+        DwmSetWindowAttribute(
+            hwnd.0,
+            DWMWA_BORDER_COLOR as u32,
+            (&DWMWA_COLOR_NONE as *const u32).cast(),
+            std::mem::size_of::<u32>() as u32,
+        );
     }
 }
 

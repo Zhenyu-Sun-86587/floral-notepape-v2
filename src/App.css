@@ -164,6 +164,14 @@ body {
   border-width: var(--appearance-border-width);
 }
 
+/* Windows 原生材质由 DWM 裁切，CSS 圆角与系统的两档圆角保持一致。 */
+:root[data-native-corner="round"] .app-surface-frame {
+  border-radius: min(var(--app-surface-radius), 8px);
+}
+:root[data-native-corner="small"] .app-surface-frame {
+  border-radius: min(var(--app-surface-radius), 4px);
+}
+
 :root[data-appearance-image] .app-surface-frame::after,
 :root[data-appearance-image] .appearance-note-content::before {
   content: "";
