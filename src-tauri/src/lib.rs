@@ -378,21 +378,34 @@ fn config_save(app: AppHandle, config: AppConfig) -> Result<AppConfig, AppError>
 }
 
 #[tauri::command]
-fn set_native_material(window: tauri::WebviewWindow, enabled: bool) -> Result<bool, AppError> {
+fn set_native_material(
+    window: tauri::WebviewWindow,
+    enabled: bool,
+    radius: f64,
+) -> Result<bool, AppError> {
     #[cfg(target_os = "windows")]
     {
         use tauri::window::{Effect, EffectsBuilder};
+        let apply_region = |active| {
+            desktop::set_surface_region(&window, active, radius).map_err(|message| AppError {
+                code: "nativeMaterialRegion".into(),
+                message,
+                details: Default::default(),
+            })
+        };
         if enabled {
+            apply_region(true)?;
             window.set_effects(EffectsBuilder::new().effect(Effect::Acrylic).build())?;
         } else {
             let none: Option<tauri::utils::config::WindowEffectsConfig> = None;
             window.set_effects(none)?;
+            apply_region(false)?;
         }
         Ok(enabled)
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = (window, enabled);
+        let _ = (window, enabled, radius);
         Ok(false)
     }
 }

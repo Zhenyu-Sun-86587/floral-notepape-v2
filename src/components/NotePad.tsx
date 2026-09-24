@@ -39,7 +39,8 @@ import {
   resolveTileColor,
 } from "../features/settings/tileColor";
 import type { AppearanceConfig, ThemeOption, TileColorMode } from "../features/settings/types";
-import { applyAppearance } from "../features/settings/theme";
+import { applyAppearance, resolveAppearance } from "../features/settings/theme";
+import { applyNativeMaterial } from "../features/settings/nativeMaterial";
 import {
   shouldEnterPadFromTileOnDoubleClick,
   shouldReturnToTileAfterManualSave,
@@ -398,6 +399,10 @@ export function NotePad({
   useEffect(() => {
     const noteId = initialBindingId ? `linked:${initialBindingId}` : (editingNoteId ?? undefined);
     applyAppearance(appearanceTheme, appearanceConfig, noteId);
+    void applyNativeMaterial(
+      appearanceConfig?.nativeMaterial ?? false,
+      resolveAppearance(appearanceTheme, appearanceConfig, noteId).radius,
+    );
   }, [appearanceTheme, appearanceConfig, editingNoteId, initialBindingId]);
 
   useEffect(() => {

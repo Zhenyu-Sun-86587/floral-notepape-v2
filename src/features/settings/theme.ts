@@ -153,7 +153,12 @@ export function applyAppearance(
   lastNoteId = noteId;
   const root = document.documentElement;
   for (const [name, value] of Object.entries(appearanceVariables(theme, appearance, noteId))) {
-    root.style.setProperty(name, value);
+    // 无变化时不触发整窗样式失效和监听 style 的 Markdown 组件重绘。
+    if (root.style.getPropertyValue(name) !== value) root.style.setProperty(name, value);
+  }
+  const hasImage = !!resolveAppearance(theme, appearance, noteId).backgroundImagePath;
+  if (root.hasAttribute("data-appearance-image") !== hasImage) {
+    root.toggleAttribute("data-appearance-image", hasImage);
   }
 }
 

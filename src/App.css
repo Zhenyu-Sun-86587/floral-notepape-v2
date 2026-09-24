@@ -164,8 +164,8 @@ body {
   border-width: var(--appearance-border-width);
 }
 
-.app-surface-frame::after,
-.appearance-note-content::before {
+:root[data-appearance-image] .app-surface-frame::after,
+:root[data-appearance-image] .appearance-note-content::before {
   content: "";
   position: absolute;
   inset: -24px;

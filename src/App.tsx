@@ -7,7 +7,12 @@ import { TileShowcase } from "./components/TileShowcase";
 import { ToastContainer } from "./components/Toast";
 import { tabToIndentListener } from "indent-textarea";
 import { getConfig } from "./features/settings/api";
-import { applyAppearance, applyTheme, watchSystemTheme } from "./features/settings/theme";
+import {
+  applyAppearance,
+  applyTheme,
+  resolveAppearance,
+  watchSystemTheme,
+} from "./features/settings/theme";
 import { applyNativeMaterial } from "./features/settings/nativeMaterial";
 import type { AppConfig, ThemeOption } from "./features/settings/types";
 import { getInitialRoute } from "./features/windows/windowRoutes";
@@ -25,7 +30,10 @@ function App() {
         const theme = (config.theme || "system") as ThemeOption;
         applyTheme(theme);
         applyAppearance(theme, config.appearance);
-        void applyNativeMaterial(config.appearance?.nativeMaterial ?? false);
+        void applyNativeMaterial(
+          config.appearance?.nativeMaterial ?? false,
+          resolveAppearance(theme, config.appearance).radius,
+        );
         cleanup = watchSystemTheme(theme);
         document.documentElement.style.setProperty(
           "--tab-indent-size",
@@ -43,7 +51,10 @@ function App() {
       const theme = (event.payload.theme || "system") as ThemeOption;
       applyTheme(theme);
       applyAppearance(theme, event.payload.appearance);
-      void applyNativeMaterial(event.payload.appearance?.nativeMaterial ?? false);
+      void applyNativeMaterial(
+        event.payload.appearance?.nativeMaterial ?? false,
+        resolveAppearance(theme, event.payload.appearance).radius,
+      );
       themeCleanup();
       themeCleanup = watchSystemTheme(theme);
       document.documentElement.style.setProperty(
