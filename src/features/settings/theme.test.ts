@@ -20,6 +20,22 @@ describe("appearance inheritance and theme file", () => {
     vi.unstubAllGlobals();
   });
 
+  it("uses a translucent default for Acrylic while preserving explicit opacity", () => {
+    expect(resolveAppearance("dark", { version: 1, nativeMaterial: true }).opacity).toBe(0.6);
+    expect(
+      resolveAppearance(
+        "dark",
+        {
+          version: 1,
+          nativeMaterial: true,
+          global: { opacity: 0.8 },
+          notes: { note1: { opacity: 0.4 } },
+        },
+        "note1",
+      ).opacity,
+    ).toBe(0.4);
+  });
+
   it("rejects executable CSS fields in imported themes", () => {
     expect(() =>
       parseThemeFile(

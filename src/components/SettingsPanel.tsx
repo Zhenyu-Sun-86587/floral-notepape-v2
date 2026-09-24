@@ -98,7 +98,7 @@ export function SettingsPanel({
   );
 
   return (
-    <aside className="w-[360px] h-full shrink-0 border-l border-paper-deep/30 bg-cloud/92 backdrop-blur-sm flex flex-col">
+    <aside className="app-settings-panel w-[360px] h-full shrink-0 border-l border-paper-deep/30 bg-cloud/92 backdrop-blur-sm flex flex-col">
       <div className="flex items-center justify-between h-11 px-4 border-b border-paper-deep/25">
         <h2 className="text-[13px] font-display font-medium text-ink-soft">
           {t("settings.title", { defaultValue: "应用设置" })}

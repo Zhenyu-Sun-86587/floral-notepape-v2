@@ -9,6 +9,7 @@ export function getMaterialStatus(): MaterialStatus {
 }
 
 export async function applyNativeMaterial(enabled: boolean): Promise<void> {
+  document.documentElement.setAttribute("data-native-material", enabled ? "on" : "off");
   if (requested === enabled) return;
   requested = enabled;
   try {

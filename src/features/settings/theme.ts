@@ -105,6 +105,8 @@ export function resolveAppearance(
   // 逐字段合并，便签只覆盖显式设置的值，仍跟随全局其余字段变化。
   return {
     ...presets[name],
+    // Acrylic 需要可透出的 WebView 背景；显式设置的不透明度仍由用户决定。
+    ...(appearance?.nativeMaterial ? { opacity: 0.6 } : {}),
     ...appearance?.global,
     ...(noteId ? appearance?.notes?.[noteId] : undefined),
   };

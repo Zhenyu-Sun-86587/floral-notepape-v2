@@ -2212,7 +2212,7 @@ export function MainWindow({
       <div className="app-main-surface relative noise-bg overflow-hidden flex flex-col flex-1">
         <BackgroundLayer config={settingsConfig} />
         <div
-          className={`relative z-10 flex items-center justify-between h-11 bg-paper/55 backdrop-blur-[1px] border-b border-paper-deep/30 shrink-0 select-none cursor-default ${
+          className={`app-main-titlebar relative z-10 flex items-center justify-between h-11 bg-paper/55 backdrop-blur-[1px] border-b border-paper-deep/30 shrink-0 select-none cursor-default ${
             isMacOS ? "pl-20 pr-5" : "pl-5 pr-0"
           }`}
           onMouseDown={handleTitleBarMouseDown}
@@ -2395,7 +2395,7 @@ export function MainWindow({
 
         <div className="relative z-10 flex flex-1 min-h-0">
           <div
-            className="border-r border-paper-deep/30 bg-paper/40 shrink-0 overflow-hidden transition-[width] duration-[600ms]"
+            className="app-main-sidebar border-r border-paper-deep/30 bg-paper/40 shrink-0 overflow-hidden transition-[width] duration-[600ms]"
             style={{ width: sidebarCollapsed ? 0 : sidebarWidth }}
           >
             <div className="flex flex-col h-full" style={{ width: `${sidebarWidth}px` }}>
@@ -2977,7 +2977,7 @@ export function MainWindow({
             </div>
           )}
 
-          <div className="flex-1 flex flex-col min-w-0">
+          <div className="app-main-editor-pane flex-1 flex flex-col min-w-0">
             <div className="flex items-center justify-between px-4 h-10 border-b border-paper-deep/20 shrink-0 bg-paper/20">
               <div className="flex items-center gap-1">
                 <button
@@ -3270,8 +3270,9 @@ export function MainWindow({
                     settingsConfig?.appearance,
                     selectedAppearanceId,
                   ),
-                  backgroundColor:
-                    "color-mix(in srgb, var(--color-cloud) var(--appearance-opacity-percent), transparent)",
+                  backgroundColor: settingsConfig?.appearance?.nativeMaterial
+                    ? "var(--color-cloud)"
+                    : "color-mix(in srgb, var(--color-cloud) var(--appearance-opacity-percent), transparent)",
                 } as CSSProperties
               }
             >

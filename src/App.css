@@ -164,7 +164,7 @@ body {
   border-width: var(--appearance-border-width);
 }
 
-.app-surface-frame::before,
+.app-surface-frame::after,
 .appearance-note-content::before {
   content: "";
   position: absolute;
@@ -176,6 +176,26 @@ body {
   background-position: center;
   filter: blur(var(--appearance-image-blur, 0px));
   opacity: 0.65;
+}
+
+/* 桌面材质只露在窗口边栏；正文保持实心，效果接近 Obsidian 的分层结构。 */
+:root[data-native-material="on"] .app-main-surface {
+  background-color: transparent;
+}
+
+:root[data-native-material="on"] .app-main-titlebar,
+:root[data-native-material="on"] .app-main-sidebar,
+:root[data-native-material="on"] .app-settings-panel {
+  background-color: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--color-cloud) 55%, #8ea8b8) 55%,
+    transparent
+  );
+  backdrop-filter: none;
+}
+
+:root[data-native-material="on"] .app-main-editor-pane {
+  background-color: var(--color-cloud);
 }
 
 .appearance-note-content {

@@ -29,7 +29,6 @@ const numberFields: Array<[keyof AppearanceTokens, string, number, number, numbe
   ["padding", "内边距", 4, 40, 1],
   ["radius", "圆角", 0, 30, 1],
   ["borderWidth", "边框宽度", 0, 4, 1],
-  ["opacity", "背景透明度", 0.2, 1, 0.05],
 ];
 
 export function AppearanceSection({ config, noteId, onChange }: Props) {
@@ -148,7 +147,7 @@ export function AppearanceSection({ config, noteId, onChange }: Props) {
       </label>
       <p className="text-[10px] text-ink-ghost">
         {materialStatus === "active"
-          ? "原生材质已启用；降低背景透明度可观察效果"
+          ? "系统已接受 Acrylic 请求；实际磨砂效果以桌面观察为准"
           : materialStatus === "unavailable"
             ? "当前环境不可用，已降级为半透明背景"
             : "原生材质未启用"}
@@ -206,7 +205,7 @@ export function AppearanceSection({ config, noteId, onChange }: Props) {
             onChange={(event) => update(key, Number(event.target.value))}
           />
           <span className="w-8 text-right text-[10px] text-ink-faint">
-            {Number(values[key]).toFixed(key === "opacity" || key === "lineHeight" ? 1 : 0)}
+            {Number(values[key]).toFixed(key === "lineHeight" ? 1 : 0)}
           </span>
           {overrides[key] !== undefined && (
             <button className="text-[10px] text-bamboo" onClick={() => update(key, undefined)}>
@@ -215,6 +214,26 @@ export function AppearanceSection({ config, noteId, onChange }: Props) {
           )}
         </div>
       ))}
+      <div className="flex items-center gap-2">
+        <label className="w-20 shrink-0 text-[11px] text-ink-faint">背景透明度</label>
+        <input
+          type="range"
+          className="flex-1 accent-bamboo"
+          min={0}
+          max={80}
+          step={5}
+          value={Math.round((1 - values.opacity) * 100)}
+          onChange={(event) => update("opacity", 1 - Number(event.target.value) / 100)}
+        />
+        <span className="w-8 text-right text-[10px] text-ink-faint">
+          {Math.round((1 - values.opacity) * 100)}%
+        </span>
+        {overrides.opacity !== undefined && (
+          <button className="text-[10px] text-bamboo" onClick={() => update("opacity", undefined)}>
+            继承
+          </button>
+        )}
+      </div>
       <div className="flex items-center gap-2">
         <label className="w-20 shrink-0 text-[11px] text-ink-faint">阴影</label>
         <select
