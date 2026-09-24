@@ -431,6 +431,13 @@ fn set_native_material(
         use tauri::window::{Effect, EffectsBuilder};
         let is_surface =
             window.label().starts_with("notepad-") || window.label().starts_with("tile-");
+        if enabled && crate::desktop_attachment::is_attached(&window) {
+            // Explorer 子窗口的 Acrylic/阴影会产生黑边；向前端明确报告此组合不可用。
+            let none: Option<tauri::utils::config::WindowEffectsConfig> = None;
+            window.set_effects(none)?;
+            window.set_shadow(false)?;
+            return Ok(false);
+        }
         if enabled {
             if is_surface {
                 // Windows 11 的 DWM 圆角需要无边框窗口保留系统阴影；窗口 Region 会破坏材质合成。

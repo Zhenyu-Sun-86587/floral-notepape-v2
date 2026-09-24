@@ -164,6 +164,12 @@ body {
   border-width: var(--appearance-border-width);
 }
 
+/* Explorer 子窗口不使用窗口阴影/描边，避免透明圆角后露出 DWM 黑边。 */
+:root[data-desktop-attached="true"] .app-surface-frame {
+  box-shadow: none;
+  border-width: 0;
+}
+
 /* Windows 原生材质由 DWM 裁切，CSS 圆角与系统的两档圆角保持一致。 */
 :root[data-native-corner="round"] .app-surface-frame {
   border-radius: min(var(--app-surface-radius), 8px);

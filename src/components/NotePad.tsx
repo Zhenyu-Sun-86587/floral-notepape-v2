@@ -31,7 +31,11 @@ import {
   startCurrentWindowDragWithOffset,
   startCurrentWindowResize,
 } from "../features/windows/controls";
-import { getSurfaceSession } from "../features/windows/surfaceSession";
+import {
+  getSurfaceSession,
+  saveSurfaceSession,
+  type SurfaceSession,
+} from "../features/windows/surfaceSession";
 import type { ResizeDirection } from "../features/windows/controls";
 import { getConfig } from "../features/settings/api";
 import {
@@ -143,6 +147,9 @@ export function NotePad({
 }: NotePadProps) {
   const { t } = useTranslation();
   const [surfaceMode, setSurfaceMode] = useState<NoteSurfaceMode>(initialSurfaceMode);
+  const [tileWriting, setTileWriting] = useState(false);
+  const [tileLocked, setTileLocked] = useState(false);
+  const [desktopAttached, setDesktopAttached] = useState(false);
   const [mode, setMode] = useState<OpenMode>("new");
   const [notes, setNotes] = useState<NoteMetadata[]>([]);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
@@ -173,6 +180,7 @@ export function NotePad({
   const [bootstrapReady, setBootstrapReady] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLTextAreaElement>(null);
+  const tileContentRef = useRef<HTMLTextAreaElement>(null);
   const tileDragIntentRef = useRef<{ x: number; y: number } | null>(null);
   const windowLabelRef = useRef("");
   const statusRef = useRef<NotePadStatus>("empty");
@@ -364,10 +372,15 @@ export function NotePad({
               : initialNoteId
                 ? `note:${initialNoteId}`
                 : null;
-            const desktopAttached = key
-              ? (await getSurfaceSession(key).catch(() => null))?.windowMode === "desktopAttached"
-              : false;
-            if (silentRestore || desktopAttached) {
+            const session = key ? await getSurfaceSession(key).catch(() => null) : null;
+            const attached = session?.windowMode === "desktopAttached";
+            setDesktopAttached(attached);
+            setTileLocked(session?.locked ?? false);
+            document.documentElement.setAttribute(
+              "data-desktop-attached",
+              String(attached && !session?.locked),
+            );
+            if (silentRestore || attached || session?.locked) {
               await invoke("show_silent_surface");
             } else {
               await showCurrentWindow();
@@ -381,6 +394,30 @@ export function NotePad({
       cancelled = true;
     };
   }, [bootstrapReady, initialBindingId, initialNoteId]);
+
+  useEffect(() => {
+    const ownKey = initialBindingId
+      ? `linked:${initialBindingId}`
+      : (editingNoteId ?? initialNoteId)
+        ? `note:${editingNoteId ?? initialNoteId}`
+        : null;
+    if (!ownKey) return undefined;
+    const unlisten = listen<SurfaceSession>("surface-session-changed", (event) => {
+      if (event.payload.key !== ownKey) return;
+      setDesktopAttached(event.payload.windowMode === "desktopAttached");
+      setTileLocked(event.payload.locked);
+    });
+    return () => {
+      void unlisten.then((dispose) => dispose());
+    };
+  }, [editingNoteId, initialBindingId, initialNoteId]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute(
+      "data-desktop-attached",
+      String(desktopAttached && !tileLocked && !tileWriting),
+    );
+  }, [desktopAttached, tileLocked, tileWriting]);
 
   useEffect(() => {
     if (!initialNoteId && !initialBindingId) return;
@@ -441,8 +478,17 @@ export function NotePad({
     void applyNativeMaterial(
       appearanceConfig?.nativeMaterial ?? false,
       resolveAppearance(appearanceTheme, appearanceConfig, noteId).radius,
+      true,
     );
-  }, [appearanceTheme, appearanceConfig, editingNoteId, initialBindingId]);
+  }, [
+    appearanceTheme,
+    appearanceConfig,
+    editingNoteId,
+    initialBindingId,
+    desktopAttached,
+    tileLocked,
+    tileWriting,
+  ]);
 
   useEffect(() => {
     if (tileColorMode !== "system") return;
@@ -614,7 +660,7 @@ export function NotePad({
     handleDragOver: imageDragOverHandler,
   } = useImagePaste({
     noteId: editingNoteId,
-    textareaRef: contentRef,
+    textareaRef: tileWriting ? tileContentRef : contentRef,
     setContent,
     markDirty: () => setStatus("dirty"),
     onEnsureNoteSaved: ensureNoteSaved,
@@ -698,6 +744,44 @@ export function NotePad({
     tileDragIntentRef.current = null;
   }, []);
 
+  const startTileWriting = useCallback(async () => {
+    if (tileLocked || tileWriting) return;
+    try {
+      await invoke("surface_edit_mode", { editing: true });
+      setTileWriting(true);
+      requestAnimationFrame(() => tileContentRef.current?.focus());
+    } catch (error) {
+      showToast(getErrorMessage(error));
+    }
+  }, [tileLocked, tileWriting]);
+
+  const finishTileWriting = useCallback(async () => {
+    if (!tileWriting) return;
+    try {
+      await saveNote();
+      await invoke("surface_edit_mode", { editing: false });
+      setTileWriting(false);
+    } catch (error) {
+      setStatus("saveFailed");
+      showToast(getErrorMessage(error));
+    }
+  }, [saveNote, tileWriting]);
+
+  const lockTile = useCallback(async () => {
+    const key = initialBindingId
+      ? `linked:${initialBindingId}`
+      : `note:${editingNoteId ?? initialNoteId ?? ""}`;
+    try {
+      if (statusRef.current === "dirty") await saveNote();
+      const session = await getSurfaceSession(key);
+      await saveSurfaceSession({ ...session, locked: true });
+      setTileWriting(false);
+      setTileLocked(true);
+    } catch (error) {
+      showToast(getErrorMessage(error));
+    }
+  }, [editingNoteId, initialBindingId, initialNoteId, saveNote]);
+
   useEffect(() => clearPendingTileDrag, [clearPendingTileDrag]);
 
   useEffect(() => {
@@ -749,9 +833,9 @@ export function NotePad({
       clearPendingTileDrag();
       event.preventDefault();
       event.stopPropagation();
-      void switchSurfaceMode("pad");
+      void startTileWriting();
     },
-    [clearPendingTileDrag, switchSurfaceMode, tileDoubleClickToEdit],
+    [clearPendingTileDrag, startTileWriting, tileDoubleClickToEdit],
   );
 
   useEffect(() => {
@@ -841,8 +925,8 @@ export function NotePad({
   handleCloseRef.current = handleClose;
   const copyTileContentRef = useRef(copyTileContent);
   copyTileContentRef.current = copyTileContent;
-  const switchSurfaceModeRef = useRef(switchSurfaceMode);
-  switchSurfaceModeRef.current = switchSurfaceMode;
+  const startTileWritingRef = useRef(startTileWriting);
+  startTileWritingRef.current = startTileWriting;
 
   useEffect(() => {
     function handleSurfaceActionRequest(event: Event) {
@@ -864,7 +948,7 @@ export function NotePad({
         return;
       }
 
-      void switchSurfaceModeRef.current("pad");
+      void startTileWritingRef.current();
     }
 
     window.addEventListener(NOTE_SURFACE_ACTION_EVENT, handleSurfaceActionRequest);
@@ -946,6 +1030,22 @@ export function NotePad({
             statusRef.current = "dirty";
             setStatus("dirty");
           }}
+          editing={tileWriting}
+          titleEditable={!initialBindingId}
+          onTitleChange={(value) => {
+            titleValueRef.current = value;
+            setTitle(value);
+            setStatus("dirty");
+          }}
+          onContentChange={(value) => {
+            contentValueRef.current = value;
+            setContent(value);
+            setStatus("dirty");
+          }}
+          contentEditorRef={tileContentRef}
+          onEditorPaste={imagePasteHandler}
+          onEditorDrop={imageDropHandler}
+          onEditorDragOver={imageDragOverHandler}
           width="100%"
           className="h-full cursor-default"
           data-surface-mode={surfaceMode}
@@ -954,26 +1054,84 @@ export function NotePad({
           onMouseDown={handleDrag}
           onDoubleClick={handleTileDoubleClick}
         >
-          <button
-            type="button"
-            aria-label="取消钉屏"
-            title="取消钉屏"
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={() => void handleClose()}
-            className="absolute top-2 right-2 z-10 w-6 h-6 flex items-center justify-center rounded-full text-ink-ghost/70 hover:text-red-400 hover:bg-danger-bg/80 transition-colors cursor-pointer"
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
+          <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+            <button
+              type="button"
+              aria-label={tileWriting ? "保存并切换阅读模式" : "切换写作模式"}
+              title={tileWriting ? "保存并切换阅读模式" : "切换写作模式"}
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={() => void (tileWriting ? finishTileWriting() : startTileWriting())}
+              className="w-6 h-6 flex items-center justify-center rounded-full text-ink-ghost/70 hover:text-ink hover:bg-paper-warm/80 transition-colors cursor-pointer"
             >
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                {tileWriting ? (
+                  <path d="M4 19h16M6 5h12v10H6zM9 5v5h6" />
+                ) : (
+                  <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L9 17l-4 1 1-4z" />
+                )}
+              </svg>
+            </button>
+            <button
+              type="button"
+              aria-label="锁定便签并允许鼠标穿透"
+              title="锁定便签；从主界面解锁"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={() => void lockTile()}
+              className="w-6 h-6 flex items-center justify-center rounded-full text-ink-ghost/70 hover:text-ink hover:bg-paper-warm/80 transition-colors cursor-pointer"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect x="5" y="10" width="14" height="11" rx="2" />
+                <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              aria-label="取消钉屏"
+              title="取消钉屏"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={() =>
+                void (async () => {
+                  try {
+                    if (tileWriting && statusRef.current === "dirty") await saveNote();
+                    handleClose();
+                  } catch (error) {
+                    showToast(getErrorMessage(error));
+                  }
+                })()
+              }
+              className="w-6 h-6 flex items-center justify-center rounded-full text-ink-ghost/70 hover:text-red-400 hover:bg-danger-bg/80 transition-colors cursor-pointer"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+              >
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
           <SurfaceResizeHandles />
         </Tile>
       ) : (

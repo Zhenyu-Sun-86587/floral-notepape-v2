@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { getErrorMessage } from "../features/notes/api";
 import {
   hotkeyToConfigString,
@@ -32,6 +33,15 @@ export function SurfaceSessionControls({ sessionKey }: { sessionKey: string }) {
       });
     return () => {
       active = false;
+    };
+  }, [sessionKey]);
+
+  useEffect(() => {
+    const unlisten = listen<SurfaceSession>("surface-session-changed", (event) => {
+      if (event.payload.key === sessionKey) setSession(event.payload);
+    });
+    return () => {
+      void unlisten.then((dispose) => dispose());
     };
   }, [sessionKey]);
 
@@ -107,6 +117,20 @@ export function SurfaceSessionControls({ sessionKey }: { sessionKey: string }) {
               桌面附着暂仅支持 Windows；Mac 适配由协作者验收。
             </p>
           )}
+          {session?.windowMode === "desktopAttached" && (
+            <p className="mb-2 text-xs text-ink-faint">
+              桌面附着时会停用原生 Acrylic 和窗口阴影，避免黑边；便签颜色与圆角仍保留。
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={!session || busy}
+            onClick={() => void save({ locked: !session?.locked })}
+            className="mb-2 w-full rounded-lg border border-paper-deep p-2 text-left"
+          >
+            {session?.locked ? "解除鼠标穿透锁定" : "锁定便签并允许鼠标穿透"}
+          </button>
+          <p className="mb-3 text-xs text-ink-faint">锁定后便签置顶且不接收鼠标；从这里解锁。</p>
           <div className="mb-1 text-ink-faint">全局快捷键（默认不占用）</div>
           <div className="flex items-center gap-2">
             <button
@@ -134,7 +158,12 @@ export function SurfaceSessionControls({ sessionKey }: { sessionKey: string }) {
             type="button"
             disabled={!session || busy}
             onClick={() =>
-              void save({ startupBehavior: "hidden", shortcut: "", windowMode: "alwaysOnTop" })
+              void save({
+                startupBehavior: "hidden",
+                shortcut: "",
+                windowMode: "alwaysOnTop",
+                locked: false,
+              })
             }
             className="mt-2 text-xs text-ink-faint underline"
           >

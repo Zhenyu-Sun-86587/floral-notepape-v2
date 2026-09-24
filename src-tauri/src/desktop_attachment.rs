@@ -4,7 +4,10 @@ use std::ptr::null_mut;
 use tauri::WebviewWindow;
 use windows_sys::Win32::{
     Foundation::{GetLastError, SetLastError, BOOL, HWND, LPARAM, POINT, RECT},
-    Graphics::Gdi::MapWindowPoints,
+    Graphics::{
+        Dwm::{DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND},
+        Gdi::MapWindowPoints,
+    },
     UI::{
         HiDpi::{AreDpiAwarenessContextsEqual, GetWindowDpiAwarenessContext},
         WindowsAndMessaging::{
@@ -95,6 +98,18 @@ pub fn attach(window: &WebviewWindow) -> Result<(), AppError> {
     {
         // 跨进程 DPI 模式不一致时 SetParent 可重置本进程的 DPI 上下文，直接拒绝。
         return Err(error("Explorer 与便签的 DPI 模式不同，无法安全附着桌面"));
+    }
+    // DWM 的 Acrylic/窗口阴影用于顶层窗口；保留在 Explorer 子窗口上会露出黑色边缘。
+    let no_effects: Option<tauri::utils::config::WindowEffectsConfig> = None;
+    window.set_effects(no_effects)?;
+    window.set_shadow(false)?;
+    unsafe {
+        DwmSetWindowAttribute(
+            handle,
+            DWMWA_WINDOW_CORNER_PREFERENCE as u32,
+            (&DWMWCP_DONOTROUND as *const i32).cast(),
+            std::mem::size_of::<i32>() as u32,
+        );
     }
     let rect = screen_rect(handle)?;
     let original_style = unsafe { GetWindowLongPtrW(handle, GWL_STYLE) };

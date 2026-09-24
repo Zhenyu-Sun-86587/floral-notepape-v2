@@ -10,7 +10,7 @@ describe("note surface actions", () => {
   test("accepts only supported note surface actions", () => {
     expect(isNoteSurfaceAction("copy")).toBe(true);
     expect(isNoteSurfaceAction("save")).toBe(true);
-    expect(isNoteSurfaceAction("switchToPad")).toBe(true);
+    expect(isNoteSurfaceAction("switchToWriting")).toBe(true);
     expect(isNoteSurfaceAction("close")).toBe(true);
     expect(isNoteSurfaceAction("delete")).toBe(false);
   });

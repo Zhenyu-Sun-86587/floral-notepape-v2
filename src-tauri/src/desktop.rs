@@ -1917,11 +1917,14 @@ fn open_or_focus_window(
     }
 
     let visual_options = dynamic_window_visual_options(label);
-    let session_mode = session_key_from_label(label)
-        .and_then(|key| crate::surface_sessions::get(&key).ok())
-        .map(|session| session.window_mode);
-    let always_on_top = session_mode
-        .map(|mode| mode == crate::surface_sessions::WindowMode::AlwaysOnTop)
+    let surface_session =
+        session_key_from_label(label).and_then(|key| crate::surface_sessions::get(&key).ok());
+    let always_on_top = surface_session
+        .as_ref()
+        .map(|session| {
+            session.locked
+                || session.window_mode == crate::surface_sessions::WindowMode::AlwaysOnTop
+        })
         .unwrap_or(opts.always_on_top);
 
     if let Some(window) = app.get_webview_window(label) {
@@ -1931,13 +1934,16 @@ fn open_or_focus_window(
         apply_window_bounds(&window, opts.bounds)?;
         window.set_shadow(opts.shadow)?;
         window.set_always_on_top(always_on_top)?;
-        if let Some(mode) = session_mode {
-            apply_surface_window_mode(&window, mode)?;
+        if let Some(session) = &surface_session {
+            apply_surface_window_mode(&window, session.window_mode, session.locked)?;
         }
         window.unminimize()?;
         window.show()?;
         if opts.focus_on_show
-            && session_mode != Some(crate::surface_sessions::WindowMode::DesktopAttached)
+            && !surface_session.as_ref().is_some_and(|session| {
+                session.locked
+                    || session.window_mode == crate::surface_sessions::WindowMode::DesktopAttached
+            })
         {
             window.set_focus()?;
             if let Some(key) = session_key_from_label(label) {
@@ -1984,8 +1990,9 @@ fn open_or_focus_window(
             .and_then(|bounds| resolve_session_bounds(app, &bounds))
     });
     apply_window_bounds(&window, restored_bounds)?;
-    if let Some(mode) = session_mode {
-        if let Err(error) = apply_surface_window_mode(&window, mode) {
+    if let Some(session) = &surface_session {
+        if let Err(error) = apply_surface_window_mode(&window, session.window_mode, session.locked)
+        {
             let _ = window.close();
             return Err(error);
         }
@@ -2147,6 +2154,7 @@ pub fn save_surface_session(
     current.startup_behavior = session.startup_behavior;
     current.shortcut = session.shortcut;
     current.window_mode = session.window_mode;
+    current.locked = session.locked;
     #[cfg(not(target_os = "windows"))]
     if session.window_mode == crate::surface_sessions::WindowMode::DesktopAttached {
         return Err(surface_mode_error("桌面附着目前仅支持 Windows"));
@@ -2166,11 +2174,17 @@ pub fn save_surface_session(
     .into_iter()
     .flatten()
     .collect();
-    if session.window_mode != previous.window_mode {
+    if session.window_mode != previous.window_mode || session.locked != previous.locked {
         for window in &windows {
-            if let Err(error) = apply_surface_window_mode(window, session.window_mode) {
+            if let Err(error) =
+                apply_surface_window_mode(window, session.window_mode, session.locked)
+            {
                 for previous_window in &windows {
-                    let _ = apply_surface_window_mode(previous_window, previous.window_mode);
+                    let _ = apply_surface_window_mode(
+                        previous_window,
+                        previous.window_mode,
+                        previous.locked,
+                    );
                 }
                 #[cfg(desktop)]
                 if shortcut_changed {
@@ -2180,9 +2194,9 @@ pub fn save_surface_session(
             }
         }
     }
-    if let Err(error) = crate::surface_sessions::update(current) {
+    if let Err(error) = crate::surface_sessions::update(current.clone()) {
         for window in &windows {
-            let _ = apply_surface_window_mode(window, previous.window_mode);
+            let _ = apply_surface_window_mode(window, previous.window_mode, previous.locked);
         }
         #[cfg(desktop)]
         if shortcut_changed {
@@ -2190,6 +2204,7 @@ pub fn save_surface_session(
         }
         return Err(error);
     }
+    let _ = app.emit("surface-session-changed", current);
     Ok(())
 }
 
@@ -2205,15 +2220,24 @@ fn surface_mode_error(message: &str) -> AppError {
 fn apply_surface_window_mode(
     window: &tauri::WebviewWindow,
     mode: crate::surface_sessions::WindowMode,
+    locked: bool,
 ) -> Result<(), AppError> {
+    window.set_ignore_cursor_events(false)?;
     #[cfg(target_os = "windows")]
-    if mode == crate::surface_sessions::WindowMode::DesktopAttached
+    if !locked
+        && mode == crate::surface_sessions::WindowMode::DesktopAttached
         && crate::desktop_attachment::is_attached(window)
     {
         return Ok(());
     }
     #[cfg(target_os = "windows")]
     crate::desktop_attachment::detach(window)?;
+    if locked {
+        // 锁定保留原层级设置；仅当前窗口临时置顶并允许鼠标穿透。
+        window.set_always_on_top(true)?;
+        window.set_ignore_cursor_events(true)?;
+        return Ok(());
+    }
     window.set_always_on_top(mode == crate::surface_sessions::WindowMode::AlwaysOnTop)?;
     if mode == crate::surface_sessions::WindowMode::DesktopAttached {
         #[cfg(target_os = "windows")]
@@ -2228,7 +2252,11 @@ pub fn set_surface_edit_mode(window: &tauri::WebviewWindow, editing: bool) -> Re
     let Some(key) = session_key_from_label(window.label()) else {
         return Ok(());
     };
-    let mode = crate::surface_sessions::get(&key)?.window_mode;
+    let session = crate::surface_sessions::get(&key)?;
+    if session.locked {
+        return Ok(());
+    }
+    let mode = session.window_mode;
     if mode != crate::surface_sessions::WindowMode::DesktopAttached {
         return Ok(());
     }
@@ -2238,7 +2266,7 @@ pub fn set_surface_edit_mode(window: &tauri::WebviewWindow, editing: bool) -> Re
         window.set_always_on_top(false)?;
         window.set_focus()?;
     } else {
-        apply_surface_window_mode(window, mode)?;
+        apply_surface_window_mode(window, mode, false)?;
     }
     Ok(())
 }

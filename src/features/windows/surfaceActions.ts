@@ -1,9 +1,9 @@
-export type NoteSurfaceAction = "copy" | "save" | "switchToPad" | "close";
+export type NoteSurfaceAction = "copy" | "save" | "switchToWriting" | "close";
 
 export const NOTE_SURFACE_ACTION_EVENT = "floral-notepaper:surface-action";
 
 export function isNoteSurfaceAction(value: unknown): value is NoteSurfaceAction {
-  return value === "copy" || value === "save" || value === "switchToPad" || value === "close";
+  return value === "copy" || value === "save" || value === "switchToWriting" || value === "close";
 }
 
 export function requestSurfaceAction(action: NoteSurfaceAction): void {

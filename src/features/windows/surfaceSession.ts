@@ -10,6 +10,7 @@ export interface SurfaceSession {
   presentation: Presentation;
   shortcut: string;
   windowMode: WindowMode;
+  locked: boolean;
   expandedBounds: {
     monitorName: string | null;
     offsetX: number;

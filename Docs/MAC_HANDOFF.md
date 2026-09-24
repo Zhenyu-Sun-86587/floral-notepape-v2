@@ -32,3 +32,4 @@
 
 - `desktopAttached` 是 Windows 专有的 Explorer 子窗口模式；Mac 设置界面灰显，Rust 后端也拒绝保存该模式。Mac 协作者如要实现等价桌面层，请单独设计并在 Mac 实测，不要仅取消置顶就称为桌面附着。
 - 普通/置顶模式沿用 P6，会话文件可读取新枚举值；在 Mac 端打开来自 Windows 的 `desktopAttached` 会话前，需要设计明确的提示和恢复路径。
+- 1.4.1 会话增加 `locked` 字段，锁定时便签置顶且鼠标穿透，主界面负责解锁。Mac 上的点击穿透、窗口焦点、Dock/菜单栏恢复尚未实测；Mac 协作者需单独验收，不沿用 Windows 结果。

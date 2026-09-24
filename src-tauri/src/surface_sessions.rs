@@ -62,6 +62,8 @@ pub struct SurfaceSession {
     #[serde(default)]
     pub window_mode: WindowMode,
     #[serde(default)]
+    pub locked: bool,
+    #[serde(default)]
     pub expanded_bounds: Option<ExpandedBounds>,
 }
 

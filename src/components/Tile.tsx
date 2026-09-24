@@ -1,5 +1,5 @@
 import chroma from "chroma-js";
-import type { CSSProperties, HTMLAttributes } from "react";
+import type { CSSProperties, HTMLAttributes, Ref, TextareaHTMLAttributes } from "react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { DEFAULT_TILE_COLOR, normalizeTileColor } from "../features/settings/tileColor";
@@ -20,6 +20,14 @@ export interface TileProps extends Omit<
   imageRootDir?: string;
   allowRemoteImages?: boolean;
   onTaskToggle?: (offset: number, checked: boolean) => void;
+  editing?: boolean;
+  titleEditable?: boolean;
+  onTitleChange?: (value: string) => void;
+  onContentChange?: (value: string) => void;
+  contentEditorRef?: Ref<HTMLTextAreaElement>;
+  onEditorPaste?: TextareaHTMLAttributes<HTMLTextAreaElement>["onPaste"];
+  onEditorDrop?: TextareaHTMLAttributes<HTMLTextAreaElement>["onDrop"];
+  onEditorDragOver?: TextareaHTMLAttributes<HTMLTextAreaElement>["onDragOver"];
 }
 
 const MARK_SIZE = 8;
@@ -83,6 +91,14 @@ export function Tile({
   imageRootDir,
   allowRemoteImages = false,
   onTaskToggle,
+  editing = false,
+  titleEditable = false,
+  onTitleChange,
+  onContentChange,
+  contentEditorRef,
+  onEditorPaste,
+  onEditorDrop,
+  onEditorDragOver,
   className = "",
   style,
   children,
@@ -116,16 +132,43 @@ export function Tile({
       className={`app-surface-frame relative border overflow-hidden select-none shadow-[0_1px_8px_rgba(26,26,24,0.04)] hover:shadow-[0_6px_24px_rgba(26,26,24,0.07)] ${className}`}
       style={mergedStyle}
     >
-      <div className="px-4 pt-4 pb-4 h-full overflow-y-auto scrollbar-hidden">
-        {title && (
+      <div
+        className={`px-4 pt-4 pb-4 h-full overflow-y-auto scrollbar-hidden ${editing ? "flex flex-col" : ""}`}
+      >
+        {editing && titleEditable ? (
+          <input
+            value={title ?? ""}
+            onChange={(event) => onTitleChange?.(event.target.value)}
+            aria-label="便签标题"
+            className="font-display tracking-wide mb-3 leading-snug bg-transparent border-0 outline-none w-full pl-0 pr-24 py-0 select-text"
+            style={{ color: titleColor, fontSize: `${fontSize + 1}px` }}
+          />
+        ) : title ? (
           <div
-            className="font-display tracking-wide mb-3 leading-snug"
+            className="font-display tracking-wide mb-3 leading-snug pr-24"
             style={{ color: titleColor, fontSize: `${fontSize + 1}px` }}
           >
             {title}
           </div>
-        )}
-        {content ? (
+        ) : null}
+        {editing ? (
+          <textarea
+            ref={contentEditorRef}
+            value={content}
+            onChange={(event) => onContentChange?.(event.target.value)}
+            onPaste={onEditorPaste}
+            onDrop={onEditorDrop}
+            onDragOver={onEditorDragOver}
+            aria-label="便签正文"
+            placeholder="写点什么……"
+            className="w-full flex-1 min-h-[8rem] bg-transparent border-0 outline-none resize-none font-body select-text p-0"
+            style={{
+              color: contentColor,
+              fontSize: `${fontSize}px`,
+              lineHeight: "var(--appearance-line-height)",
+            }}
+          />
+        ) : content ? (
           renderMarkdown ? (
             <div style={{ color: contentColor }}>
               <MarkdownPreview

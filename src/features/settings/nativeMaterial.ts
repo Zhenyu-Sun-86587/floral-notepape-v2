@@ -9,7 +9,11 @@ export function getMaterialStatus(): MaterialStatus {
   return status;
 }
 
-export async function applyNativeMaterial(enabled: boolean, radius: number): Promise<void> {
+export async function applyNativeMaterial(
+  enabled: boolean,
+  radius: number,
+  force = false,
+): Promise<void> {
   const root = document.documentElement;
   const material = enabled ? "on" : "off";
   if (root.getAttribute("data-native-material") !== material) {
@@ -23,7 +27,7 @@ export async function applyNativeMaterial(enabled: boolean, radius: number): Pro
   } else if (root.getAttribute("data-native-corner") !== corner) {
     root.setAttribute("data-native-corner", corner);
   }
-  if (requested === enabled && requestedRadius === radius) return;
+  if (!force && requested === enabled && requestedRadius === radius) return;
   requested = enabled;
   requestedRadius = radius;
   try {
