@@ -17,6 +17,7 @@ export interface TileProps extends Omit<
   fontSize?: number;
   renderMarkdown?: boolean;
   imageBaseDir?: string;
+  onTaskToggle?: (offset: number, checked: boolean) => void;
 }
 
 const MARK_SIZE = 8;
@@ -77,6 +78,7 @@ export function Tile({
   fontSize = 14,
   renderMarkdown = false,
   imageBaseDir,
+  onTaskToggle,
   className = "",
   style,
   children,
@@ -127,6 +129,7 @@ export function Tile({
                 fontSize={fontSize}
                 renderHtml={false}
                 imageBaseDir={imageBaseDir}
+                onTaskToggle={onTaskToggle}
               />
             </div>
           ) : (

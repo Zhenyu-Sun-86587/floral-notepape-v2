@@ -60,6 +60,7 @@ import {
 } from "../features/windows/tileWindowEvents";
 import { NotepadOpenPanel } from "./NotepadOpenPanel";
 import { Tile } from "./Tile";
+import { toggleTaskMarker } from "../features/markdown/taskMarker";
 
 type OpenMode = "new" | "open";
 type NotePadStatus = "empty" | "opened" | "saved" | "dirty" | "saveFailed" | "copied";
@@ -858,6 +859,14 @@ export function NotePad({
           fontSize={surfaceFontSize}
           renderMarkdown={tileRenderMarkdown}
           imageBaseDir={imageBaseDir ?? undefined}
+          onTaskToggle={(offset, checked) => {
+            const next = toggleTaskMarker(contentValueRef.current, offset, checked);
+            if (next == null) return;
+            contentValueRef.current = next;
+            setContent(next);
+            statusRef.current = "dirty";
+            setStatus("dirty");
+          }}
           width="100%"
           className="h-full cursor-default"
           data-surface-mode={surfaceMode}

@@ -36,4 +36,26 @@ describe("MarkdownPreview", () => {
     expect(markup).toMatch(/<li class="[^"]*list-none[^"]*"><input/);
     expect(markup).toMatch(/<li class="text-ink-soft leading-\[1\.9\] ">普通列表<\/li>/);
   });
+
+  test("hides only a complete leading frontmatter block in preview", () => {
+    const content = "\uFEFF---\r\ntitle: 私有标题\r\n---\r\n# 正文\r\n\r\n---\r\n后续正文";
+    const markup = renderToStaticMarkup(<MarkdownPreview content={content} />);
+
+    expect(markup).not.toContain("私有标题");
+    expect(markup).toContain("正文");
+    expect(markup).toContain("<hr");
+    expect(renderToStaticMarkup(<MarkdownPreview content={"---\n正文"} />)).toContain("正文");
+  });
+
+  test("enables checkboxes only when task writes are available", () => {
+    const content = "- [ ] 重复\n- [x] 重复";
+    const interactive = renderToStaticMarkup(
+      <MarkdownPreview content={content} onTaskToggle={() => undefined} />,
+    );
+    const passive = renderToStaticMarkup(<MarkdownPreview content={content} />);
+
+    expect(interactive).toMatch(/<input[^>]*type="checkbox"[^>]*>/);
+    expect(interactive).not.toMatch(/<input[^>]*disabled/);
+    expect(passive).toMatch(/<input[^>]*disabled/);
+  });
 });

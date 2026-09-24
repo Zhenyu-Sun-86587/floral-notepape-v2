@@ -1,6 +1,6 @@
 # Hermes Surface Dev：Windows 阶段状态
 
-Windows 源码提交：`0ad4f1f2841d9813130ecb4a37da0e663e9e7575`；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
+Windows 源码以当前 `main` 为准；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
 
 ## 已完成
 
@@ -10,6 +10,8 @@ Windows 源码提交：`0ad4f1f2841d9813130ecb4a37da0e663e9e7575`；上游起点
 - P2：Windows Release 主程序与 NSIS 安装包前后大小已记录；类型检查、编译、Rust 148 项与前端 110 项测试通过。
 - P3（Windows）：外部 Markdown 绑定持久化；可绑定多个目录（默认非递归，可选子目录）、创建目录内 `.md`、从列表固定为独立 Tile，并在原文件上编辑保存。Rust 文件监听按绑定 ID 通知相关窗口；自动扫描新增文件，排除已解绑文件。保存使用同目录临时文件和 Windows 原子替换，按内容 revision 检查冲突，本机保存草稿。
 - P3 隔离 GUI 验证：在 `D:/pinNote/p3-gui-test` 绑定目录，打开并固定 `Today.md`，独立便签编辑内容成功写回同一原文件；使用外部原子替换后，便签自动显示新正文。未使用真实同步目录。TypeScript 检查、前端 110 项测试、Rust 153 项测试及 Windows NSIS 构建通过。
+- P3 后续修复：外部文件便签关闭时保存并销毁原生窗口，避免透明窗口遮挡桌面；用户确认 1.2.3 的 pin 关闭与再次打开正常。
+- P4 第一批：预览隐藏完整的文首 YAML Frontmatter，编辑和原文件保留原文；任务勾选按源位置改动单个 `[ ]`/`[x]`，支持重复任务。1.2.4 的相关测试、TypeScript 检查和 Windows NSIS 构建通过，GUI 尚待用户验收。
 
 ## 待验收
 
@@ -18,7 +20,8 @@ Windows 源码提交：`0ad4f1f2841d9813130ecb4a37da0e663e9e7575`；上游起点
 - macOS 平台配置、构建工作流和 GUI 验证交由 Mac 协作者处理，交接见 [MAC_HANDOFF.md](MAC_HANDOFF.md)。当前 macOS 覆盖配置仍使用原版 identifier，不能把 Windows 隔离结果套用到 Mac。
 - 主界面关闭到托盘时仍保留隐藏 WebView。此路径涉及现有保存与外部文件监听，本轮没有在缺少 GUI 验证时进一步销毁。
 - P3 尚未实现应用内重命名、缺失文件重新关联和可靠识别外部改名；目录断连恢复、冲突交互、托盘退出时的未保存草稿需进一步 GUI 验收。文件 revision 比较与替换不是跨应用事务锁。
+- P4 仍待补齐：代码高亮、Mermaid、外部文件相对图片、远程图片策略及 CSP、多行列表编辑等；1.2.4 只包含上述第一批改动。
 
 ## 范围
 
-Windows 已推进到 P3 文件绑定版本；P4 主题/材质、P5 桌面附着和 P6 胶囊收纳尚未开始。macOS 交接范围不变。
+Windows 已完成 P3 文件绑定闭环，正在实施 P4 Markdown 与编辑；P5 主题/材质、P6 布局与快捷键、P7 桌面附着和收纳尚未开始。macOS 交接范围不变。

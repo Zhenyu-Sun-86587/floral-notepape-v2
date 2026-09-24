@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { createContext, useState, useCallback, useContext, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -13,6 +13,8 @@ import type { Components } from "react-markdown";
 import "katex/dist/katex.min.css";
 import remarkAlerts from "./remarkAlerts";
 import { resolveMarkdownImageSrc } from "./imageSrc";
+import { hideLeadingFrontmatter } from "./frontmatter";
+import remarkTaskOffsets from "./remarkTaskOffsets";
 
 function CodeBlock({ children, language }: { children: React.ReactNode; language?: string }) {
   const { t } = useTranslation();
@@ -69,9 +71,10 @@ interface MarkdownPreviewProps {
   fontSize?: number;
   renderHtml?: boolean;
   imageBaseDir?: string;
+  onTaskToggle?: (offset: number, checked: boolean) => void;
 }
 
-const remarkPlugins = [remarkGfm, remarkMath, remarkAlerts];
+const TaskOffsetContext = createContext<number | null>(null);
 const sanitizeSchema = {
   ...defaultSchema,
   tagNames: [...(defaultSchema.tagNames ?? []), "mark", "center", "font", "u", "abbr"],
@@ -83,6 +86,7 @@ const sanitizeSchema = {
       "className",
       "data-alert-type",
       "dataAlertType",
+      "dataTaskOffset",
     ],
     font: ["color", "size", "face"],
     abbr: ["title"],
@@ -205,13 +209,6 @@ const staticComponents: Components = {
       {children}
     </ol>
   ),
-  li: ({ children, className }) => (
-    <li
-      className={`text-ink-soft leading-[1.9] ${className?.includes("task-list-item") ? "list-none" : ""}`}
-    >
-      {children}
-    </li>
-  ),
   hr: () => (
     <hr className="my-6 border-none h-px bg-gradient-to-r from-transparent via-paper-deep to-transparent" />
   ),
@@ -278,21 +275,68 @@ const staticComponents: Components = {
   td: ({ children }) => (
     <td className="px-3 py-1.5 border border-paper-deep/35 text-ink-soft">{children}</td>
   ),
-  input: ({ checked, ...props }) => (
-    <input {...props} checked={checked} disabled className="mr-1.5 accent-bamboo" />
-  ),
 };
+
+function TaskInput({
+  checked,
+  onTaskToggle,
+  ...props
+}: React.InputHTMLAttributes<HTMLInputElement> & {
+  onTaskToggle?: (offset: number, checked: boolean) => void;
+}) {
+  const offset = useContext(TaskOffsetContext);
+  return (
+    <input
+      {...props}
+      checked={checked}
+      disabled={offset == null || !onTaskToggle}
+      onMouseDown={(event) => event.stopPropagation()}
+      onChange={() => {
+        if (offset != null) onTaskToggle?.(offset, !checked);
+      }}
+      className="mr-1.5 accent-bamboo"
+    />
+  );
+}
 
 export function MarkdownPreview({
   content,
   fontSize = 14,
   renderHtml = false,
   imageBaseDir,
+  onTaskToggle,
 }: MarkdownPreviewProps) {
   const { t } = useTranslation();
+  const previewContent = useMemo(() => hideLeadingFrontmatter(content), [content]);
+  const sourceOffset = content.length - previewContent.length;
+  const remarkPlugins = useMemo(
+    () => [remarkGfm, remarkMath, remarkAlerts, [remarkTaskOffsets, previewContent, sourceOffset]],
+    [previewContent, sourceOffset],
+  ) as Parameters<typeof Markdown>[0]["remarkPlugins"];
   const components = useMemo<Components>(
     () => ({
       ...staticComponents,
+      li: ({ children, className, node }) => {
+        const rawOffset = node?.properties?.dataTaskOffset;
+        const offset =
+          typeof rawOffset === "number"
+            ? rawOffset
+            : typeof rawOffset === "string" && /^\d+$/.test(rawOffset)
+              ? Number(rawOffset)
+              : null;
+        return (
+          <TaskOffsetContext.Provider value={offset}>
+            <li
+              className={`text-ink-soft leading-[1.9] ${className?.includes("task-list-item") ? "list-none" : ""}`}
+            >
+              {children}
+            </li>
+          </TaskOffsetContext.Provider>
+        );
+      },
+      input: ({ checked, ...props }) => (
+        <TaskInput {...props} checked={checked} onTaskToggle={onTaskToggle} />
+      ),
       img: ({ src, alt, ...props }) => {
         const resolvedSrc = resolveMarkdownImageSrc(src, imageBaseDir, convertFileSrc);
         return (
@@ -306,17 +350,17 @@ export function MarkdownPreview({
         );
       },
     }),
-    [imageBaseDir],
+    [imageBaseDir, onTaskToggle],
   );
   return (
     <div className="font-body markdown-selectable" style={{ fontSize: `${fontSize}px` }}>
-      {content.trim() ? (
+      {previewContent.trim() ? (
         <Markdown
           remarkPlugins={remarkPlugins}
           rehypePlugins={renderHtml ? rehypePluginsWithHtml : rehypePluginsDefault}
           components={components}
         >
-          {content}
+          {previewContent}
         </Markdown>
       ) : (
         <p className="text-ink-ghost leading-[1.9]">

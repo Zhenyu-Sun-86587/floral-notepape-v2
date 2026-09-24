@@ -34,6 +34,7 @@ import {
   type LinkedContent,
 } from "../features/linked/api";
 import { MarkdownPreviewLazy as MarkdownPreview } from "../features/markdown/MarkdownPreviewLazy";
+import { toggleTaskMarker } from "../features/markdown/taskMarker";
 import { showToast } from "./Toast";
 import {
   createScrollSyncMap,
@@ -3323,6 +3324,14 @@ export function MainWindow({
                           fontSize={settingsConfig?.fontSize ?? 14}
                           renderHtml={settingsConfig?.renderHtmlMarkdown ?? false}
                           imageBaseDir={imageBaseDir ?? undefined}
+                          onTaskToggle={(offset, checked) => {
+                            if (contentValueRef.current !== deferredContent) return;
+                            const next = toggleTaskMarker(deferredContent, offset, checked);
+                            if (next == null) return;
+                            contentValueRef.current = next;
+                            setContent(next);
+                            markDirty();
+                          }}
                         />
                       </div>
                     </div>
