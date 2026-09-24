@@ -1,0 +1,252 @@
+:root {
+  font:
+    13px/1.6 "Microsoft YaHei",
+    system-ui,
+    sans-serif;
+  color: #343730;
+  --edge-paper: #faf9f5;
+  --edge-border: #dddfd5;
+  --edge-muted: #92968b;
+  --edge-accent: #849b7b;
+}
+:root[data-theme="dark"] {
+  color: #e1e4dc;
+  --edge-paper: #242823;
+  --edge-border: #3e453b;
+  --edge-muted: #9ba493;
+  --edge-accent: #97af86;
+}
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+}
+* {
+  box-sizing: border-box;
+}
+button {
+  appearance: none;
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+button:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid var(--edge-accent);
+  outline-offset: -2px;
+}
+button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+.edge-rail {
+  height: 100%;
+  width: 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.edge-rail::-webkit-scrollbar {
+  display: none;
+}
+.edge-tab {
+  display: block;
+  width: 8px;
+  height: 32px;
+  margin: 0 0 8px;
+  background: var(--edge-accent);
+  opacity: 0.76;
+  transition: opacity 110ms ease;
+}
+.edge-tab:last-child {
+  margin-bottom: 0;
+}
+.edge-right .edge-tab {
+  border-radius: 6px 0 0 6px;
+}
+.edge-left .edge-tab {
+  border-radius: 0 6px 6px 0;
+}
+.edge-tone-1 {
+  background: #859cac;
+}
+.edge-tone-2 {
+  background: #b5a389;
+}
+.edge-tone-3 {
+  background: #a193aa;
+}
+.edge-tab:hover,
+.edge-tab:focus-visible {
+  opacity: 1;
+}
+.edge-tab[data-error] {
+  background: #be7868;
+}
+.edge-preview {
+  position: absolute;
+  inset: 3px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--edge-border);
+  border-radius: 13px;
+  background: var(--edge-paper);
+  box-shadow: 0 1px 3px #0002;
+  overflow: hidden;
+  animation: reveal 130ms ease-out;
+}
+.edge-preview.from-left {
+  --slide: -6px;
+}
+.edge-preview.from-right {
+  --slide: 6px;
+}
+.edge-preview header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--edge-border);
+}
+.preview-mark {
+  color: var(--edge-accent);
+  font-size: 17px;
+  line-height: 1;
+}
+.preview-title {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.preview-icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  border-radius: 6px;
+  color: var(--edge-muted);
+}
+.preview-icon:hover {
+  background: color-mix(in srgb, var(--edge-accent) 13%, transparent);
+  color: inherit;
+}
+.preview-icon svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.preview-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 13px 16px 16px;
+  cursor: pointer;
+  scrollbar-width: thin;
+  scrollbar-color: var(--edge-border) transparent;
+  overflow-wrap: anywhere;
+}
+.preview-body h3 {
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 600;
+  margin: 8px 0 6px;
+}
+.preview-body h3:first-child {
+  margin-top: 0;
+}
+.preview-body p {
+  margin: 3px 0;
+}
+.preview-list {
+  display: flex;
+  gap: 9px;
+}
+.preview-list > span:first-child {
+  color: var(--edge-accent);
+}
+.preview-space {
+  height: 7px;
+}
+.preview-code {
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  background: color-mix(in srgb, var(--edge-accent) 8%, transparent);
+  padding: 0 6px;
+}
+.preview-body hr {
+  border: 0;
+  border-top: 1px solid var(--edge-border);
+  margin: 10px 0;
+}
+.preview-empty {
+  color: var(--edge-muted);
+}
+.preview-error {
+  margin: 0;
+  padding: 7px 13px;
+  color: #b85d4e;
+  font-size: 12px;
+}
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateX(var(--slide));
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* 顶部复用同一入口，只改变排列方向；拖动不创建额外 WebView。 */
+.edge-top {
+  display: flex;
+  width: 100%;
+  height: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 8px;
+}
+.edge-top .edge-tab {
+  width: 32px;
+  height: 8px;
+  flex: 0 0 32px;
+  margin: 0;
+  border-radius: 0 0 6px 6px;
+}
+.edge-tab {
+  touch-action: none;
+  cursor: grab;
+}
+.edge-tab:active {
+  cursor: grabbing;
+}
+.edge-preview.from-top {
+  --slide: 0px;
+}

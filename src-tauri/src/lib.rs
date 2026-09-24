@@ -61,11 +61,11 @@ fn surface_session_get(key: String) -> Result<surface_sessions::SurfaceSession, 
 }
 
 #[tauri::command]
-fn surface_session_save(
+async fn surface_session_save(
     app: AppHandle,
     session: surface_sessions::SurfaceSession,
 ) -> Result<(), AppError> {
-    desktop::save_surface_session(&app, session)
+    desktop::run_capsule_task(move || desktop::save_surface_session(&app, session)).await
 }
 
 #[tauri::command]
@@ -79,8 +79,101 @@ fn surface_session_close_current(window: tauri::WebviewWindow) {
 }
 
 #[tauri::command]
+async fn surface_store_current(window: tauri::WebviewWindow) -> Result<(), AppError> {
+    desktop::run_capsule_task(move || {
+        let key = desktop::surface_key_for_window(&window)?;
+        desktop::store_surface(window.app_handle(), &key)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn surface_capsules_list(
+    app: AppHandle,
+    monitor_index: usize,
+    side: surface_sessions::CapsuleSide,
+) -> Result<Vec<desktop::CapsuleEntry>, AppError> {
+    desktop::capsule_entries(&app, monitor_index, side)
+}
+
+#[tauri::command]
+async fn surface_capsule_entry(key: String) -> Result<Option<desktop::CapsuleEntry>, AppError> {
+    desktop::capsule_entry(&key)
+}
+
+#[tauri::command]
+async fn surface_capsule_preview(
+    window: tauri::WebviewWindow,
+    key: String,
+    anchor_y: f64,
+    anchor_x: f64,
+) -> Result<(), AppError> {
+    let generation = desktop::advance_capsule_preview();
+    desktop::run_capsule_task(move || {
+        desktop::show_capsule_preview(&window, &key, anchor_y, anchor_x, generation)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn surface_restore_stored(app: AppHandle, key: String) -> Result<(), AppError> {
+    desktop::advance_capsule_preview();
+    desktop::run_capsule_task(move || desktop::restore_stored_surface(&app, &key)).await
+}
+
+#[tauri::command]
+fn surface_capsule_hover(app: AppHandle, inside: bool) {
+    desktop::capsule_hover(&app, inside);
+}
+
+#[tauri::command]
+fn surface_capsule_preview_state() -> Option<desktop::CapsulePreview> {
+    desktop::capsule_preview_state()
+}
+
+#[tauri::command]
+fn surface_capsule_present(window: tauri::WebviewWindow, generation: u64) -> Result<(), AppError> {
+    desktop::present_capsule_preview(&window, generation)
+}
+
+#[tauri::command]
+async fn surface_capsule_drag(window: tauri::WebviewWindow, key: String) -> Result<(), AppError> {
+    desktop::drag_capsule(window, key).await
+}
+
+#[tauri::command]
+async fn surface_capsule_hide(app: AppHandle, key: String) -> Result<(), AppError> {
+    desktop::advance_capsule_preview();
+    desktop::run_capsule_task(move || desktop::hide_stored_surface(&app, &key)).await
+}
+
+#[tauri::command]
 fn surface_edit_mode(window: tauri::WebviewWindow, editing: bool) -> Result<(), AppError> {
     desktop::set_surface_edit_mode(&window, editing)
+}
+
+#[tauri::command]
+fn surface_unlock_button_bounds(
+    window: tauri::WebviewWindow,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    viewport_width: f64,
+    viewport_height: f64,
+) {
+    #[cfg(target_os = "windows")]
+    lock_overlay::set_bounds(
+        &window,
+        x,
+        y,
+        width,
+        height,
+        viewport_width,
+        viewport_height,
+    );
+    #[cfg(not(target_os = "windows"))]
+    let _ = (window, x, y, width, height, viewport_width, viewport_height);
 }
 
 #[tauri::command]
@@ -433,7 +526,7 @@ fn set_native_material(
         use tauri::window::{Effect, EffectsBuilder};
         let is_surface =
             window.label().starts_with("notepad-") || window.label().starts_with("tile-");
-        if enabled && crate::desktop_attachment::is_attached(&window) {
+        if crate::desktop_attachment::is_attached(&window) {
             // Explorer 子窗口的 Acrylic/阴影会产生黑边；向前端明确报告此组合不可用。
             let none: Option<tauri::utils::config::WindowEffectsConfig> = None;
             window.set_effects(none)?;
@@ -453,7 +546,9 @@ fn set_native_material(
             let none: Option<tauri::utils::config::WindowEffectsConfig> = None;
             window.set_effects(none)?;
             if is_surface {
-                window.set_shadow(false)?;
+                // 普通/置顶便签即便关闭材质，也保留系统阴影以区分白色背景。
+                window.set_shadow(true)?;
+                set_windows_corner_preference(&window, radius);
             }
         }
         Ok(enabled)
@@ -722,7 +817,10 @@ pub fn run() {
                     desktop::set_startup_file(file_path);
                 }
             }
-            let _ = desktop::show_main_window(app);
+            let app = app.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                let _ = desktop::show_main_window(&app);
+            });
         }))
         .setup(|app| {
             if let Ok(store) = default_store() {
@@ -758,8 +856,19 @@ pub fn run() {
             surface_session_get,
             surface_session_save,
             surface_edit_mode,
+            surface_unlock_button_bounds,
             surface_bounds_save,
             surface_session_close_current,
+            surface_store_current,
+            surface_capsules_list,
+            surface_capsule_entry,
+            surface_capsule_preview,
+            surface_capsule_hover,
+            surface_capsule_preview_state,
+            surface_capsule_present,
+            surface_capsule_hide,
+            surface_capsule_drag,
+            surface_restore_stored,
             show_silent_surface,
             shortcut_startup_error,
             linked_list,

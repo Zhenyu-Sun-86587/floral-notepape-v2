@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export type StartupBehavior = "hidden" | "restoreLast" | "expanded";
-export type Presentation = "hidden" | "expanded";
+export type Presentation = "hidden" | "expanded" | "stored";
+export type CapsuleSide = "left" | "right" | "top";
 export type WindowMode = "normal" | "alwaysOnTop" | "desktopAttached";
 
 export interface SurfaceSession {
@@ -11,6 +12,9 @@ export interface SurfaceSession {
   shortcut: string;
   windowMode: WindowMode;
   locked: boolean;
+  capsuleSide: CapsuleSide;
+  capsuleMonitor?: string | null;
+  capsuleOffset?: number | null;
   expandedBounds: {
     monitorName: string | null;
     offsetX: number;

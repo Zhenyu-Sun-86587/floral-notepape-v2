@@ -24,8 +24,18 @@ pub enum StartupBehavior {
 #[serde(rename_all = "camelCase")]
 pub enum Presentation {
     Expanded,
+    Stored,
     #[default]
     Hidden,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum CapsuleSide {
+    Left,
+    Top,
+    #[default]
+    Right,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -63,6 +73,13 @@ pub struct SurfaceSession {
     pub window_mode: WindowMode,
     #[serde(default)]
     pub locked: bool,
+    #[serde(default)]
+    pub capsule_side: CapsuleSide,
+    // 收纳位置独立于展开坐标；拖动边缘条不得覆盖便签原窗口的位置。
+    #[serde(default)]
+    pub capsule_monitor: Option<String>,
+    #[serde(default)]
+    pub capsule_offset: Option<f64>,
     #[serde(default)]
     pub expanded_bounds: Option<ExpandedBounds>,
 }
@@ -128,6 +145,24 @@ pub fn remove(key: &str) -> Result<(), AppError> {
     let _guard = lock().lock().map_err(|_| error("会话锁不可用"))?;
     let mut map = read_map()?;
     map.remove(key);
+    write_map(&map)
+}
+
+pub fn dock_capsules(
+    keys: &[String],
+    side: CapsuleSide,
+    monitor: Option<String>,
+    offset: f64,
+) -> Result<(), AppError> {
+    let _guard = lock().lock().map_err(|_| error("会话锁不可用"))?;
+    let mut map = read_map()?;
+    for key in keys {
+        if let Some(session) = map.get_mut(key) {
+            session.capsule_side = side;
+            session.capsule_monitor = monitor.clone();
+            session.capsule_offset = Some(offset.clamp(0.0, 1.0));
+        }
+    }
     write_map(&map)
 }
 pub fn validate_key(key: &str) -> Result<(), AppError> {

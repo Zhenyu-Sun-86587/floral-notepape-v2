@@ -1,5 +1,7 @@
 # 首轮人工验收
 
+1.6.0 的最短 GUI 复核及最终 A01–A20 状态见 [P8_FINAL.md](P8_FINAL.md)，以下保留历次验收项目。
+
 使用虚构测试目录，不选择原版花笺数据或真实同步目录。Windows 安装包位于 `src-tauri/target/release/bundle/nsis/`。先核对应用显示名为 Hermes Surface Dev，原版仍可独立运行。
 
 1. 新建中文笔记，输入、撤销/重做、保存；关闭并重新打开确认正文与标题。

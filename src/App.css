@@ -16,13 +16,7 @@
   font-display: swap;
 }
 
-@font-face {
-  font-family: "Source Han Serif SC";
-  src: url("./assets/fonts/SourceHanSerifSC-Bold.woff2") format("woff2");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
+/* 仓库只携带 Regular 字体，粗体使用浏览器合成，避免请求不存在的 Bold 资源。 */
 
 @theme {
   --color-paper: #f6f3ec;
@@ -164,9 +158,14 @@ body {
   border-width: var(--appearance-border-width);
 }
 
-/* Explorer 子窗口不使用窗口阴影/描边，避免透明圆角后露出 DWM 黑边。 */
+/* 阴影绘制在子窗口内部的透明留白中，不给 Explorer 子窗口启用 DWM 阴影。 */
+.desktop-tile-shell {
+  padding: 6px;
+}
 :root[data-desktop-attached="true"] .app-surface-frame {
-  box-shadow: none;
+  box-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.2),
+    0 0 1px rgba(0, 0, 0, 0.14);
   border-width: 0;
 }
 
@@ -386,6 +385,12 @@ input::placeholder {
 
 .markdown-selectable {
   cursor: text;
+}
+
+/* 便签阅读态沿用普通箭头，输入光标只属于真正的写作态。 */
+.tile-reading .markdown-selectable,
+.tile-reading .markdown-selectable * {
+  cursor: default;
 }
 
 .markdown-selectable button,

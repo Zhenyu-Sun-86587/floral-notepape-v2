@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { getErrorMessage } from "../features/notes/api";
 import {
   hotkeyToConfigString,
@@ -112,6 +113,33 @@ export function SurfaceSessionControls({ sessionKey }: { sessionKey: string }) {
               附着桌面（Windows）
             </option>
           </select>
+          <label className="block mb-1 text-ink-faint">边缘收纳位置</label>
+          <select
+            value={session?.capsuleSide ?? "right"}
+            disabled={!session || busy}
+            onChange={(event) =>
+              void save({ capsuleSide: event.target.value as SurfaceSession["capsuleSide"] })
+            }
+            className="w-full rounded-lg border border-paper-deep bg-paper-warm p-2 mb-3"
+          >
+            <option value="left">左侧</option>
+            <option value="right">右侧</option>
+            <option value="top">顶部</option>
+          </select>
+          {session?.presentation === "stored" && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                void invoke("surface_restore_stored", { key: sessionKey }).catch((cause) =>
+                  setError(getErrorMessage(cause)),
+                )
+              }
+              className="mb-3 w-full rounded-lg border border-paper-deep p-2 text-left"
+            >
+              恢复收纳便签
+            </button>
+          )}
           {!navigator.userAgent.includes("Windows") && (
             <p className="mb-2 text-xs text-ink-faint">
               桌面附着暂仅支持 Windows；Mac 适配由协作者验收。
@@ -167,6 +195,7 @@ export function SurfaceSessionControls({ sessionKey }: { sessionKey: string }) {
                 shortcut: "",
                 windowMode: "alwaysOnTop",
                 locked: false,
+                capsuleSide: "right",
               })
             }
             className="mt-2 text-xs text-ink-faint underline"

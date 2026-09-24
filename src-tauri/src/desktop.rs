@@ -1043,6 +1043,7 @@ fn clear_hidden_window_state(app: &AppHandle) {
 }
 
 fn toggle_app_visibility(app: &AppHandle) {
+    dismiss_capsule_preview(app);
     let Some(state) = app.try_state::<RuntimeState>() else {
         return;
     };
@@ -1052,13 +1053,19 @@ fn toggle_app_visibility(app: &AppHandle) {
         for label in &labels {
             if let Some(window) = app.get_webview_window(label) {
                 let _ = window.unminimize();
-                let _ = window.show();
+                if label.starts_with("capsule-") {
+                    let _ = show_silent_surface(&window);
+                } else {
+                    let _ = window.show();
+                }
                 if let Some(key) = session_key_from_label(label) {
                     let _ = crate::surface_sessions::mutate(&key, |session| {
                         session.presentation = crate::surface_sessions::Presentation::Expanded;
                     });
                 }
-                if focus_target.is_none() || label == MAIN_WINDOW_LABEL {
+                if !label.starts_with("capsule-")
+                    && (focus_target.is_none() || label == MAIN_WINDOW_LABEL)
+                {
                     focus_target = Some(label.clone());
                 }
             }
@@ -1209,9 +1216,12 @@ pub fn setup_desktop(app: &mut App) -> Result<(), Box<dyn Error>> {
     app.manage(RuntimeState::default());
     app.manage(NotepadPool::default());
     app.on_menu_event(|app, event| {
-        if let Err(error) = handle_app_menu_event(app, event.id.as_ref()) {
-            eprintln!("failed to handle app menu event {:?}: {error}", event.id);
-        }
+        let app = app.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            if let Err(error) = handle_app_menu_event(&app, event.id.as_ref()) {
+                eprintln!("failed to handle app menu event {:?}: {error}", event.id);
+            }
+        });
     });
     setup_autostart_plugin(app.handle())?;
     setup_global_shortcut_plugin(app.handle())?;
@@ -1227,13 +1237,23 @@ pub fn setup_desktop(app: &mut App) -> Result<(), Box<dyn Error>> {
         set_startup_file(file_path);
     }
 
-    if std::env::args().any(|a| a == "--silent") {
-        restore_silent_sessions(app.handle());
-    } else {
-        if let Err(error) = show_main_window(app.handle()) {
-            eprintln!("failed to show main window on startup: {error}");
+    let silent = std::env::args().any(|a| a == "--silent");
+    let startup_app = app.handle().clone();
+    tauri::async_runtime::spawn(async move {
+        let result = run_capsule_task(move || {
+            if silent {
+                restore_silent_sessions(&startup_app);
+            } else {
+                show_main_window(&startup_app)?;
+                sync_capsule_windows(&startup_app)?;
+            }
+            Ok(())
+        })
+        .await;
+        if let Err(error) = result {
+            eprintln!("failed to restore startup windows: {error}");
         }
-    }
+    });
 
     Ok(())
 }
@@ -1386,9 +1406,12 @@ fn setup_tray(app: &mut App) -> Result<(), Box<dyn Error>> {
         .menu(&menu)
         .show_menu_on_left_click(cfg!(target_os = "macos"))
         .on_menu_event(|app, event| {
-            if let Err(error) = handle_tray_menu_event(app, event.id.as_ref()) {
-                eprintln!("failed to handle tray menu event {:?}: {error}", event.id);
-            }
+            let app = app.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                if let Err(error) = handle_tray_menu_event(&app, event.id.as_ref()) {
+                    eprintln!("failed to handle tray menu event {:?}: {error}", event.id);
+                }
+            });
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
@@ -1397,9 +1420,12 @@ fn setup_tray(app: &mut App) -> Result<(), Box<dyn Error>> {
                 ..
             } = event
             {
-                if let Err(error) = show_main_window(tray.app_handle()) {
-                    eprintln!("failed to show main window from tray: {error}");
-                }
+                let app = tray.app_handle().clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    if let Err(error) = show_main_window(&app) {
+                        eprintln!("failed to show main window from tray: {error}");
+                    }
+                });
             }
         })
         .build(app)?;
@@ -1955,11 +1981,20 @@ fn open_or_focus_window(
             })
         {
             window.set_focus()?;
+        }
+        if opts.focus_on_show {
             if let Some(key) = session_key_from_label(label) {
                 let _ = crate::surface_sessions::mutate(&key, |session| {
                     session.presentation = crate::surface_sessions::Presentation::Expanded;
                 });
             }
+        }
+        if opts.focus_on_show
+            && surface_session.as_ref().is_some_and(|session| {
+                session.presentation == crate::surface_sessions::Presentation::Stored
+            })
+        {
+            queue_capsule_sync(app);
         }
         return Ok(label.to_string());
     }
@@ -2013,6 +2048,11 @@ fn open_or_focus_window(
                 session.presentation = crate::surface_sessions::Presentation::Expanded;
             });
         }
+        if surface_session.as_ref().is_some_and(|session| {
+            session.presentation == crate::surface_sessions::Presentation::Stored
+        }) {
+            queue_capsule_sync(app);
+        }
     }
 
     Ok(label.to_string())
@@ -2041,6 +2081,14 @@ fn session_key_from_label(label: &str) -> Option<String> {
     crate::surface_sessions::validate_key(&key).ok()?;
     default_store().ok()?.read_note(id).ok()?;
     Some(key)
+}
+
+pub fn surface_key_for_window(window: &tauri::WebviewWindow) -> Result<String, AppError> {
+    session_key_from_label(window.label()).ok_or_else(|| AppError {
+        code: "surfaceSession".into(),
+        message: "当前窗口不是独立便签".into(),
+        details: Default::default(),
+    })
 }
 
 pub fn save_session_bounds(window: &tauri::WebviewWindow) {
@@ -2085,6 +2133,805 @@ pub fn record_surface_close(window: &tauri::WebviewWindow) {
             session.presentation = crate::surface_sessions::Presentation::Hidden;
         });
     }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CapsuleEntry {
+    key: String,
+    title: String,
+    preview: String,
+}
+
+// WebView2 建窗不能运行在同步 IPC / UI 事件回调中。所有收纳变更串行排到工作线程，
+// 锁只由工作线程持有，UI 线程始终能处理窗口消息和托盘退出。
+static CAPSULE_OPERATIONS: Mutex<()> = Mutex::new(());
+static CAPSULE_DRAGGING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub async fn drag_capsule(window: tauri::WebviewWindow, key: String) -> Result<(), AppError> {
+    #[cfg(target_os = "windows")]
+    {
+        if CAPSULE_DRAGGING.swap(true, Ordering::SeqCst) {
+            return Ok(());
+        }
+        struct DragGuard;
+        impl Drop for DragGuard {
+            fn drop(&mut self) {
+                CAPSULE_DRAGGING.store(false, Ordering::SeqCst);
+            }
+        }
+        let _guard = DragGuard;
+        let rail = window.clone();
+        let drag_key = key.clone();
+        // 只在按下鼠标期间采样，不持有收纳锁，不占用 UI 线程，也不增加常驻轮询。
+        let result = tauri::async_runtime::spawn_blocking(
+            move || -> Result<Option<(PhysicalPosition<f64>, bool)>, AppError> {
+                use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+                    GetAsyncKeyState, VK_ESCAPE, VK_LBUTTON, VK_RBUTTON,
+                };
+                use windows_sys::Win32::UI::WindowsAndMessaging::{
+                    GetSystemMetrics, SM_SWAPBUTTON,
+                };
+                let session = crate::surface_sessions::get(&drag_key)?;
+                let monitors = rail.app_handle().available_monitors()?;
+                let index = capsule_monitor_index(
+                    &monitors,
+                    session.capsule_monitor.as_deref().or_else(|| {
+                        session
+                            .expanded_bounds
+                            .as_ref()
+                            .and_then(|b| b.monitor_name.as_deref())
+                    }),
+                );
+                if session.presentation != crate::surface_sessions::Presentation::Stored
+                    || rail.label() != capsule_label(index, session.capsule_side)
+                {
+                    return Ok(None);
+                }
+                dismiss_capsule_preview(rail.app_handle());
+                let start = rail.cursor_position()?;
+                let origin = rail.outer_position()?;
+                let threshold = 4.0 * rail.scale_factor()?;
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+                let button = if unsafe { GetSystemMetrics(SM_SWAPBUTTON) } != 0 {
+                    VK_RBUTTON
+                } else {
+                    VK_LBUTTON
+                };
+                let mut dragged = false;
+                let mut last = origin;
+                loop {
+                    if app_is_exiting(rail.app_handle())
+                        || std::time::Instant::now() >= deadline
+                        || unsafe { GetAsyncKeyState(VK_ESCAPE as i32) } < 0
+                    {
+                        return Ok(None);
+                    }
+                    let point = rail.cursor_position()?;
+                    let dx = point.x - start.x;
+                    let dy = point.y - start.y;
+                    dragged |= dx.hypot(dy) >= threshold;
+                    if unsafe { GetAsyncKeyState(button as i32) } >= 0 {
+                        return Ok(Some((point, dragged)));
+                    }
+                    if dragged {
+                        let position = PhysicalPosition::new(
+                            origin.x + dx.round() as i32,
+                            origin.y + dy.round() as i32,
+                        );
+                        if position != last {
+                            rail.set_position(position)?;
+                            last = position;
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(16));
+                }
+            },
+        )
+        .await
+        .map_err(|error| AppError {
+            code: "capsuleDrag".into(),
+            message: error.to_string(),
+            details: Default::default(),
+        })?;
+        drop(_guard);
+        // 松手后才持锁并重建目标边缘入口；Esc、错误或超时均恢复已保存的位置。
+        run_capsule_task(move || {
+            let app = window.app_handle();
+            let result = match result {
+                Ok(Some((point, true))) => dock_capsule_at(app, &key, point),
+                Ok(Some((_, false))) => restore_stored_surface(app, &key),
+                Ok(None) => Ok(()),
+                Err(error) => Err(error),
+            };
+            let sync = sync_capsule_windows(app);
+            result.and(sync)
+        })
+        .await
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (window, key);
+        Ok(())
+    }
+}
+
+fn dock_capsule_at(
+    app: &AppHandle,
+    key: &str,
+    point: PhysicalPosition<f64>,
+) -> Result<(), AppError> {
+    use crate::surface_sessions::CapsuleSide;
+    let session = crate::surface_sessions::get(key)?;
+    if session.presentation != crate::surface_sessions::Presentation::Stored {
+        return Ok(());
+    }
+    let monitors = app.available_monitors()?;
+    let Some((index, monitor)) = monitors.iter().enumerate().min_by(|(_, a), (_, b)| {
+        let distance = |m: &tauri::Monitor| {
+            let x = point.x.clamp(
+                m.position().x as f64,
+                m.position().x as f64 + m.size().width as f64,
+            );
+            let y = point.y.clamp(
+                m.position().y as f64,
+                m.position().y as f64 + m.size().height as f64,
+            );
+            (point.x - x).hypot(point.y - y)
+        };
+        distance(a).total_cmp(&distance(b))
+    }) else {
+        return Ok(());
+    };
+    let side = nearest_capsule_side(
+        point.x - monitor.position().x as f64,
+        point.y - monitor.position().y as f64,
+        monitor.size().width as f64,
+    );
+    let mut keys: Vec<String> = capsule_group(app, index, side)?
+        .into_iter()
+        .map(|s| s.key)
+        .collect();
+    if !keys.iter().any(|k| k == key) {
+        keys.push(key.into());
+    }
+    let work = monitor.work_area();
+    let length = ((keys.len().clamp(1, 12) * 40 - 8) as f64 * monitor.scale_factor()).round();
+    let (coordinate, available) = if side == CapsuleSide::Top {
+        (
+            point.x - work.position.x as f64 - length / 2.0,
+            work.size.width as f64 - length,
+        )
+    } else {
+        (
+            point.y - work.position.y as f64 - length / 2.0,
+            work.size.height as f64 - length,
+        )
+    };
+    let offset = coordinate / available.max(1.0);
+    crate::surface_sessions::dock_capsules(&keys, side, monitor.name().cloned(), offset)?;
+    app.emit(
+        "surface-session-changed",
+        crate::surface_sessions::get(key)?,
+    )?;
+    Ok(())
+}
+
+fn nearest_capsule_side(x: f64, y: f64, width: f64) -> crate::surface_sessions::CapsuleSide {
+    use crate::surface_sessions::CapsuleSide;
+    if y.abs() < x.abs().min((width - x).abs()) {
+        CapsuleSide::Top
+    } else if x.abs() < (width - x).abs() {
+        CapsuleSide::Left
+    } else {
+        CapsuleSide::Right
+    }
+}
+pub async fn run_capsule_task<T: Send + 'static>(
+    operation: impl FnOnce() -> Result<T, AppError> + Send + 'static,
+) -> Result<T, AppError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = CAPSULE_OPERATIONS.lock().unwrap_or_else(|e| e.into_inner());
+        operation()
+    })
+    .await
+    .map_err(|error| AppError {
+        code: "capsuleTask".into(),
+        message: error.to_string(),
+        details: Default::default(),
+    })?
+}
+
+fn queue_capsule_sync(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = run_capsule_task(move || sync_capsule_windows(&app)).await {
+            eprintln!("failed to sync capsules: {error}");
+        }
+    });
+}
+
+fn capsule_monitor_index(monitors: &[tauri::Monitor], name: Option<&str>) -> usize {
+    monitors
+        .iter()
+        .position(|monitor| monitor.name().map(String::as_str) == name)
+        .unwrap_or(0)
+}
+
+fn capsule_label(monitor_index: usize, side: crate::surface_sessions::CapsuleSide) -> String {
+    let side = match side {
+        crate::surface_sessions::CapsuleSide::Left => "left",
+        crate::surface_sessions::CapsuleSide::Top => "top",
+        crate::surface_sessions::CapsuleSide::Right => "right",
+    };
+    format!("capsule-{monitor_index}-{side}")
+}
+
+fn capsule_group(
+    app: &AppHandle,
+    monitor_index: usize,
+    side: crate::surface_sessions::CapsuleSide,
+) -> Result<Vec<crate::surface_sessions::SurfaceSession>, AppError> {
+    let monitors = app.available_monitors()?;
+    if monitor_index >= monitors.len() {
+        return Ok(Vec::new());
+    }
+    Ok(crate::surface_sessions::list()?
+        .into_iter()
+        .filter(|session| {
+            session.presentation == crate::surface_sessions::Presentation::Stored
+                && session.capsule_side == side
+                && capsule_monitor_index(
+                    &monitors,
+                    session.capsule_monitor.as_deref().or_else(|| {
+                        session
+                            .expanded_bounds
+                            .as_ref()
+                            .and_then(|bounds| bounds.monitor_name.as_deref())
+                    }),
+                ) == monitor_index
+        })
+        .collect())
+}
+
+fn capsule_preview(content: &str) -> String {
+    let source = content.trim_start_matches('\u{feff}');
+    let mut lines = source.lines().peekable();
+    if lines.peek().is_some_and(|line| line.trim() == "---") {
+        lines.next();
+        for line in lines.by_ref() {
+            if matches!(line.trim(), "---" | "...") {
+                break;
+            }
+        }
+    }
+    // 传递有界正文，由轻量 React 元素绘制标题/列表，绝不解释 HTML 或载入 Mermaid。
+    lines
+        .take(60)
+        .collect::<Vec<_>>()
+        .join("\n")
+        .chars()
+        .take(2400)
+        .collect()
+}
+
+pub fn capsule_entries(
+    app: &AppHandle,
+    monitor_index: usize,
+    side: crate::surface_sessions::CapsuleSide,
+) -> Result<Vec<CapsuleEntry>, AppError> {
+    let sessions = capsule_group(app, monitor_index, side)?;
+    // 色条只需要标题；正文留到悬停时读取，避免每次列表事件重读全部外部文件。
+    let notes = if sessions.iter().any(|s| s.key.starts_with("note:")) {
+        default_store()?.list_notes()?
+    } else {
+        Vec::new()
+    };
+    let bindings = if sessions.iter().any(|s| s.key.starts_with("linked:")) {
+        crate::linked::list()?
+    } else {
+        Vec::new()
+    };
+    let mut entries = Vec::new();
+    for session in sessions {
+        let title = if let Some(id) = session.key.strip_prefix("note:") {
+            notes.iter().find(|n| n.id == id).map(|n| {
+                if n.title.trim().is_empty() {
+                    "无标题便签".into()
+                } else {
+                    n.title.clone()
+                }
+            })
+        } else if let Some(id) = session.key.strip_prefix("linked:") {
+            bindings.iter().find(|b| b.id == id).map(|b| {
+                std::path::Path::new(&b.path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Markdown")
+                    .to_owned()
+            })
+        } else {
+            None
+        };
+        if let Some(title) = title {
+            entries.push(CapsuleEntry {
+                key: session.key,
+                title,
+                preview: String::new(),
+            });
+        }
+    }
+    entries.sort_by(|left, right| left.title.cmp(&right.title).then(left.key.cmp(&right.key)));
+    Ok(entries)
+}
+
+fn capsule_entry_from_session(
+    session: &crate::surface_sessions::SurfaceSession,
+) -> Result<Option<CapsuleEntry>, AppError> {
+    let item = if let Some(id) = session.key.strip_prefix("note:") {
+        default_store()?.read_note(id).ok().map(|note| {
+            let title = if note.title.trim().is_empty() {
+                "无标题便签".into()
+            } else {
+                note.title
+            };
+            (title, note.content)
+        })
+    } else if let Some(id) = session.key.strip_prefix("linked:") {
+        let content = crate::linked::read(id).ok();
+        let binding = content
+            .as_ref()
+            .map(|value| value.binding.clone())
+            .or_else(|| {
+                crate::linked::list()
+                    .ok()?
+                    .into_iter()
+                    .find(|binding| binding.id == id)
+            });
+        binding.map(|binding| {
+            let title = std::path::Path::new(&binding.path)
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .unwrap_or("Markdown")
+                .to_string();
+            let content = content
+                .map(|linked| linked.content)
+                .unwrap_or_else(|| "原文件暂不可用".into());
+            (title, content)
+        })
+    } else {
+        None
+    };
+    Ok(item.map(|(title, content)| CapsuleEntry {
+        key: session.key.clone(),
+        title,
+        preview: capsule_preview(&content),
+    }))
+}
+
+pub fn capsule_entry(key: &str) -> Result<Option<CapsuleEntry>, AppError> {
+    let session = crate::surface_sessions::get(key)?;
+    if session.presentation != crate::surface_sessions::Presentation::Stored {
+        return Ok(None);
+    }
+    capsule_entry_from_session(&session)
+}
+
+fn position_capsule_window(
+    window: &tauri::WebviewWindow,
+    monitor: &tauri::Monitor,
+    side: crate::surface_sessions::CapsuleSide,
+    count: usize,
+) -> Result<(), AppError> {
+    let work = monitor.work_area();
+    let mut bounds = capsule_rail_bounds(
+        WindowBounds {
+            x: monitor.position().x,
+            y: monitor.position().y,
+            width: monitor.size().width,
+            height: monitor.size().height,
+        },
+        WindowBounds {
+            x: work.position.x,
+            y: work.position.y,
+            width: work.size.width,
+            height: work.size.height,
+        },
+        monitor.scale_factor(),
+        count,
+        side,
+    );
+    let offset = capsule_group(
+        window.app_handle(),
+        capsule_monitor_index(
+            &window.app_handle().available_monitors()?,
+            monitor.name().map(String::as_str),
+        ),
+        side,
+    )?
+    .iter()
+    .find_map(|session| session.capsule_offset)
+    .unwrap_or(0.5);
+    let offset = if offset.is_finite() {
+        offset.clamp(0.0, 1.0)
+    } else {
+        0.5
+    };
+    if side == crate::surface_sessions::CapsuleSide::Top {
+        bounds.x = work.position.x
+            + ((work.size.width.saturating_sub(bounds.width)) as f64 * offset).round() as i32;
+    } else {
+        bounds.y = work.position.y
+            + ((work.size.height.saturating_sub(bounds.height)) as f64 * offset).round() as i32;
+    }
+    window.set_size(PhysicalSize::new(bounds.width, bounds.height))?;
+    window.set_position(PhysicalPosition::new(bounds.x, bounds.y))?;
+    Ok(())
+}
+
+fn capsule_rail_bounds(
+    screen: WindowBounds,
+    work: WindowBounds,
+    scale: f64,
+    count: usize,
+    side: crate::surface_sessions::CapsuleSide,
+) -> WindowBounds {
+    if side == crate::surface_sessions::CapsuleSide::Top {
+        let height = (8.0 * scale).round().max(1.0) as u32;
+        let width = (((count.clamp(1, 12) * 40 - 8) as f64 * scale).round() as u32).min(work.width);
+        return WindowBounds {
+            x: work.x + (work.width as i32 - width as i32) / 2,
+            y: screen.y,
+            width,
+            height,
+        };
+    }
+    let width = (8.0 * scale).round().max(1.0) as u32;
+    let height = ((count.max(1).min(12) as f64 * 40.0 - 8.0) * scale)
+        .round()
+        .min(work.height as f64) as u32;
+    let x = match side {
+        crate::surface_sessions::CapsuleSide::Left | crate::surface_sessions::CapsuleSide::Top => {
+            screen.x
+        }
+        crate::surface_sessions::CapsuleSide::Right => {
+            screen.x + screen.width as i32 - width as i32
+        }
+    };
+    // 轨道始终贴物理屏幕边缘，预览使用另一小窗，悬停永不移动/放大轨道。
+    let y = work.y + (work.height as i32 - height as i32) / 2;
+    WindowBounds {
+        x,
+        y,
+        width,
+        height,
+    }
+}
+
+const CAPSULE_PREVIEW_LABEL: &str = "capsule-preview";
+static PREVIEW_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static PREVIEW_CONTENT: Mutex<Option<CapsulePreview>> = Mutex::new(None);
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CapsulePreview {
+    entry: CapsuleEntry,
+    side: crate::surface_sessions::CapsuleSide,
+    generation: u64,
+}
+
+pub fn advance_capsule_preview() -> u64 {
+    PREVIEW_GENERATION.fetch_add(1, Ordering::SeqCst) + 1
+}
+
+pub fn capsule_preview_state() -> Option<CapsulePreview> {
+    PREVIEW_CONTENT
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
+pub fn present_capsule_preview(
+    window: &tauri::WebviewWindow,
+    generation: u64,
+) -> Result<(), AppError> {
+    if window.label() == CAPSULE_PREVIEW_LABEL
+        && PREVIEW_GENERATION.load(Ordering::SeqCst) == generation
+    {
+        show_silent_surface(window)?;
+    }
+    Ok(())
+}
+
+pub fn capsule_hover(app: &AppHandle, inside: bool) {
+    let generation = advance_capsule_preview();
+    if inside {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        // 允许鼠标跨过入口与卡片之间的小间隙；旧请求不得收起新的预览。
+        tokio::time::sleep(std::time::Duration::from_millis(220)).await;
+        let _ = run_capsule_task(move || {
+            if PREVIEW_GENERATION.load(Ordering::SeqCst) == generation {
+                if let Some(window) = app.get_webview_window(CAPSULE_PREVIEW_LABEL) {
+                    window.hide()?;
+                }
+            }
+            Ok(())
+        })
+        .await;
+    });
+}
+
+pub fn show_capsule_preview(
+    rail: &tauri::WebviewWindow,
+    key: &str,
+    anchor_y: f64,
+    anchor_x: f64,
+    generation: u64,
+) -> Result<(), AppError> {
+    if PREVIEW_GENERATION.load(Ordering::SeqCst) != generation {
+        return Ok(());
+    }
+    let Some((index, side_name)) = rail
+        .label()
+        .strip_prefix("capsule-")
+        .and_then(|value| value.split_once('-'))
+    else {
+        return Ok(());
+    };
+    let Ok(index) = index.parse::<usize>() else {
+        return Ok(());
+    };
+    if !anchor_y.is_finite() || !anchor_x.is_finite() || CAPSULE_DRAGGING.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+    let side = match side_name {
+        "left" => crate::surface_sessions::CapsuleSide::Left,
+        "top" => crate::surface_sessions::CapsuleSide::Top,
+        _ => crate::surface_sessions::CapsuleSide::Right,
+    };
+    let app = rail.app_handle();
+    if !capsule_group(app, index, side)?
+        .iter()
+        .any(|session| session.key == key)
+    {
+        return Ok(());
+    }
+    let Some(entry) = capsule_entry(key)? else {
+        return Ok(());
+    };
+    let monitors = app.available_monitors()?;
+    let Some(monitor) = monitors.get(index) else {
+        return Ok(());
+    };
+    let scale = monitor.scale_factor();
+    let work = monitor.work_area();
+    let width = (300.0 * scale).round().min(work.size.width as f64) as u32;
+    let lines = entry.preview.lines().count().clamp(2, 10) as f64;
+    let height = ((86.0 + lines * 25.0).clamp(146.0, 336.0) * scale)
+        .round()
+        .min(work.size.height as f64) as u32;
+    let inset = (12.0 * scale).round() as i32;
+    let x = if side == crate::surface_sessions::CapsuleSide::Top {
+        (rail.outer_position()?.x + (anchor_x * scale).round() as i32 - width as i32 / 2).clamp(
+            work.position.x,
+            work.position.x + work.size.width as i32 - width as i32,
+        )
+    } else if side == crate::surface_sessions::CapsuleSide::Left {
+        monitor.position().x + inset
+    } else {
+        monitor.position().x + monitor.size().width as i32 - width as i32 - inset
+    };
+    let rail_y = rail.outer_position()?.y;
+    let y = (if side == crate::surface_sessions::CapsuleSide::Top {
+        monitor.position().y + inset
+    } else {
+        rail_y + (anchor_y * scale).round() as i32 - (16.0 * scale).round() as i32
+    })
+    .clamp(
+        work.position.y,
+        work.position.y + work.size.height as i32 - height as i32,
+    );
+    let window = if let Some(window) = app.get_webview_window(CAPSULE_PREVIEW_LABEL) {
+        window
+    } else {
+        WebviewWindowBuilder::new(
+            app,
+            CAPSULE_PREVIEW_LABEL,
+            WebviewUrl::App("capsule.html?preview=1".into()),
+        )
+        .title("便签预览")
+        .inner_size(300.0, 200.0)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .resizable(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .focused(false)
+        .visible(false)
+        .build()?
+    };
+    if PREVIEW_GENERATION.load(Ordering::SeqCst) != generation {
+        return Ok(());
+    }
+    window.set_size(PhysicalSize::new(width, height))?;
+    window.set_position(PhysicalPosition::new(x, y))?;
+    let preview = CapsulePreview {
+        entry,
+        side,
+        generation,
+    };
+    *PREVIEW_CONTENT.lock().unwrap_or_else(|e| e.into_inner()) = Some(preview.clone());
+    app.emit_to(CAPSULE_PREVIEW_LABEL, "capsule-preview-changed", preview)?;
+    // 首次加载通过 state 命令读取同一份数据；渲染完成后再 present，避免空白闪烁。
+    Ok(())
+}
+
+fn dismiss_capsule_preview(app: &AppHandle) {
+    advance_capsule_preview();
+    *PREVIEW_CONTENT.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    if let Some(window) = app.get_webview_window(CAPSULE_PREVIEW_LABEL) {
+        let _ = window.hide();
+    }
+}
+
+pub fn sync_capsule_windows(app: &AppHandle) -> Result<(), AppError> {
+    if app_is_exiting(app) || CAPSULE_DRAGGING.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+    let monitors = app.available_monitors()?;
+    let mut active_labels = std::collections::HashSet::new();
+    for (index, monitor) in monitors.iter().enumerate() {
+        for side in [
+            crate::surface_sessions::CapsuleSide::Left,
+            crate::surface_sessions::CapsuleSide::Right,
+            crate::surface_sessions::CapsuleSide::Top,
+        ] {
+            let label = capsule_label(index, side);
+            let count = capsule_group(app, index, side)?.len();
+            if count == 0 {
+                continue;
+            }
+            active_labels.insert(label.clone());
+            if let Some(window) = app.get_webview_window(&label) {
+                position_capsule_window(&window, monitor, side, count)?;
+                let _ = app.emit_to(&label, "capsules-changed", ());
+                continue;
+            }
+            let side_name = match side {
+                crate::surface_sessions::CapsuleSide::Left => "left",
+                crate::surface_sessions::CapsuleSide::Right => "right",
+                crate::surface_sessions::CapsuleSide::Top => "top",
+            };
+            let url = format!("capsule.html?monitor={index}&side={side_name}");
+            let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
+                .title("收纳便签")
+                .inner_size(8.0, 32.0)
+                .decorations(false)
+                .transparent(true)
+                .shadow(false)
+                .resizable(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .focused(false)
+                .visible(false)
+                .build()?;
+            position_capsule_window(&window, monitor, side, count)?;
+        }
+    }
+    // 包括已拔除显示器留下的旧轨道；预览由下方独立管理。
+    for (label, window) in app.webview_windows() {
+        if label.starts_with("capsule-")
+            && label != CAPSULE_PREVIEW_LABEL
+            && !active_labels.contains(&label)
+        {
+            window.destroy()?;
+        }
+    }
+    if !crate::surface_sessions::list()?
+        .iter()
+        .any(|session| session.presentation == crate::surface_sessions::Presentation::Stored)
+    {
+        dismiss_capsule_preview(app);
+        if let Some(window) = app.get_webview_window(CAPSULE_PREVIEW_LABEL) {
+            window.destroy()?;
+        }
+    }
+    Ok(())
+}
+
+pub fn hide_stored_surface(app: &AppHandle, key: &str) -> Result<(), AppError> {
+    if crate::surface_sessions::get(key)?.presentation
+        != crate::surface_sessions::Presentation::Stored
+    {
+        return Ok(());
+    }
+    dismiss_capsule_preview(app);
+    crate::surface_sessions::mutate(key, |session| {
+        session.presentation = crate::surface_sessions::Presentation::Hidden
+    })?;
+    sync_capsule_windows(app)?;
+    app.emit(
+        "surface-session-changed",
+        crate::surface_sessions::get(key)?,
+    )?;
+    Ok(())
+}
+
+pub fn store_surface(app: &AppHandle, key: &str) -> Result<(), AppError> {
+    crate::surface_sessions::validate_key(key)?;
+    let session = crate::surface_sessions::get(key)?;
+    let Some((kind, id)) = key.split_once(':') else {
+        return Ok(());
+    };
+    let label = if kind == "linked" {
+        format!("tile-linked-{}", sanitize_label_part(id))
+    } else {
+        tile_window_label(id)
+    };
+    let window = app.get_webview_window(&label);
+    if let Some(window) = &window {
+        save_session_bounds(window);
+    }
+    if session.presentation != crate::surface_sessions::Presentation::Stored {
+        crate::surface_sessions::mutate(key, |session| {
+            session.presentation = crate::surface_sessions::Presentation::Stored
+        })?;
+    }
+    // 入口建好再销毁便签；创建失败时保留原窗口和状态，用户始终有退出与重试入口。
+    if let Err(error) = sync_capsule_windows(app) {
+        let _ = crate::surface_sessions::mutate(key, |current| {
+            current.presentation = session.presentation
+        });
+        let _ = sync_capsule_windows(app);
+        return Err(error);
+    }
+    if let Some(window) = window {
+        #[cfg(target_os = "windows")]
+        crate::lock_overlay::hide(&window);
+        if let Err(error) = window.destroy() {
+            let _ = crate::surface_sessions::mutate(key, |current| {
+                current.presentation = session.presentation
+            });
+            let _ = sync_capsule_windows(app);
+            return Err(error.into());
+        }
+    }
+    let _ = app.emit(
+        "surface-session-changed",
+        crate::surface_sessions::get(key)?,
+    );
+    Ok(())
+}
+
+pub fn restore_stored_surface(app: &AppHandle, key: &str) -> Result<(), AppError> {
+    let session = crate::surface_sessions::get(key)?;
+    if session.presentation != crate::surface_sessions::Presentation::Stored {
+        return Ok(());
+    }
+    let Some((kind, id)) = key.split_once(':') else {
+        return Ok(());
+    };
+    if kind == "linked" {
+        crate::linked::read(id)?;
+        open_linked_tile_window_now(app, id, None)?;
+    } else {
+        default_store()?.read_note(id)?;
+        open_tile_window_now(app, id, None)?;
+    }
+    dismiss_capsule_preview(app);
+    crate::surface_sessions::mutate(key, |session| {
+        session.presentation = crate::surface_sessions::Presentation::Expanded
+    })?;
+    sync_capsule_windows(app)?;
+    let _ = app.emit(
+        "surface-session-changed",
+        crate::surface_sessions::get(key)?,
+    );
+    Ok(())
 }
 
 pub fn show_silent_surface(window: &tauri::WebviewWindow) -> Result<(), AppError> {
@@ -2164,6 +3011,7 @@ pub fn save_surface_session(
     current.shortcut = session.shortcut;
     current.window_mode = session.window_mode;
     current.locked = session.locked;
+    current.capsule_side = session.capsule_side;
     #[cfg(not(target_os = "windows"))]
     if session.window_mode == crate::surface_sessions::WindowMode::DesktopAttached {
         return Err(surface_mode_error("桌面附着目前仅支持 Windows"));
@@ -2214,6 +3062,9 @@ pub fn save_surface_session(
         return Err(error);
     }
     let _ = app.emit("surface-session-changed", current);
+    if session.capsule_side != previous.capsule_side {
+        queue_capsule_sync(app);
+    }
     Ok(())
 }
 
@@ -2292,6 +3143,7 @@ pub fn remove_surface_session(app: &AppHandle, key: &str) {
     if crate::surface_sessions::remove(key).is_err() {
         return;
     }
+    queue_capsule_sync(app);
     #[cfg(desktop)]
     if let Ok(config) = load_config() {
         if let Err(error) = install_global_shortcut_bindings(app, &config, true, None) {
@@ -2324,6 +3176,13 @@ fn restore_silent_sessions(app: &AppHandle) {
             StartupBehavior::Expanded => true,
             StartupBehavior::RestoreLast => session.presentation == Presentation::Expanded,
         };
+        if session.startup_behavior == StartupBehavior::Hidden
+            && session.presentation == Presentation::Stored
+        {
+            let _ = crate::surface_sessions::mutate(&session.key, |current| {
+                current.presentation = Presentation::Hidden;
+            });
+        }
         if !should_open {
             continue;
         }
@@ -2367,7 +3226,14 @@ fn restore_silent_sessions(app: &AppHandle) {
         );
         if let Err(error) = result {
             eprintln!("failed to restore {}: {error}", session.key);
+        } else {
+            let _ = crate::surface_sessions::mutate(&session.key, |current| {
+                current.presentation = Presentation::Expanded;
+            });
         }
+    }
+    if let Err(error) = sync_capsule_windows(app) {
+        eprintln!("failed to restore stored capsules: {error}");
     }
 }
 
@@ -2480,14 +3346,26 @@ fn setup_global_shortcut_plugin(app: &AppHandle) -> tauri::Result<()> {
                 let app_for_closure = app.clone();
                 match action {
                     ShortcutAction::OpenMain => {
-                        if let Err(error) = app.run_on_main_thread(move || {
+                        tauri::async_runtime::spawn_blocking(move || {
                             let _ = show_main_window(&app_for_closure);
-                        }) {
-                            eprintln!("failed to open main window from shortcut: {error}");
-                        }
+                        });
                     }
                     ShortcutAction::Surface(key) => {
-                        if let Err(error) = app.run_on_main_thread(move || {
+                        tauri::async_runtime::spawn_blocking(move || {
+                            let _guard =
+                                CAPSULE_OPERATIONS.lock().unwrap_or_else(|e| e.into_inner());
+                            if crate::surface_sessions::get(&key)
+                                .ok()
+                                .is_some_and(|session| {
+                                    session.presentation
+                                        == crate::surface_sessions::Presentation::Stored
+                                })
+                            {
+                                if let Err(error) = restore_stored_surface(&app_for_closure, &key) {
+                                    eprintln!("failed to restore stored surface: {error}");
+                                }
+                                return;
+                            }
                             let Some((kind, id)) = key.split_once(':') else {
                                 return;
                             };
@@ -2498,7 +3376,11 @@ fn setup_global_shortcut_plugin(app: &AppHandle) -> tauri::Result<()> {
                             };
                             if let Some(window) = app_for_closure.get_webview_window(&label) {
                                 if window.is_focused().unwrap_or(false) {
-                                    let _ = window.close();
+                                    let _ = app_for_closure.emit_to(
+                                        &label,
+                                        "surface-store-request",
+                                        (),
+                                    );
                                 } else {
                                     clear_hidden_window_state(&app_for_closure);
                                     let _ = window.show();
@@ -2513,16 +3395,12 @@ fn setup_global_shortcut_plugin(app: &AppHandle) -> tauri::Result<()> {
                             } else {
                                 let _ = open_tile_window_now(&app_for_closure, id, None);
                             }
-                        }) {
-                            eprintln!("failed to dispatch surface shortcut: {error}");
-                        }
+                        });
                     }
                     ShortcutAction::ToggleVisibility => {
-                        if let Err(error) = app.run_on_main_thread(move || {
+                        tauri::async_runtime::spawn_blocking(move || {
                             toggle_app_visibility(&app_for_closure);
-                        }) {
-                            eprintln!("failed to dispatch visibility toggle action: {error}");
-                        }
+                        });
                     }
                     ShortcutAction::OpenNotepad => {
                         let bounds = if load_config().map(|c| c.open_at_cursor).unwrap_or(true) {
@@ -2531,15 +3409,13 @@ fn setup_global_shortcut_plugin(app: &AppHandle) -> tauri::Result<()> {
                         } else {
                             None
                         };
-                        if let Err(error) = app.run_on_main_thread(move || {
+                        tauri::async_runtime::spawn_blocking(move || {
                             if let Err(error) =
                                 open_notepad_window_now(&app_for_closure, None, bounds)
                             {
                                 eprintln!("failed to open notepad from global shortcut: {error}");
                             }
-                        }) {
-                            eprintln!("failed to dispatch global shortcut action: {error}");
-                        }
+                        });
                     }
                 }
             })
@@ -3118,6 +3994,75 @@ mod tests {
         );
         assert_eq!(tray_menu_action("quit"), Some(TrayMenuAction::Quit));
         assert_eq!(tray_menu_action("unknown"), None);
+    }
+
+    #[test]
+    fn capsule_rail_uses_physical_edges_at_mixed_dpi() {
+        use crate::surface_sessions::CapsuleSide;
+        let screen = WindowBounds {
+            x: -2560,
+            y: 0,
+            width: 2560,
+            height: 1440,
+        };
+        let work = WindowBounds {
+            x: -2500,
+            y: 0,
+            width: 2500,
+            height: 1380,
+        };
+        for scale in [1.0, 1.25, 1.5, 2.0] {
+            let left = super::capsule_rail_bounds(screen, work, scale, 3, CapsuleSide::Left);
+            let right = super::capsule_rail_bounds(screen, work, scale, 3, CapsuleSide::Right);
+            assert_eq!(left.x, screen.x);
+            assert_eq!(right.x + right.width as i32, screen.x + screen.width as i32);
+            assert_eq!(left.width, (8.0 * scale).round() as u32);
+            assert!(left.y >= work.y && left.y + left.height as i32 <= work.y + work.height as i32);
+        }
+    }
+
+    #[test]
+    fn capsule_top_and_nearest_edge() {
+        use crate::surface_sessions::CapsuleSide;
+        let screen = WindowBounds {
+            x: -2560,
+            y: -1440,
+            width: 2560,
+            height: 1440,
+        };
+        let work = WindowBounds {
+            x: -2560,
+            y: -1400,
+            width: 2500,
+            height: 1400,
+        };
+        for scale in [1.0, 1.25, 1.5, 2.0] {
+            let top = capsule_rail_bounds(screen.clone(), work.clone(), scale, 3, CapsuleSide::Top);
+            assert_eq!(top.y, screen.y);
+            assert_eq!(top.height, (8.0 * scale).round() as u32);
+            assert!(top.x >= work.x && top.x + top.width as i32 <= work.x + work.width as i32);
+        }
+        assert_eq!(nearest_capsule_side(3.0, 600.0, 2560.0), CapsuleSide::Left);
+        assert_eq!(
+            nearest_capsule_side(2558.0, 600.0, 2560.0),
+            CapsuleSide::Right
+        );
+        assert_eq!(nearest_capsule_side(1200.0, 3.0, 2560.0), CapsuleSide::Top);
+    }
+
+    #[test]
+    fn capsule_preview_keeps_body_and_hides_frontmatter() {
+        assert_eq!(
+            super::capsule_preview(
+                "\u{feff}---\r\nsecret: value\r\n---\r\n# 标题\r\n\r\n- [ ] 任务\r\n第二段"
+            ),
+            "# 标题\n\n- [ ] 任务\n第二段"
+        );
+        assert_eq!(super::capsule_preview("---\nsecret: value"), "");
+        assert_eq!(
+            super::capsule_preview(&"字".repeat(5000)).chars().count(),
+            2400
+        );
     }
 
     #[test]

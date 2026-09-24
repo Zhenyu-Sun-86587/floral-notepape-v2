@@ -2,7 +2,7 @@ use crate::{linked, services::notes::AppError};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{mpsc, Mutex, OnceLock},
     time::Duration,
@@ -144,10 +144,26 @@ pub fn start(app: AppHandle) -> Result<(), AppError> {
     let _ = linked::scan_roots()?;
     sync_watches()?;
     std::thread::spawn(move || {
-        let mut paths = Vec::new();
+        let mut paths = HashSet::new();
+        let mut batch_started = std::time::Instant::now();
         let mut rescan = false;
         loop {
-            match receiver.recv_timeout(Duration::from_millis(180)) {
+            // 空闲时阻塞等待；事件簇最多积累 400ms，持续写入也不会无限推迟通知。
+            let event = if paths.is_empty() && !rescan {
+                let event = receiver
+                    .recv()
+                    .map_err(|_| mpsc::RecvTimeoutError::Disconnected);
+                batch_started = std::time::Instant::now();
+                event
+            } else if batch_started.elapsed() >= Duration::from_millis(400) {
+                Err(mpsc::RecvTimeoutError::Timeout)
+            } else {
+                receiver.recv_timeout(
+                    Duration::from_millis(180)
+                        .min(Duration::from_millis(400).saturating_sub(batch_started.elapsed())),
+                )
+            };
+            match event {
                 Ok(Ok(event)) => {
                     if matches!(
                         event.kind,

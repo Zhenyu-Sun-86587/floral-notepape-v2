@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -181,6 +181,7 @@ export function NotePad({
   const titleRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const tileContentRef = useRef<HTMLTextAreaElement>(null);
+  const lockButtonRef = useRef<HTMLButtonElement>(null);
   const tileDragIntentRef = useRef<{ x: number; y: number } | null>(null);
   const windowLabelRef = useRef("");
   const statusRef = useRef<NotePadStatus>("empty");
@@ -573,6 +574,29 @@ export function NotePad({
   const saveNoteRef = useRef(saveNote);
   saveNoteRef.current = saveNote;
 
+  const storingRef = useRef(false);
+  const storeTile = useCallback(async () => {
+    if (storingRef.current) return;
+    storingRef.current = true;
+    try {
+      if (statusRef.current === "dirty") await saveNoteRef.current();
+      // 后端先建立边缘入口，再销毁原窗口；失败时原便签保留，可直接重试。
+      await invoke("surface_store_current");
+    } catch (error) {
+      showToast(getErrorMessage(error));
+    } finally {
+      storingRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (surfaceMode !== "tile") return undefined;
+    const unlisten = getCurrentWindow().listen("surface-store-request", () => void storeTile());
+    return () => {
+      void unlisten.then((dispose) => dispose());
+    };
+  }, [storeTile, surfaceMode]);
+
   const closeLinkedWindow = useCallback(async () => {
     if (!initialBindingId || linkedClosingRef.current) return;
     linkedClosingRef.current = true;
@@ -767,12 +791,42 @@ export function NotePad({
     }
   }, [saveNote, tileWriting]);
 
+  const reportLockButtonBounds = useCallback(async () => {
+    if (!navigator.userAgent.includes("Windows")) return;
+    const rect = lockButtonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    await invoke("surface_unlock_button_bounds", {
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (surfaceMode !== "tile" || !navigator.userAgent.includes("Windows")) return;
+    const button = lockButtonRef.current;
+    if (!button) return;
+    const report = () => void reportLockButtonBounds().catch(() => undefined);
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(button);
+    window.addEventListener("resize", report);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", report);
+    };
+  }, [reportLockButtonBounds, surfaceMode]);
+
   const lockTile = useCallback(async () => {
     const key = initialBindingId
       ? `linked:${initialBindingId}`
       : `note:${editingNoteId ?? initialNoteId ?? ""}`;
     try {
       if (statusRef.current === "dirty") await saveNote();
+      await reportLockButtonBounds();
       const session = await getSurfaceSession(key);
       await saveSurfaceSession({ ...session, locked: true });
       setTileWriting(false);
@@ -780,7 +834,7 @@ export function NotePad({
     } catch (error) {
       showToast(getErrorMessage(error));
     }
-  }, [editingNoteId, initialBindingId, initialNoteId, saveNote]);
+  }, [editingNoteId, initialBindingId, initialNoteId, reportLockButtonBounds, saveNote]);
 
   useEffect(() => clearPendingTileDrag, [clearPendingTileDrag]);
 
@@ -1006,7 +1060,7 @@ export function NotePad({
     surfaceFontSize;
   const tileTitle = title.trim();
   const enterClass = hasEnteredOnce.current ? "" : "animate-window-enter";
-  const surfaceWrapperClassName = `w-full h-screen flex flex-col bg-transparent p-0 ${isExiting ? "animate-window-exit" : enterClass}`;
+  const surfaceWrapperClassName = `w-full h-screen flex flex-col bg-transparent ${isTile && desktopAttached ? "desktop-tile-shell" : "p-0"} ${isExiting ? "animate-window-exit" : enterClass}`;
   const padSurfaceClassName =
     "app-surface-frame relative noise-bg w-full h-full min-h-0 bg-cloud overflow-hidden flex flex-col flex-1 border border-paper-deep/70 shadow-[0_1px_10px_rgba(26,26,24,0.06)] transition-all duration-200 ease-out";
 
@@ -1047,14 +1101,14 @@ export function NotePad({
           onEditorDrop={imageDropHandler}
           onEditorDragOver={imageDragOverHandler}
           width="100%"
-          className="h-full cursor-default"
+          className={`h-full ${tileWriting ? "cursor-text" : "tile-reading cursor-default"}`}
           data-surface-mode={surfaceMode}
           data-context-menu="tile"
           data-note-id={tileNoteId}
           onMouseDown={handleDrag}
           onDoubleClick={handleTileDoubleClick}
         >
-          {!tileLocked && (
+          {(!tileLocked || navigator.userAgent.includes("Windows")) && (
             <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
               <button
                 type="button"
@@ -1082,12 +1136,13 @@ export function NotePad({
                 </svg>
               </button>
               <button
+                ref={lockButtonRef}
                 type="button"
                 aria-label="锁定便签并允许鼠标穿透"
                 title="锁定便签；锁定后点击右上角解锁"
                 onMouseDown={(event) => event.stopPropagation()}
                 onClick={() => void lockTile()}
-                className="w-6 h-6 flex items-center justify-center rounded-full text-ink-ghost/70 hover:text-ink hover:bg-paper-warm/80 transition-colors cursor-pointer"
+                className={`w-6 h-6 flex items-center justify-center rounded-full text-ink-ghost/70 hover:text-ink hover:bg-paper-warm/80 transition-colors cursor-pointer ${tileLocked ? "invisible" : ""}`}
               >
                 <svg
                   width="14"
@@ -1101,6 +1156,27 @@ export function NotePad({
                 >
                   <rect x="5" y="10" width="14" height="11" rx="2" />
                   <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                aria-label="收纳到屏幕边缘"
+                title="收纳到屏幕边缘"
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={() => void storeTile()}
+                className={`w-6 h-6 flex items-center justify-center rounded-full text-ink-ghost/70 hover:text-bamboo hover:bg-bamboo-mist/80 transition-colors cursor-pointer ${tileLocked ? "invisible" : ""}`}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M4 5h16v14H4zM8 9l4 3-4 3M14 12h4" />
                 </svg>
               </button>
               <button
@@ -1134,7 +1210,7 @@ export function NotePad({
               </button>
             </div>
           )}
-          {!tileLocked && <SurfaceResizeHandles />}
+          {(!tileLocked || navigator.userAgent.includes("Windows")) && <SurfaceResizeHandles />}
         </Tile>
       ) : (
         <div className={padSurfaceClassName} data-surface-mode={surfaceMode}>

@@ -1,5 +1,7 @@
 <!-- markdownlint-disable -->
 
+> **Hermes Surface Dev fork（Windows 1.6.0）**：当前功能、安装包、性能复查及保留项见 [P8 收尾报告](Docs/P8_FINAL.md)，历史阶段见 [STATUS](Docs/STATUS.md)，macOS 见 [协作者交接](Docs/MAC_HANDOFF.md)。下方保留上游花笺介绍与来源，其 Release/签名/商店说明不代表本 fork 的发布状态。
+
 **简体中文** | [繁體中文](README_zh-HK.md) | [English](README_en-US.md)
 
 <div align="center">
