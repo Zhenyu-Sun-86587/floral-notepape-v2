@@ -15,10 +15,14 @@ import remarkAlerts from "./remarkAlerts";
 import { resolveMarkdownImageSrc } from "./imageSrc";
 import { hideLeadingFrontmatter } from "./frontmatter";
 import remarkTaskOffsets from "./remarkTaskOffsets";
+import { highlightCode } from "./highlightCode";
+import { MermaidBlock } from "./MermaidBlock";
 
 function CodeBlock({ children, language }: { children: React.ReactNode; language?: string }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
+  const source = extractText(children);
+  const highlighted = useMemo(() => highlightCode(source, language ?? ""), [source, language]);
 
   const handleCopy = useCallback(() => {
     const text = extractText(children);
@@ -28,6 +32,8 @@ function CodeBlock({ children, language }: { children: React.ReactNode; language
     });
   }, [children]);
 
+  if (language?.toLowerCase() === "mermaid") return <MermaidBlock source={source} />;
+
   return (
     <div className="markdown-code-block my-3 relative group">
       <pre
@@ -35,7 +41,14 @@ function CodeBlock({ children, language }: { children: React.ReactNode; language
           language ? "pt-8 pb-3" : "py-3"
         }`}
       >
-        {children}
+        {highlighted == null ? (
+          children
+        ) : (
+          <code
+            className="text-[0.85em] font-mono text-ink-soft leading-[1.8] whitespace-pre"
+            dangerouslySetInnerHTML={{ __html: highlighted }}
+          />
+        )}
       </pre>
       {language && (
         <span className="absolute top-2 left-3 text-[10px] font-mono text-ink-faint/70 uppercase tracking-wider select-none">
@@ -71,6 +84,8 @@ interface MarkdownPreviewProps {
   fontSize?: number;
   renderHtml?: boolean;
   imageBaseDir?: string;
+  imageRootDir?: string;
+  allowRemoteImages?: boolean;
   onTaskToggle?: (offset: number, checked: boolean) => void;
 }
 
@@ -82,7 +97,6 @@ const sanitizeSchema = {
     ...defaultSchema.attributes,
     "*": [
       ...(defaultSchema.attributes?.["*"] ?? []),
-      "style",
       "className",
       "data-alert-type",
       "dataAlertType",
@@ -304,6 +318,8 @@ export function MarkdownPreview({
   fontSize = 14,
   renderHtml = false,
   imageBaseDir,
+  imageRootDir,
+  allowRemoteImages = false,
   onTaskToggle,
 }: MarkdownPreviewProps) {
   const { t } = useTranslation();
@@ -337,8 +353,15 @@ export function MarkdownPreview({
       input: ({ checked, ...props }) => (
         <TaskInput {...props} checked={checked} onTaskToggle={onTaskToggle} />
       ),
-      img: ({ src, alt, ...props }) => {
-        const resolvedSrc = resolveMarkdownImageSrc(src, imageBaseDir, convertFileSrc);
+      img: ({ src, alt, srcSet: _srcSet, ...props }) => {
+        const resolvedSrc = resolveMarkdownImageSrc(
+          src,
+          imageBaseDir,
+          convertFileSrc,
+          imageRootDir,
+          allowRemoteImages,
+        );
+        if (!resolvedSrc) return null;
         return (
           <img
             src={resolvedSrc}
@@ -350,7 +373,7 @@ export function MarkdownPreview({
         );
       },
     }),
-    [imageBaseDir, onTaskToggle],
+    [allowRemoteImages, imageBaseDir, imageRootDir, onTaskToggle],
   );
   return (
     <div className="font-body markdown-selectable" style={{ fontSize: `${fontSize}px` }}>

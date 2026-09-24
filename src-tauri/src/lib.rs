@@ -77,8 +77,12 @@ fn linked_scan_roots(app: AppHandle) -> Result<Vec<linked::LinkedBinding>, AppEr
 }
 
 #[tauri::command]
-fn linked_read(id: String) -> Result<linked::LinkedContent, AppError> {
-    linked::read(&id)
+fn linked_read(app: AppHandle, id: String) -> Result<linked::LinkedContent, AppError> {
+    let result = linked::read(&id)?;
+    // 仅开放用户已绑定目录（或单文件父目录）的本地图片给 asset 协议。
+    app.asset_protocol_scope()
+        .allow_directory(&result.image_root, true)?;
+    Ok(result)
 }
 
 #[tauri::command]
@@ -169,12 +173,13 @@ fn notes_export_markdown(id: String, path: String) -> Result<(), AppError> {
 }
 
 #[tauri::command]
-fn read_external_file(path: String) -> Result<String, AppError> {
-    std::fs::read_to_string(&path).map_err(|e| AppError {
-        code: "io".into(),
-        message: e.to_string(),
-        details: Default::default(),
-    })
+fn read_external_file(app: AppHandle, path: String) -> Result<String, AppError> {
+    let content = std::fs::read_to_string(&path)?;
+    let canonical = std::fs::canonicalize(&path)?;
+    if let Some(parent) = canonical.parent() {
+        app.asset_protocol_scope().allow_directory(parent, true)?;
+    }
+    Ok(content)
 }
 
 #[tauri::command]

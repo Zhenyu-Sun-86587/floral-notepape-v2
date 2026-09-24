@@ -34,7 +34,9 @@ import {
   type LinkedContent,
 } from "../features/linked/api";
 import { MarkdownPreviewLazy as MarkdownPreview } from "../features/markdown/MarkdownPreviewLazy";
+import { markdownImageDirectory, markdownImageRoot } from "../features/markdown/imageSrc";
 import { toggleTaskMarker } from "../features/markdown/taskMarker";
+import { continueMarkdownList } from "../features/markdown/listEnter";
 import { showToast } from "./Toast";
 import {
   createScrollSyncMap,
@@ -144,6 +146,7 @@ interface CategoryMenuState {
 type FormatAction =
   | "bold"
   | "italic"
+  | "link"
   | "heading"
   | "hr"
   | "ul"
@@ -187,6 +190,15 @@ function applyFormat(
       result = before + wrapped + after;
       cursorStart = start + 1;
       cursorEnd = cursorStart + (selected || fallback).length;
+      break;
+    }
+    case "link": {
+      const label =
+        selected || translate("main.formatSample.linkText", { defaultValue: "链接文字" });
+      const wrapped = `[${label}](https://)`;
+      result = before + wrapped + after;
+      cursorStart = start + label.length + 3;
+      cursorEnd = cursorStart + "https://".length;
       break;
     }
     case "heading": {
@@ -517,6 +529,12 @@ export function MainWindow({
         title: t("main.toolbar.italic", { defaultValue: "斜体" }),
         style: "italic",
         action: "italic",
+      },
+      {
+        label: "↗",
+        title: t("main.toolbar.link", { defaultValue: "链接" }),
+        style: "",
+        action: "link",
       },
       {
         label: "H",
@@ -3264,6 +3282,38 @@ export function MainWindow({
                             setContent(event.target.value);
                             markDirty();
                           }}
+                          onKeyDown={(event) => {
+                            if (event.nativeEvent.isComposing) return;
+                            if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+                              const action =
+                                event.key.toLowerCase() === "b"
+                                  ? "bold"
+                                  : event.key.toLowerCase() === "i"
+                                    ? "italic"
+                                    : event.key.toLowerCase() === "k"
+                                      ? "link"
+                                      : null;
+                              if (action) {
+                                event.preventDefault();
+                                applyFormat(event.currentTarget, action, t, setContent, markDirty);
+                                return;
+                              }
+                            }
+                            if (event.key !== "Enter") return;
+                            const next = continueMarkdownList(
+                              contentValueRef.current,
+                              event.currentTarget.selectionStart,
+                              event.currentTarget.selectionEnd,
+                            );
+                            if (!next) return;
+                            event.preventDefault();
+                            contentValueRef.current = next.content;
+                            setContent(next.content);
+                            markDirty();
+                            requestAnimationFrame(() =>
+                              contentRef.current?.setSelectionRange(next.cursor, next.cursor),
+                            );
+                          }}
                           onPaste={imagePasteHandler}
                           onDrop={imageDropHandler}
                           onDragOver={imageDragOverHandler}
@@ -3323,7 +3373,20 @@ export function MainWindow({
                           content={deferredContent}
                           fontSize={settingsConfig?.fontSize ?? 14}
                           renderHtml={settingsConfig?.renderHtmlMarkdown ?? false}
-                          imageBaseDir={imageBaseDir ?? undefined}
+                          imageBaseDir={
+                            selectedExternalFile
+                              ? markdownImageDirectory(selectedExternalFile.filePath)
+                              : (imageBaseDir ?? undefined)
+                          }
+                          imageRootDir={
+                            selectedExternalFile
+                              ? markdownImageRoot(
+                                  selectedExternalFile.filePath,
+                                  linkedRoots.map((root) => root.path),
+                                )
+                              : undefined
+                          }
+                          allowRemoteImages={settingsConfig?.allowRemoteImages ?? false}
                           onTaskToggle={(offset, checked) => {
                             if (contentValueRef.current !== deferredContent) return;
                             const next = toggleTaskMarker(deferredContent, offset, checked);

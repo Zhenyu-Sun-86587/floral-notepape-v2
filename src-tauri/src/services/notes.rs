@@ -78,6 +78,8 @@ pub struct AppConfig {
     pub tile_render_markdown: bool,
     #[serde(default)]
     pub render_html_markdown: bool,
+    #[serde(default)]
+    pub allow_remote_images: bool,
     #[serde(default = "default_split_scroll_sync")]
     pub split_scroll_sync: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1143,6 +1145,7 @@ impl NoteStore {
             tile_save_returns_to_pin: false,
             tile_render_markdown: false,
             render_html_markdown: false,
+            allow_remote_images: false,
             split_scroll_sync: true,
             surface_width: None,
             surface_height: None,
@@ -1890,6 +1893,7 @@ mod tests {
             tile_save_returns_to_pin: true,
             tile_render_markdown: false,
             render_html_markdown: false,
+            allow_remote_images: false,
             split_scroll_sync: true,
             surface_width: None,
             surface_height: None,

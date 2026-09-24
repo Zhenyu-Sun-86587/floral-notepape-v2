@@ -27,6 +27,7 @@ export interface AppConfig {
   tileSaveReturnsToPin: boolean;
   tileRenderMarkdown: boolean;
   renderHtmlMarkdown: boolean;
+  allowRemoteImages: boolean;
   splitScrollSync: boolean;
   surfaceWidth?: number;
   surfaceHeight?: number;

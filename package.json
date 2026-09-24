@@ -1,6 +1,6 @@
 {
   "name": "floral-notepaper",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "private": true,
   "type": "module",
   "scripts": {
@@ -20,9 +20,11 @@
     "@tauri-apps/plugin-dialog": "^2.7.0",
     "@tauri-apps/plugin-opener": "^2",
     "chroma-js": "^3.2.0",
+    "highlight.js": "^11.11.1",
     "i18next": "^26.2.0",
     "indent-textarea": "^4.0.0",
     "katex": "^0.16.47",
+    "mermaid": "^11.17.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-i18next": "^17.0.8",

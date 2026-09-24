@@ -213,6 +213,11 @@ export function SettingsPanel({ config, onChange, onMigrateDataDir, onClose }: S
             onChange={(checked) => setConfigValue("renderHtmlMarkdown", checked)}
           />
           <ToggleRow
+            label={t("settings.allowRemoteImages", { defaultValue: "允许远程图片" })}
+            checked={config.allowRemoteImages ?? false}
+            onChange={(checked) => setConfigValue("allowRemoteImages", checked)}
+          />
+          <ToggleRow
             label={t("settings.splitScrollSync", { defaultValue: "分栏同步滚动" })}
             checked={config.splitScrollSync ?? true}
             onChange={(checked) => setConfigValue("splitScrollSync", checked)}

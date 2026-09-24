@@ -61,6 +61,8 @@ import {
 import { NotepadOpenPanel } from "./NotepadOpenPanel";
 import { Tile } from "./Tile";
 import { toggleTaskMarker } from "../features/markdown/taskMarker";
+import { markdownImageDirectory } from "../features/markdown/imageSrc";
+import { continueMarkdownList } from "../features/markdown/listEnter";
 
 type OpenMode = "new" | "open";
 type NotePadStatus = "empty" | "opened" | "saved" | "dirty" | "saveFailed" | "copied";
@@ -144,6 +146,10 @@ export function NotePad({
   const linkedRevisionRef = useRef("");
   const linkedClosingRef = useRef(false);
   const [linkedConflict, setLinkedConflict] = useState<LinkedContent | null>(null);
+  const [linkedImageScope, setLinkedImageScope] = useState<{
+    baseDir: string;
+    rootDir: string;
+  } | null>(null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [status, setStatus] = useState<NotePadStatus>("empty");
@@ -152,6 +158,7 @@ export function NotePad({
   const [tileColorMode, setTileColorMode] = useState<TileColorMode>("system");
   const [surfaceFontSize, setSurfaceFontSize] = useState(14);
   const [tileRenderMarkdown, setTileRenderMarkdown] = useState(false);
+  const [allowRemoteImages, setAllowRemoteImages] = useState(false);
   const [tileDoubleClickToEdit, setTileDoubleClickToEdit] = useState(false);
   const [tileSaveReturnsToPin, setTileSaveReturnsToPin] = useState(false);
   const [tileColor, setTileColor] = useState(() =>
@@ -226,6 +233,7 @@ export function NotePad({
           setNoteSurfaceAutoSave(loadedConfig.noteSurfaceAutoSave);
           setSurfaceFontSize(loadedConfig.surfaceFontSize ?? 14);
           setTileRenderMarkdown(loadedConfig.tileRenderMarkdown ?? false);
+          setAllowRemoteImages(loadedConfig.allowRemoteImages ?? false);
           setTileDoubleClickToEdit(loadedConfig.tileDoubleClickToEdit ?? false);
           setTileSaveReturnsToPin(loadedConfig.tileSaveReturnsToPin ?? false);
           setTileColorRaw(normalizeTileColor(loadedConfig.tileColor));
@@ -242,6 +250,10 @@ export function NotePad({
           if (!cancelled) {
             const recovered = draft?.content != null && draft.content !== linked.content;
             linkedRevisionRef.current = recovered ? draft.baseRevision : linked.revision;
+            setLinkedImageScope({
+              baseDir: markdownImageDirectory(linked.binding.path),
+              rootDir: linked.imageRoot,
+            });
             setTitle(
               linked.binding.path
                 .split(/[\\/]/)
@@ -350,6 +362,7 @@ export function NotePad({
       tileColorMode?: TileColorMode;
       surfaceFontSize?: number;
       tileRenderMarkdown?: boolean;
+      allowRemoteImages?: boolean;
       tileDoubleClickToEdit?: boolean;
       tileSaveReturnsToPin?: boolean;
     }>("config-changed", (event) => {
@@ -361,6 +374,8 @@ export function NotePad({
       if (event.payload.surfaceFontSize != null) setSurfaceFontSize(event.payload.surfaceFontSize);
       if (event.payload.tileRenderMarkdown != null)
         setTileRenderMarkdown(event.payload.tileRenderMarkdown);
+      if (event.payload.allowRemoteImages != null)
+        setAllowRemoteImages(event.payload.allowRemoteImages);
       if (event.payload.tileDoubleClickToEdit != null)
         setTileDoubleClickToEdit(event.payload.tileDoubleClickToEdit);
       if (event.payload.tileSaveReturnsToPin != null)
@@ -858,7 +873,9 @@ export function NotePad({
           color={tileColor}
           fontSize={surfaceFontSize}
           renderMarkdown={tileRenderMarkdown}
-          imageBaseDir={imageBaseDir ?? undefined}
+          imageBaseDir={linkedImageScope?.baseDir ?? imageBaseDir ?? undefined}
+          imageRootDir={linkedImageScope?.rootDir}
+          allowRemoteImages={allowRemoteImages}
           onTaskToggle={(offset, checked) => {
             const next = toggleTaskMarker(contentValueRef.current, offset, checked);
             if (next == null) return;
@@ -1015,6 +1032,54 @@ export function NotePad({
                   onDrop={imageDropHandler}
                   onDragOver={imageDragOverHandler}
                   onKeyDown={(event) => {
+                    if (event.nativeEvent.isComposing) return;
+                    if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+                      const key = event.key.toLowerCase();
+                      const marker = key === "b" ? "**" : key === "i" ? "*" : null;
+                      if (marker || key === "k") {
+                        event.preventDefault();
+                        const textarea = event.currentTarget;
+                        const { selectionStart: start, selectionEnd: end } = textarea;
+                        const selected = textarea.value.slice(start, end);
+                        const label = selected || "文本";
+                        const replacement =
+                          key === "k" ? `[${label}](https://)` : `${marker}${label}${marker}`;
+                        if (!document.execCommand("insertText", false, replacement)) {
+                          textarea.setRangeText(replacement, start, end, "end");
+                        }
+                        contentValueRef.current = textarea.value;
+                        setContent(textarea.value);
+                        statusRef.current = "dirty";
+                        setStatus("dirty");
+                        const cursor =
+                          key === "k" ? start + label.length + 3 : start + marker!.length;
+                        requestAnimationFrame(() =>
+                          textarea.setSelectionRange(
+                            cursor,
+                            cursor + (key === "k" ? "https://".length : label.length),
+                          ),
+                        );
+                        return;
+                      }
+                    }
+                    if (event.key === "Enter") {
+                      const next = continueMarkdownList(
+                        contentValueRef.current,
+                        event.currentTarget.selectionStart,
+                        event.currentTarget.selectionEnd,
+                      );
+                      if (next) {
+                        event.preventDefault();
+                        contentValueRef.current = next.content;
+                        setContent(next.content);
+                        statusRef.current = "dirty";
+                        setStatus("dirty");
+                        requestAnimationFrame(() =>
+                          contentRef.current?.setSelectionRange(next.cursor, next.cursor),
+                        );
+                        return;
+                      }
+                    }
                     if (event.key === "ArrowUp") {
                       const ta = contentRef.current;
                       if (ta && ta.selectionStart === ta.selectionEnd) {

@@ -642,6 +642,34 @@ input::placeholder {
   font-family: var(--font-mono);
 }
 
+/* 代码颜色跟随应用主题变量，不引入固定明暗背景。 */
+.markdown-code-block .hljs-keyword,
+.markdown-code-block .hljs-selector-tag,
+.markdown-code-block .hljs-literal {
+  color: var(--color-bamboo);
+}
+.markdown-code-block .hljs-string,
+.markdown-code-block .hljs-number,
+.markdown-code-block .hljs-attr {
+  color: var(--color-ink);
+}
+.markdown-code-block .hljs-comment,
+.markdown-code-block .hljs-quote {
+  color: var(--color-ink-faint);
+}
+.markdown-code-block .hljs-title,
+.markdown-code-block .hljs-function,
+.markdown-code-block .hljs-built_in {
+  color: var(--color-bamboo-light);
+}
+
+.markdown-selectable ul ul {
+  list-style-type: circle;
+}
+.markdown-selectable ul ul ul {
+  list-style-type: square;
+}
+
 /* ── GFM Alerts ── */
 .markdown-alert {
   margin: 0.75rem 0;

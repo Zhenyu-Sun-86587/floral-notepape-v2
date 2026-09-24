@@ -20,7 +20,7 @@ Windows 源码以当前 `main` 为准；上游起点 tag：`baseline-upstream-20
 - macOS 平台配置、构建工作流和 GUI 验证交由 Mac 协作者处理，交接见 [MAC_HANDOFF.md](MAC_HANDOFF.md)。当前 macOS 覆盖配置仍使用原版 identifier，不能把 Windows 隔离结果套用到 Mac。
 - 主界面关闭到托盘时仍保留隐藏 WebView。此路径涉及现有保存与外部文件监听，本轮没有在缺少 GUI 验证时进一步销毁。
 - P3 尚未实现应用内重命名、缺失文件重新关联和可靠识别外部改名；目录断连恢复、冲突交互、托盘退出时的未保存草稿需进一步 GUI 验收。文件 revision 比较与替换不是跨应用事务锁。
-- P4 仍待补齐：代码高亮、Mermaid、外部文件相对图片、远程图片策略及 CSP、多行列表编辑等；1.2.4 只包含上述第一批改动。
+- P4 第二批：常见语言代码高亮、按需加载的 Mermaid、外部文件相对图片与绑定目录范围检查、默认关闭的 HTTPS 远程图片开关和 CSP、列表 Enter 延续及链接工具按钮已实现；1.2.5 的相关测试、TypeScript/Rust 检查与 Windows NSIS 构建通过，仍需用户 GUI 验收。
 
 ## 范围
 

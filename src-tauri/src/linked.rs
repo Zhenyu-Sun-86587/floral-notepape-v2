@@ -69,6 +69,7 @@ pub struct LinkedContent {
     pub binding: LinkedBinding,
     pub content: String,
     pub revision: String,
+    pub image_root: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -395,11 +396,23 @@ pub fn create_in_root(root_id: &str, name: &str) -> Result<LinkedBinding, AppErr
 }
 
 pub fn read(id: &str) -> Result<LinkedContent, AppError> {
-    let binding = {
+    let (binding, image_root) = {
         let _guard = operation_lock()
             .lock()
             .map_err(|_| error("io", "外部文件绑定锁不可用"))?;
-        lookup(&load_index(&index_path()?)?, id)?
+        let index = load_index(&index_path()?)?;
+        let binding = lookup(&index, id)?;
+        let path = Path::new(&binding.path);
+        let root = index
+            .roots
+            .iter()
+            .filter(|root| path.starts_with(&root.path))
+            .max_by_key(|root| root.path.len())
+            .map(|root| Path::new(&root.path))
+            .or_else(|| path.parent())
+            .ok_or_else(|| error("io", "外部文件路径无父目录"))?;
+        let image_root = root.to_string_lossy().into_owned();
+        (binding, image_root)
     };
     let bytes = fs::read(&binding.path)?;
     let revision = revision(&bytes);
@@ -409,6 +422,7 @@ pub fn read(id: &str) -> Result<LinkedContent, AppError> {
         binding,
         content,
         revision,
+        image_root,
     })
 }
 

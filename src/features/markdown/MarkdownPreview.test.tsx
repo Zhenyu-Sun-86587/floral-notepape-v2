@@ -30,6 +30,32 @@ describe("MarkdownPreview", () => {
     expect(buttonIndex).toBeGreaterThan(preCloseIndex);
   });
 
+  test("highlights a known code language without changing code text", () => {
+    const markup = renderToStaticMarkup(
+      <MarkdownPreview content={"```js\nconst value = 1;\n```"} />,
+    );
+
+    expect(markup).toContain("hljs-keyword");
+    expect(markup).toContain("value");
+    expect(markup).toContain("复制");
+  });
+
+  test("keeps allowed HTML details and strips event handlers", () => {
+    const markup = renderToStaticMarkup(
+      <MarkdownPreview
+        content={
+          '<details open onclick="alert(1)"><summary>摘要</summary>下标<sub>2</sub><br />正文</details>'
+        }
+        renderHtml
+      />,
+    );
+
+    expect(markup).toContain("<details");
+    expect(markup).toContain("<summary>摘要</summary>");
+    expect(markup).toContain("<sub>2</sub>");
+    expect(markup).not.toContain("onclick");
+  });
+
   test("hides the list marker only for Markdown task items", () => {
     const markup = renderToStaticMarkup(<MarkdownPreview content={"- [ ] 待办\n- 普通列表"} />);
 

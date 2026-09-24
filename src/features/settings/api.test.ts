@@ -51,6 +51,7 @@ describe("settings api", () => {
       toggleVisibilityShortcut: "",
       tileRenderMarkdown: false,
       renderHtmlMarkdown: false,
+      allowRemoteImages: false,
       splitScrollSync: true,
       openAtCursor: true,
     };
@@ -85,6 +86,7 @@ describe("settings api", () => {
       toggleVisibilityShortcut: "",
       tileRenderMarkdown: false,
       renderHtmlMarkdown: false,
+      allowRemoteImages: false,
       splitScrollSync: true,
       openAtCursor: true,
     };

@@ -9,6 +9,7 @@ export interface LinkedContent {
   binding: LinkedBinding;
   content: string;
   revision: string;
+  imageRoot: string;
 }
 
 export interface LinkedDraft {

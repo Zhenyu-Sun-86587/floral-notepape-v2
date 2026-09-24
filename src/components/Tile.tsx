@@ -17,6 +17,8 @@ export interface TileProps extends Omit<
   fontSize?: number;
   renderMarkdown?: boolean;
   imageBaseDir?: string;
+  imageRootDir?: string;
+  allowRemoteImages?: boolean;
   onTaskToggle?: (offset: number, checked: boolean) => void;
 }
 
@@ -78,6 +80,8 @@ export function Tile({
   fontSize = 14,
   renderMarkdown = false,
   imageBaseDir,
+  imageRootDir,
+  allowRemoteImages = false,
   onTaskToggle,
   className = "",
   style,
@@ -129,6 +133,8 @@ export function Tile({
                 fontSize={fontSize}
                 renderHtml={false}
                 imageBaseDir={imageBaseDir}
+                imageRootDir={imageRootDir}
+                allowRemoteImages={allowRemoteImages}
                 onTaskToggle={onTaskToggle}
               />
             </div>
