@@ -20,8 +20,10 @@ export async function applyNativeMaterial(
     root.setAttribute("data-native-material", material);
   }
   const isWindows = navigator.userAgent.includes("Windows");
+  const desktopAttached = root.getAttribute("data-desktop-attached") === "true";
+  // 关闭 Acrylic 后仍有系统阴影和 DWM 圆角，网页轮廓也必须与它保持一致。
   const corner =
-    !enabled || !isWindows ? null : radius <= 0 ? "none" : radius < 7 ? "small" : "round";
+    !isWindows || desktopAttached ? null : radius <= 0 ? "none" : radius < 7 ? "small" : "round";
   if (corner === null) {
     if (root.hasAttribute("data-native-corner")) root.removeAttribute("data-native-corner");
   } else if (root.getAttribute("data-native-corner") !== corner) {

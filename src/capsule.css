@@ -49,10 +49,13 @@ button:disabled {
 }
 .edge-rail {
   height: 100%;
-  width: 18px;
+  width: 100%;
   overflow-x: hidden;
   overflow-y: hidden;
   scrollbar-width: none;
+  --nudge-x: -1px;
+  --nudge-y: 0px;
+  animation: capsule-arrive 220ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
 }
 .edge-rail::-webkit-scrollbar {
   display: none;
@@ -60,11 +63,10 @@ button:disabled {
 .edge-tab {
   display: block;
   position: relative;
-  width: 18px;
-  height: 44px;
+  width: 100%;
+  height: 100%;
   margin: 0;
   --tab-color: var(--edge-accent);
-  transition: filter 120ms ease;
 }
 .edge-tab:last-child {
   margin-bottom: 0;
@@ -72,37 +74,37 @@ button:disabled {
 .edge-tab::before {
   content: "";
   position: absolute;
-  inset: 2px;
+  inset: 3px;
   border: 1px solid color-mix(in srgb, var(--tab-color) 82%, white);
-  border-radius: 12px;
+  border-radius: 999px;
   background: linear-gradient(
     135deg,
     color-mix(in srgb, var(--tab-color) 72%, white),
     var(--tab-color)
   );
   box-shadow:
-    -2px 1px 4px #0003,
+    0 1px 2px #0003,
     inset 1px 0 0 #fff8;
+  transition:
+    transform 180ms cubic-bezier(0.2, 0.75, 0.25, 1),
+    opacity 140ms ease;
 }
 .edge-tab::after {
   content: "";
   position: absolute;
-  top: 13px;
-  left: 10px;
+  top: 50%;
+  left: 50%;
   width: 2px;
   height: 18px;
   border-radius: 2px;
   background: #fff9;
+  transform: translate(-50%, -50%);
+  transition:
+    transform 180ms ease,
+    opacity 180ms ease;
 }
-.edge-left .edge-tab::before {
-  inset: 2px;
-  border-radius: 12px;
-  box-shadow:
-    2px 1px 4px #0003,
-    inset -1px 0 0 #fff8;
-}
-.edge-left .edge-tab::after {
-  left: 6px;
+.edge-left {
+  --nudge-x: 1px;
 }
 .edge-rail:not(.edge-top) .edge-tab.joined-before::before {
   top: 0;
@@ -125,9 +127,18 @@ button:disabled {
 .edge-tone-3 {
   --tab-color: #a193aa;
 }
-.edge-tab:hover,
-.edge-tab:focus-visible {
-  filter: brightness(1.12);
+.edge-tab:not(.joined-before):not(.joined-after):hover::before {
+  transform: translate(var(--nudge-x), var(--nudge-y));
+}
+.edge-tab:hover::after {
+  transform: translate(-50%, -50%) scale(1, 1.15);
+  opacity: 0.9;
+}
+.edge-tab[data-pressed]::before {
+  transform: scale(0.86);
+}
+.edge-tab[data-pressed]::after {
+  transform: translate(-50%, -50%) scale(0.8);
 }
 .edge-tab[data-error] {
   --tab-color: #be7868;
@@ -256,6 +267,16 @@ button:disabled {
     transform: translateX(0);
   }
 }
+@keyframes capsule-arrive {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -269,27 +290,29 @@ button:disabled {
 .edge-top {
   display: flex;
   width: 100%;
-  height: 18px;
+  height: 100%;
   overflow-x: hidden;
   overflow-y: hidden;
   gap: 0;
+  --nudge-x: 0px;
+  --nudge-y: 1px;
 }
 .edge-top .edge-tab {
-  width: 44px;
-  height: 18px;
-  flex: 0 0 44px;
+  width: 100%;
+  height: 100%;
+  flex: 0 0 100%;
   margin: 0;
 }
 .edge-top .edge-tab::before {
-  inset: 2px;
+  inset: 3px;
   border: 1px solid color-mix(in srgb, var(--tab-color) 82%, white);
-  border-radius: 12px;
+  border-radius: 999px;
   box-shadow:
-    1px 2px 4px #0003,
+    0 1px 2px #0003,
     inset 0 -1px 0 #fff8;
 }
 .edge-top .edge-tab.joined-before::before {
-  inset: 2px 2px 2px 0;
+  inset: 3px 3px 3px 0;
   border: 1px solid color-mix(in srgb, var(--tab-color) 82%, white);
   border-left: 0;
   border-radius: 0 12px 12px 0;
@@ -301,10 +324,20 @@ button:disabled {
   border-bottom-right-radius: 0;
 }
 .edge-top .edge-tab::after {
-  top: 6px;
-  left: 13px;
   width: 18px;
   height: 2px;
+}
+.edge-top .edge-tab:hover::after {
+  transform: translate(-50%, -50%) scale(1.15, 1);
+}
+/* 拖出组合时立即恢复独立圆角，不能把原先拼接的平边一起拖走。 */
+.edge-rail.is-dragging {
+  animation: none;
+}
+.edge-rail.is-dragging .edge-tab::before {
+  inset: 3px;
+  border: 1px solid color-mix(in srgb, var(--tab-color) 82%, white);
+  border-radius: 999px;
 }
 .edge-tab {
   touch-action: none;

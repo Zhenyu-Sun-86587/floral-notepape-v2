@@ -19,6 +19,8 @@ export function CapsuleRail({
 }) {
   const [entries, setEntries] = useState<CapsuleEntry[]>([]);
   const [failed, setFailed] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [pressed, setPressed] = useState(false);
   const busy = useRef(false);
   const inside = useRef(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -36,6 +38,19 @@ export function CapsuleRail({
     const listeners = ["capsules-changed", "notes-changed", "bindings-changed"].map((name) =>
       listen(name, () => {
         if (active) void refresh().catch(() => setFailed(true));
+      }),
+    );
+    listeners.push(
+      listen<boolean>("capsule-drag-state", ({ payload }) => {
+        if (!active) return;
+        clearHoverTimer();
+        if (payload) setDragging(true);
+        else
+          void refresh()
+            .finally(() => {
+              if (active) setDragging(false);
+            })
+            .catch(() => setFailed(true));
       }),
     );
     void Promise.all(listeners)
@@ -88,7 +103,7 @@ export function CapsuleRail({
 
   return (
     <nav
-      className={`edge-rail edge-${side}`}
+      className={`edge-rail edge-${side} ${dragging || pressed ? "is-dragging" : ""}`}
       aria-label="已收纳便签"
       onPointerEnter={() => {
         inside.current = true;
@@ -101,6 +116,7 @@ export function CapsuleRail({
           type="button"
           className={`edge-tab edge-tone-${index % 4} ${entry.joinedBefore ? "joined-before" : ""} ${entry.joinedAfter ? "joined-after" : ""}`}
           data-error={failed || undefined}
+          data-pressed={pressed || undefined}
           aria-label={`预览 ${entry.title}`}
           onPointerEnter={(event) => dwell(entry, event.currentTarget)}
           onPointerLeave={() => {
@@ -117,6 +133,7 @@ export function CapsuleRail({
             event.preventDefault();
             clearHoverTimer();
             busy.current = true;
+            setPressed(true);
             const button = event.currentTarget;
             void invoke<boolean>("surface_capsule_drag", { key: entry.key })
               .then((dragged) => {
@@ -126,6 +143,7 @@ export function CapsuleRail({
               .catch(() => setFailed(true))
               .finally(() => {
                 busy.current = false;
+                setPressed(false);
               });
           }}
           onClick={(event) => {

@@ -8,6 +8,8 @@ pub mod locales;
 #[cfg(target_os = "windows")]
 pub mod lock_overlay;
 pub mod services;
+#[cfg(target_os = "windows")]
+mod surface_frame;
 pub mod surface_sessions;
 pub mod updater;
 
@@ -596,6 +598,7 @@ pub(crate) fn set_windows_corner_preference(window: &tauri::WebviewWindow, radiu
 
 #[cfg(target_os = "windows")]
 pub(crate) fn clear_windows_border(window: &tauri::WebviewWindow) {
+    surface_frame::install(window);
     use windows_sys::Win32::Graphics::Dwm::{
         DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE,
     };

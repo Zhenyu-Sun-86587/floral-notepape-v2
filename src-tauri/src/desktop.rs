@@ -2172,6 +2172,17 @@ pub async fn drag_capsule(window: tauri::WebviewWindow, key: String) -> Result<b
             }
         }
         let _guard = DragGuard;
+        struct DragVisualGuard(AppHandle, std::sync::Arc<std::sync::atomic::AtomicBool>);
+        impl Drop for DragVisualGuard {
+            fn drop(&mut self) {
+                if self.1.load(Ordering::SeqCst) {
+                    let _ = self.0.emit("capsule-drag-state", false);
+                }
+            }
+        }
+        let visual_active = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        // 视觉状态持续到停靠同步完成；单击不广播，也不触发额外列表读取。
+        let _visual_guard = DragVisualGuard(window.app_handle().clone(), visual_active.clone());
         let rail = window.clone();
         let drag_key = key.clone();
         // 只在按下鼠标期间采样，不持有收纳锁，不占用 UI 线程，也不增加常驻轮询。
@@ -2222,6 +2233,8 @@ pub async fn drag_capsule(window: tauri::WebviewWindow, key: String) -> Result<b
                     let dy = point.y - start.y;
                     if !dragged && dx.hypot(dy) >= threshold {
                         dragged = true;
+                        visual_active.store(true, Ordering::SeqCst);
+                        let _ = rail.app_handle().emit("capsule-drag-state", true);
                         // 单击保留已经打开的预览；真正拖动时才隐藏，避免重复建窗闪烁。
                         dismiss_capsule_preview(rail.app_handle())?;
                     }
