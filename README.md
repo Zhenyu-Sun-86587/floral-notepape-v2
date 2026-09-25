@@ -2,11 +2,11 @@
 
 **简体中文** · [繁體中文](README_zh-HK.md) · [English](README_en-US.md)
 
-把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前源码版本为 **1.7.0**；公开下载仍以已发布的 1.6.0 为准。
+把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前 Windows 版本为 **1.7.0**。
 
-[下载 Windows 1.6.0](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.6.0) · [反馈问题](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [Mac 开发交接](Docs/MAC_HANDOFF.md)
+[下载 Windows 1.7.0](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.0) · [反馈问题](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [Mac 开发交接](Docs/MAC_HANDOFF.md)
 
-> **平台状态**：Windows x64 已提供 NSIS 安装包。macOS 正由协作者适配，当前没有本项目的 Mac 安装包。Windows 1.6.0 的收纳拖动、阴影等新增交互仍待人工 GUI 验收，详情见 [项目状态](Docs/STATUS.md)。
+> **平台状态**：Windows x64 已提供 NSIS 安装包。macOS 正由协作者适配，当前没有本项目的 Mac 安装包。1.7.0 的便签、胶囊与快捷键交互仍待人工 GUI 验收，详情见 [项目状态](Docs/STATUS.md)。
 
 ## 能做什么
 
@@ -19,10 +19,10 @@
 
 ## 下载安装
 
-下载 [v1.6.0 Windows x64 安装包](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/download/v1.6.0/Hermes.Surface.Dev_1.6.0_x64-setup.exe)。同一 [Release 页面](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.6.0) 提供 `SHA256SUMS.txt`；安装包 SHA-256 为：
+下载 [v1.7.0 Windows x64 安装包](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/download/v1.7.0/Hermes.Surface.Dev_1.7.0_x64-setup.exe)。同一 [Release 页面](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.0) 提供 `SHA256SUMS.txt`；安装包 SHA-256 为：
 
 ```text
-8FF47FFCA7EDF1C0759265BA6BA7FF849BD792E2D7E6740A78926A5EDDFF64E7
+A3E03D8DDA54D0DED709992A2BA15B22AE1D1A647B53125E6A2EFC24D53F3563
 ```
 
 安装包未签名，且不内嵌完整 WebView2 Runtime；若电脑尚未安装 Runtime，安装过程需要联网下载。当前没有本 fork 的 Microsoft Store、Mirror 酱、Windows ARM64 或 macOS 产物，请以本仓库的 Release 为准。

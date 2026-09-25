@@ -1,6 +1,6 @@
 # Hermes Surface Dev：Windows 阶段状态
 
-当前源码候选版本为 **1.7.0**；已公开的 1.6.0 Release 与 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
+当前 Windows 发布版本为 **1.7.0**；历史 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
 
 ## 1.7.0 交互整理
 
