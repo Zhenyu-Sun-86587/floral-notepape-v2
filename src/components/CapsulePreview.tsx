@@ -59,6 +59,7 @@ export function CapsulePreview() {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const closing = useRef(false);
   const current = useRef<Preview | null>(null);
   current.current = preview;
   useEffect(() => {
@@ -124,6 +125,18 @@ export function CapsulePreview() {
       setBusy(false);
     }
   };
+  const dismiss = async () => {
+    if (closing.current) return;
+    closing.current = true;
+    try {
+      await invoke("surface_capsule_dismiss");
+      setPreview(null);
+    } catch (cause) {
+      setError(String(cause));
+    } finally {
+      closing.current = false;
+    }
+  };
   if (!preview) return null;
   return (
     <article
@@ -154,9 +167,14 @@ export function CapsulePreview() {
         </button>
         <button
           className="preview-icon"
-          disabled={busy}
-          aria-label="隐藏便签"
-          onClick={() => void act("surface_capsule_hide")}
+          aria-label="关闭预览"
+          title="关闭预览"
+          onPointerDown={(event) => {
+            if (event.button === 0) void dismiss();
+          }}
+          onClick={(event) => {
+            if (event.detail === 0) void dismiss();
+          }}
         >
           <svg viewBox="0 0 24 24">
             <path d="M6 6l12 12M18 6L6 18" />

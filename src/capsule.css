@@ -49,9 +49,9 @@ button:disabled {
 }
 .edge-rail {
   height: 100%;
-  width: 8px;
+  width: 18px;
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: hidden;
   scrollbar-width: none;
 }
 .edge-rail::-webkit-scrollbar {
@@ -59,37 +59,78 @@ button:disabled {
 }
 .edge-tab {
   display: block;
-  width: 8px;
-  height: 32px;
-  margin: 0 0 8px;
-  background: var(--edge-accent);
-  opacity: 0.76;
-  transition: opacity 110ms ease;
+  position: relative;
+  width: 18px;
+  height: 44px;
+  margin: 0;
+  --tab-color: var(--edge-accent);
+  transition: filter 120ms ease;
 }
 .edge-tab:last-child {
   margin-bottom: 0;
 }
-.edge-right .edge-tab {
-  border-radius: 6px 0 0 6px;
+.edge-tab::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border: 1px solid color-mix(in srgb, var(--tab-color) 82%, white);
+  border-radius: 12px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--tab-color) 72%, white),
+    var(--tab-color)
+  );
+  box-shadow:
+    -2px 1px 4px #0003,
+    inset 1px 0 0 #fff8;
 }
-.edge-left .edge-tab {
-  border-radius: 0 6px 6px 0;
+.edge-tab::after {
+  content: "";
+  position: absolute;
+  top: 13px;
+  left: 10px;
+  width: 2px;
+  height: 18px;
+  border-radius: 2px;
+  background: #fff9;
+}
+.edge-left .edge-tab::before {
+  inset: 2px;
+  border-radius: 12px;
+  box-shadow:
+    2px 1px 4px #0003,
+    inset -1px 0 0 #fff8;
+}
+.edge-left .edge-tab::after {
+  left: 6px;
+}
+.edge-rail:not(.edge-top) .edge-tab.joined-before::before {
+  top: 0;
+  border-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.edge-rail:not(.edge-top) .edge-tab.joined-after::before {
+  bottom: 0;
+  border-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 .edge-tone-1 {
-  background: #859cac;
+  --tab-color: #859cac;
 }
 .edge-tone-2 {
-  background: #b5a389;
+  --tab-color: #b5a389;
 }
 .edge-tone-3 {
-  background: #a193aa;
+  --tab-color: #a193aa;
 }
 .edge-tab:hover,
 .edge-tab:focus-visible {
-  opacity: 1;
+  filter: brightness(1.12);
 }
 .edge-tab[data-error] {
-  background: #be7868;
+  --tab-color: #be7868;
 }
 .edge-preview {
   position: absolute;
@@ -228,24 +269,46 @@ button:disabled {
 .edge-top {
   display: flex;
   width: 100%;
-  height: 8px;
-  overflow-x: auto;
+  height: 18px;
+  overflow-x: hidden;
   overflow-y: hidden;
-  gap: 8px;
+  gap: 0;
 }
 .edge-top .edge-tab {
-  width: 32px;
-  height: 8px;
-  flex: 0 0 32px;
+  width: 44px;
+  height: 18px;
+  flex: 0 0 44px;
   margin: 0;
-  border-radius: 0 0 6px 6px;
+}
+.edge-top .edge-tab::before {
+  inset: 2px;
+  border: 1px solid color-mix(in srgb, var(--tab-color) 82%, white);
+  border-radius: 12px;
+  box-shadow:
+    1px 2px 4px #0003,
+    inset 0 -1px 0 #fff8;
+}
+.edge-top .edge-tab.joined-before::before {
+  inset: 2px 2px 2px 0;
+  border: 1px solid color-mix(in srgb, var(--tab-color) 82%, white);
+  border-left: 0;
+  border-radius: 0 12px 12px 0;
+}
+.edge-top .edge-tab.joined-after::before {
+  right: 0;
+  border-right: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.edge-top .edge-tab::after {
+  top: 6px;
+  left: 13px;
+  width: 18px;
+  height: 2px;
 }
 .edge-tab {
   touch-action: none;
-  cursor: grab;
-}
-.edge-tab:active {
-  cursor: grabbing;
+  cursor: default;
 }
 .edge-preview.from-top {
   --slide: 0px;

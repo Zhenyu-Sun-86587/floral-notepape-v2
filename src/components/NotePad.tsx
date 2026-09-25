@@ -116,6 +116,25 @@ function isTileControlDoubleClickTarget(target: EventTarget | null): boolean {
   );
 }
 
+function isTileTextHit(event: MouseEvent<HTMLElement>): boolean {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return false;
+  const selectable = target.closest('[data-tile-selectable="true"]');
+  if (!selectable) return false;
+  const range = document.caretRangeFromPoint(event.clientX, event.clientY);
+  if (!range || range.startContainer.nodeType !== Node.TEXT_NODE) return false;
+  if (!selectable.contains(range.startContainer)) return false;
+  // Markdown 块元素可能铺满整行；仅命中文字字形时保留原生选区。
+  range.selectNodeContents(range.startContainer);
+  return Array.from(range.getClientRects()).some(
+    (rect) =>
+      event.clientX >= rect.left &&
+      event.clientX <= rect.right &&
+      event.clientY >= rect.top &&
+      event.clientY <= rect.bottom,
+  );
+}
+
 const TILE_DRAG_START_THRESHOLD_PX = 5;
 
 function SurfaceResizeHandles() {
@@ -839,7 +858,7 @@ export function NotePad({
   useEffect(() => clearPendingTileDrag, [clearPendingTileDrag]);
 
   useEffect(() => {
-    if (surfaceMode !== "tile" || !tileDoubleClickToEdit) {
+    if (surfaceMode !== "tile") {
       clearPendingTileDrag();
       return undefined;
     }
@@ -871,13 +890,14 @@ export function NotePad({
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [clearPendingTileDrag, surfaceMode, tileDoubleClickToEdit]);
+  }, [clearPendingTileDrag, surfaceMode]);
 
   const handleTileDoubleClick = useCallback(
     (event: MouseEvent<HTMLElement>) => {
+      const textTarget = isTileTextHit(event);
       if (
         !shouldEnterPadFromTileOnDoubleClick(
-          tileDoubleClickToEdit,
+          !textTarget || tileDoubleClickToEdit,
           isTileControlDoubleClickTarget(event.target),
         )
       ) {
@@ -894,6 +914,17 @@ export function NotePad({
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
+      if (
+        event.key === "Escape" &&
+        surfaceMode === "tile" &&
+        tileWriting &&
+        document.hasFocus() &&
+        !event.isComposing
+      ) {
+        event.preventDefault();
+        void finishTileWriting();
+        return;
+      }
       if ((event.ctrlKey || event.metaKey) && event.key === "s") {
         event.preventDefault();
         void handleSaveRef.current();
@@ -902,7 +933,7 @@ export function NotePad({
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [finishTileWriting, surfaceMode, tileWriting]);
 
   const handleOpenNote = async (noteId: string) => {
     try {
@@ -1028,7 +1059,10 @@ export function NotePad({
     const target = event.target as HTMLElement;
     if (target.closest("button,input,textarea")) return;
 
-    if (surfaceMode === "tile" && tileDoubleClickToEdit) {
+    // 阅读态正文保留浏览器原生选区；拖动只从便签空白处开始。
+    if (surfaceMode === "tile" && !tileWriting && isTileTextHit(event)) return;
+
+    if (surfaceMode === "tile") {
       if (event.button !== 0 || event.detail > 1) return;
       clearPendingTileDrag();
       tileDragIntentRef.current = {

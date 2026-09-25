@@ -90,10 +90,11 @@ async fn surface_store_current(window: tauri::WebviewWindow) -> Result<(), AppEr
 #[tauri::command]
 async fn surface_capsules_list(
     app: AppHandle,
+    window: tauri::WebviewWindow,
     monitor_index: usize,
     side: surface_sessions::CapsuleSide,
 ) -> Result<Vec<desktop::CapsuleEntry>, AppError> {
-    desktop::capsule_entries(&app, monitor_index, side)
+    desktop::capsule_entries(&app, monitor_index, side, window.label())
 }
 
 #[tauri::command]
@@ -107,8 +108,8 @@ async fn surface_capsule_preview(
     key: String,
     anchor_y: f64,
     anchor_x: f64,
+    generation: u64,
 ) -> Result<(), AppError> {
-    let generation = desktop::advance_capsule_preview();
     desktop::run_capsule_task(move || {
         desktop::show_capsule_preview(&window, &key, anchor_y, anchor_x, generation)
     })
@@ -122,8 +123,15 @@ async fn surface_restore_stored(app: AppHandle, key: String) -> Result<(), AppEr
 }
 
 #[tauri::command]
-fn surface_capsule_hover(app: AppHandle, inside: bool) {
-    desktop::capsule_hover(&app, inside);
+fn surface_capsule_hover(app: AppHandle, inside: bool) -> u64 {
+    desktop::capsule_hover(&app, inside)
+}
+
+#[tauri::command]
+async fn surface_capsule_dismiss(app: AppHandle) -> Result<(), AppError> {
+    // 预览窗的隐藏也交给工作线程，避免 WebView2 在同步 IPC 回调里处理窗口消息。
+    desktop::advance_capsule_preview();
+    desktop::run_capsule_task(move || desktop::dismiss_capsule_preview(&app)).await
 }
 
 #[tauri::command]
@@ -137,7 +145,7 @@ fn surface_capsule_present(window: tauri::WebviewWindow, generation: u64) -> Res
 }
 
 #[tauri::command]
-async fn surface_capsule_drag(window: tauri::WebviewWindow, key: String) -> Result<(), AppError> {
+async fn surface_capsule_drag(window: tauri::WebviewWindow, key: String) -> Result<bool, AppError> {
     desktop::drag_capsule(window, key).await
 }
 
@@ -561,10 +569,10 @@ fn set_native_material(
 }
 
 #[cfg(target_os = "windows")]
-fn set_windows_corner_preference(window: &tauri::WebviewWindow, radius: f64) {
+pub(crate) fn set_windows_corner_preference(window: &tauri::WebviewWindow, radius: f64) {
     use windows_sys::Win32::Graphics::Dwm::{
-        DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE,
-        DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND, DWMWCP_ROUND, DWMWCP_ROUNDSMALL,
+        DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND, DWMWCP_ROUND,
+        DWMWCP_ROUNDSMALL,
     };
 
     let Ok(hwnd) = window.hwnd() else { return };
@@ -575,7 +583,6 @@ fn set_windows_corner_preference(window: &tauri::WebviewWindow, radius: f64) {
     } else {
         DWMWCP_ROUND
     };
-    // 边框颜色 NONE 隐藏系统默认白边，同时保留系统圆角和 Acrylic。
     unsafe {
         DwmSetWindowAttribute(
             hwnd.0,
@@ -583,6 +590,18 @@ fn set_windows_corner_preference(window: &tauri::WebviewWindow, radius: f64) {
             (&preference as *const i32).cast(),
             std::mem::size_of_val(&preference) as u32,
         );
+    }
+    clear_windows_border(window);
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn clear_windows_border(window: &tauri::WebviewWindow) {
+    use windows_sys::Win32::Graphics::Dwm::{
+        DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE,
+    };
+    let Ok(hwnd) = window.hwnd() else { return };
+    // 禁用 DWM 激活色边框；窗口焦点、层级或 Explorer 父窗口变化后需重设。
+    unsafe {
         DwmSetWindowAttribute(
             hwnd.0,
             DWMWA_BORDER_COLOR as u32,
@@ -864,6 +883,7 @@ pub fn run() {
             surface_capsule_entry,
             surface_capsule_preview,
             surface_capsule_hover,
+            surface_capsule_dismiss,
             surface_capsule_preview_state,
             surface_capsule_present,
             surface_capsule_hide,

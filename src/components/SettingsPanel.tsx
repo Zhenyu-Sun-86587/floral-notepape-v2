@@ -217,7 +217,7 @@ export function SettingsPanel({
             onChange={(checked) => setConfigValue("tileRenderMarkdown", checked)}
           />
           <ToggleRow
-            label={t("settings.tileDoubleClickToEdit", { defaultValue: "双击磁贴进入编辑" })}
+            label={t("settings.tileDoubleClickToEdit", { defaultValue: "双击文字区域进入编辑" })}
             checked={config.tileDoubleClickToEdit ?? false}
             onChange={(checked) => setConfigValue("tileDoubleClickToEdit", checked)}
           />

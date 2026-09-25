@@ -145,7 +145,8 @@ export function Tile({
           />
         ) : title ? (
           <div
-            className="font-display tracking-wide mb-3 leading-snug pr-24"
+            data-tile-selectable="true"
+            className="font-display tracking-wide mb-3 leading-snug pr-24 select-text"
             style={{ color: titleColor, fontSize: `${fontSize + 1}px` }}
           >
             {title}
@@ -170,7 +171,11 @@ export function Tile({
           />
         ) : content ? (
           renderMarkdown ? (
-            <div style={{ color: contentColor }}>
+            <div
+              data-tile-selectable="true"
+              className="select-text"
+              style={{ color: contentColor }}
+            >
               <MarkdownPreview
                 content={content}
                 fontSize={fontSize}
@@ -183,7 +188,8 @@ export function Tile({
             </div>
           ) : (
             <div
-              className="leading-[1.8] whitespace-pre-wrap font-body"
+              data-tile-selectable="true"
+              className="leading-[1.8] whitespace-pre-wrap font-body select-text"
               style={{
                 color: contentColor,
                 fontSize: `${fontSize}px`,
