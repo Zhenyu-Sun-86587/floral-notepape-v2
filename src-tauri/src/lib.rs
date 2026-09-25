@@ -125,8 +125,30 @@ async fn surface_restore_stored(app: AppHandle, key: String) -> Result<(), AppEr
 }
 
 #[tauri::command]
-fn surface_capsule_hover(app: AppHandle, inside: bool) -> u64 {
-    desktop::capsule_hover(&app, inside)
+async fn surface_restore_edit(app: AppHandle, key: String) -> Result<(), AppError> {
+    desktop::advance_capsule_preview();
+    desktop::run_capsule_task(move || desktop::restore_stored_surface_edit(&app, &key)).await
+}
+
+#[tauri::command]
+fn surface_take_edit_request(window: tauri::WebviewWindow) -> bool {
+    desktop::take_surface_edit_request(&window)
+}
+
+#[tauri::command]
+fn surface_capsule_hover(
+    app: AppHandle,
+    inside: bool,
+    source: String,
+    key: Option<String>,
+    session: Option<u64>,
+) -> u64 {
+    desktop::capsule_hover(&app, inside, &source, key.as_deref(), session)
+}
+
+#[tauri::command]
+fn surface_capsule_menu(window: tauri::WebviewWindow, key: String) -> Result<(), AppError> {
+    desktop::popup_capsule_menu(&window, &key)
 }
 
 #[tauri::command]
@@ -886,12 +908,15 @@ pub fn run() {
             surface_capsule_entry,
             surface_capsule_preview,
             surface_capsule_hover,
+            surface_capsule_menu,
             surface_capsule_dismiss,
             surface_capsule_preview_state,
             surface_capsule_present,
             surface_capsule_hide,
             surface_capsule_drag,
             surface_restore_stored,
+            surface_restore_edit,
+            surface_take_edit_request,
             show_silent_surface,
             shortcut_startup_error,
             linked_list,

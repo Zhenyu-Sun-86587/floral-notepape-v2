@@ -127,6 +127,18 @@ button:disabled {
 .edge-tone-3 {
   --tab-color: #a193aa;
 }
+.edge-tone-4 {
+  --tab-color: #b18f91;
+}
+.edge-tone-5 {
+  --tab-color: #849f99;
+}
+.edge-tone-6 {
+  --tab-color: #b3a477;
+}
+.edge-tone-7 {
+  --tab-color: #8290ad;
+}
 .edge-tab:not(.joined-before):not(.joined-after):hover::before {
   transform: translate(var(--nudge-x), var(--nudge-y));
 }
@@ -135,13 +147,14 @@ button:disabled {
   opacity: 0.9;
 }
 .edge-tab[data-pressed]::before {
-  transform: scale(0.86);
+  filter: brightness(0.92);
 }
 .edge-tab[data-pressed]::after {
-  transform: translate(-50%, -50%) scale(0.8);
+  opacity: 0.72;
 }
 .edge-tab[data-error] {
-  --tab-color: #be7868;
+  outline: 2px solid #be7868;
+  outline-offset: -2px;
 }
 .edge-preview {
   position: absolute;
@@ -209,7 +222,8 @@ button:disabled {
   min-height: 0;
   overflow: auto;
   padding: 13px 16px 16px;
-  cursor: pointer;
+  cursor: text;
+  user-select: text;
   scrollbar-width: thin;
   scrollbar-color: var(--edge-border) transparent;
   overflow-wrap: anywhere;
@@ -222,6 +236,82 @@ button:disabled {
 }
 .preview-body h3:first-child {
   margin-top: 0;
+}
+.preview-body h1 {
+  font-size: 1.28em;
+  line-height: 1.4;
+  margin: 0 0 12px;
+}
+.preview-body h2 {
+  font-size: 1.15em;
+  line-height: 1.45;
+  margin: 14px 0 8px;
+}
+.preview-body h3 {
+  font-size: 1.05em;
+  line-height: 1.5;
+  margin: 12px 0 6px;
+}
+.preview-body h4,
+.preview-body h5,
+.preview-body h6 {
+  font-size: 1em;
+  margin: 10px 0 4px;
+}
+.preview-body ul,
+.preview-body ol {
+  padding-left: 1.3em;
+  margin: 6px 0;
+}
+.preview-body ul {
+  list-style: disc;
+}
+.preview-body ol {
+  list-style: decimal;
+}
+.preview-body li {
+  margin: 3px 0;
+}
+.preview-body input[type="checkbox"] {
+  accent-color: var(--edge-accent);
+  margin-right: 6px;
+}
+.preview-body pre {
+  white-space: pre;
+  overflow-x: auto;
+  padding: 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--edge-accent) 9%, var(--edge-paper));
+}
+.preview-body code {
+  font-size: 0.88em;
+}
+.preview-body img {
+  max-width: 100%;
+  height: auto;
+}
+.preview-body a {
+  color: var(--edge-accent);
+  text-decoration: underline;
+}
+.preview-body blockquote {
+  border-left: 2px solid var(--edge-accent);
+  padding-left: 10px;
+  margin-left: 0;
+}
+.preview-body table {
+  border-collapse: collapse;
+  max-width: 100%;
+}
+.preview-body th,
+.preview-body td {
+  border: 1px solid var(--edge-border);
+  padding: 4px;
+}
+.preview-truncated {
+  color: var(--edge-muted);
+  border-top: 1px solid var(--edge-border);
+  padding-top: 8px;
 }
 .preview-body p {
   margin: 3px 0;
@@ -331,10 +421,10 @@ button:disabled {
   transform: translate(-50%, -50%) scale(1.15, 1);
 }
 /* 拖出组合时立即恢复独立圆角，不能把原先拼接的平边一起拖走。 */
-.edge-rail.is-dragging {
+.edge-tab.is-dragging {
   animation: none;
 }
-.edge-rail.is-dragging .edge-tab::before {
+.edge-rail .edge-tab.is-dragging::before {
   inset: 3px;
   border: 1px solid color-mix(in srgb, var(--tab-color) 82%, white);
   border-radius: 999px;

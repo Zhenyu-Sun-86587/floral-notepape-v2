@@ -221,6 +221,7 @@ export function ContextMenuProvider({ children }: { children: React.ReactNode })
       {menu && (
         <div
           ref={menuRef}
+          role="menu"
           className={`fixed z-[9999] min-w-[152px] py-1.5 bg-cloud/95 backdrop-blur-sm border border-paper-deep/50 rounded-lg overflow-x-hidden overflow-y-auto select-none ${menuClosing ? "animate-menu-exit" : "animate-menu-enter"}`}
           style={{
             left: menuPosition?.x ?? menu.x,

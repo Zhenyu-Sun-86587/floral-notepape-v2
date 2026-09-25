@@ -25,6 +25,7 @@ export interface TileProps extends Omit<
   onTitleChange?: (value: string) => void;
   onContentChange?: (value: string) => void;
   contentEditorRef?: Ref<HTMLTextAreaElement>;
+  scrollContainerRef?: Ref<HTMLDivElement>;
   onEditorPaste?: TextareaHTMLAttributes<HTMLTextAreaElement>["onPaste"];
   onEditorDrop?: TextareaHTMLAttributes<HTMLTextAreaElement>["onDrop"];
   onEditorDragOver?: TextareaHTMLAttributes<HTMLTextAreaElement>["onDragOver"];
@@ -96,6 +97,7 @@ export function Tile({
   onTitleChange,
   onContentChange,
   contentEditorRef,
+  scrollContainerRef,
   onEditorPaste,
   onEditorDrop,
   onEditorDragOver,
@@ -133,6 +135,7 @@ export function Tile({
       style={mergedStyle}
     >
       <div
+        ref={scrollContainerRef}
         className={`px-4 pt-4 pb-4 h-full overflow-y-auto scrollbar-hidden ${editing ? "flex flex-col" : ""}`}
       >
         {editing && titleEditable ? (

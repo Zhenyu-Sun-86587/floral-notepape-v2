@@ -4,12 +4,15 @@ export type StartupBehavior = "hidden" | "restoreLast" | "expanded";
 export type Presentation = "hidden" | "expanded" | "stored";
 export type CapsuleSide = "left" | "right" | "top";
 export type WindowMode = "normal" | "alwaysOnTop" | "desktopAttached";
+export type ShortcutToggleAction = "store" | "hide";
 
 export interface SurfaceSession {
   key: string;
   startupBehavior: StartupBehavior;
   presentation: Presentation;
   shortcut: string;
+  shortcutToggleAction: ShortcutToggleAction;
+  capsuleColorKey?: number | null;
   windowMode: WindowMode;
   locked: boolean;
   capsuleSide: CapsuleSide;

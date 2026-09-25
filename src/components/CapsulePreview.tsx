@@ -2,64 +2,23 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { CapsuleEntry } from "./CapsuleRail";
+import { MarkdownPreviewLazy } from "../features/markdown/MarkdownPreviewLazy";
+import { toggleTaskMarker } from "../features/markdown/taskMarker";
+import { getNote, updateNote } from "../features/notes/api";
+import { readLinkedFile, saveLinkedFile } from "../features/linked/api";
 
 interface Preview {
   entry: CapsuleEntry;
   side: "left" | "right" | "top";
   generation: number;
 }
-const plain = (text: string) =>
-  text
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "〔图片〕")
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/(\*\*|__|~~|`)/g, "");
-
-function Body({ source }: { source: string }) {
-  let code = false;
-  return (
-    <>
-      {source.split("\n").map((line, index) => {
-        if (/^\s*(```|~~~)/.test(line)) {
-          code = !code;
-          return null;
-        }
-        if (code)
-          return (
-            <div className="preview-code" key={index}>
-              {line || " "}
-            </div>
-          );
-        if (!line.trim()) return <div className="preview-space" key={index} />;
-        const heading = /^(#{1,6})\s+(.+)$/.exec(line);
-        if (heading) return <h3 key={index}>{plain(heading[2])}</h3>;
-        if (/^\s*([-*_])\1{2,}\s*$/.test(line)) return <hr key={index} />;
-        const task = /^\s*[-*+]\s+\[([ xX])\]\s+(.*)$/.exec(line);
-        if (task)
-          return (
-            <p className="preview-list" key={index}>
-              <span aria-hidden>{task[1] === " " ? "☐" : "☑"}</span>
-              <span>{plain(task[2])}</span>
-            </p>
-          );
-        const list = /^\s*(?:[-*+]|\d+[.)])\s+(.*)$/.exec(line);
-        if (list)
-          return (
-            <p className="preview-list" key={index}>
-              <span aria-hidden>•</span>
-              <span>{plain(list[1])}</span>
-            </p>
-          );
-        return <p key={index}>{plain(line.replace(/^>\s?/, ""))}</p>;
-      })}
-    </>
-  );
-}
-
 export function CapsulePreview() {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const closing = useRef(false);
+  const previewAreaRef = useRef<HTMLElement>(null);
+  const selecting = useRef(false);
   const current = useRef<Preview | null>(null);
   current.current = preview;
   useEffect(() => {
@@ -110,6 +69,16 @@ export function CapsulePreview() {
     );
     return () => cancelAnimationFrame(frame);
   }, [preview?.generation]);
+  useEffect(() => {
+    if (!preview || !previewAreaRef.current?.matches(":hover")) return;
+    // 共享预览窗换 owner 时不会重新触发 pointerenter，需要把当前占用归给新会话。
+    void invoke("surface_capsule_hover", {
+      inside: true,
+      source: "preview",
+      key: preview.entry.key,
+      session: preview.generation,
+    });
+  }, [preview?.entry.key, preview?.generation]);
   const act = async (command: string) => {
     if (!preview || busy) return;
     setBusy(true);
@@ -137,12 +106,92 @@ export function CapsulePreview() {
       closing.current = false;
     }
   };
+  const markInteraction = (inside: boolean) => {
+    if (!preview) return;
+    void invoke("surface_capsule_hover", {
+      inside,
+      source: "interaction",
+      key: preview.entry.key,
+      session: preview.generation,
+    });
+  };
+  useEffect(() => {
+    const release = () => {
+      if (!selecting.current) return;
+      selecting.current = false;
+      markInteraction(false);
+    };
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    window.addEventListener("blur", release);
+    return () => {
+      release();
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+      window.removeEventListener("blur", release);
+    };
+  }, [preview?.entry.key, preview?.generation]);
+  const toggleTask = async (offset: number, checked: boolean) => {
+    if (!preview || busy) return;
+    const key = preview.entry.key;
+    const generation = preview.generation;
+    setBusy(true);
+    try {
+      if (key.startsWith("linked:")) {
+        const id = key.slice(7);
+        const latest = await readLinkedFile(id);
+        if (!latest.content.startsWith(preview.entry.preview))
+          throw new Error("原文件已变化，请等待预览更新后重试");
+        const next = toggleTaskMarker(latest.content, offset, checked);
+        if (next == null) return;
+        await saveLinkedFile(id, next, latest.revision);
+      } else {
+        const id = key.slice(5);
+        const latest = await getNote(id);
+        if (!latest.content.startsWith(preview.entry.preview))
+          throw new Error("便签已变化，请等待预览更新后重试");
+        const next = toggleTaskMarker(latest.content, offset, checked);
+        if (next == null) return;
+        await updateNote(id, { title: latest.title, category: latest.category, content: next });
+      }
+      const entry = await invoke<CapsuleEntry | null>("surface_capsule_entry", { key });
+      if (entry)
+        setPreview((old) =>
+          old?.generation === generation && old.entry.key === key ? { ...old, entry } : old,
+        );
+    } catch (cause) {
+      setError(String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
   if (!preview) return null;
   return (
     <article
+      ref={previewAreaRef}
       className={`edge-preview from-${preview.side}`}
-      onPointerEnter={() => void invoke("surface_capsule_hover", { inside: true })}
-      onPointerLeave={() => void invoke("surface_capsule_hover", { inside: false })}
+      onPointerEnter={() =>
+        void invoke("surface_capsule_hover", {
+          inside: true,
+          source: "preview",
+          key: preview.entry.key,
+          session: preview.generation,
+        })
+      }
+      onPointerLeave={() =>
+        void invoke("surface_capsule_hover", {
+          inside: false,
+          source: "preview",
+          key: preview.entry.key,
+          session: preview.generation,
+        })
+      }
+      onPointerDown={(event) => {
+        if (event.button === 0) {
+          selecting.current = true;
+          markInteraction(true);
+        }
+      }}
     >
       <header>
         <span className="preview-mark" aria-hidden>
@@ -167,6 +216,17 @@ export function CapsulePreview() {
         </button>
         <button
           className="preview-icon"
+          disabled={busy}
+          aria-label="编辑便签"
+          title="编辑便签"
+          onClick={() => void act("surface_restore_edit")}
+        >
+          <svg viewBox="0 0 24 24">
+            <path d="m4 20 4-1 11-11-3-3L5 16l-1 4ZM14 7l3 3" />
+          </svg>
+        </button>
+        <button
+          className="preview-icon"
           aria-label="关闭预览"
           title="关闭预览"
           onPointerDown={(event) => {
@@ -181,21 +241,18 @@ export function CapsulePreview() {
           </svg>
         </button>
       </header>
-      <div
-        className="preview-body"
-        key={preview.entry.key}
-        role="button"
-        tabIndex={0}
-        aria-label="展开预览中的便签"
-        onClick={() => void act("surface_restore_stored")}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") void act("surface_restore_stored");
-        }}
-      >
+      <div className="preview-body" key={preview.entry.key}>
         {preview.entry.preview.trim() ? (
-          <Body source={preview.entry.preview} />
+          <MarkdownPreviewLazy
+            content={preview.entry.preview}
+            fontSize={13}
+            onTaskToggle={(offset, checked) => void toggleTask(offset, checked)}
+          />
         ) : (
           <p className="preview-empty">空白便签</p>
+        )}
+        {preview.entry.truncated && (
+          <p className="preview-truncated">内容未完 · 展开便签查看全文</p>
         )}
       </div>
       {error && (

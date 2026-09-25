@@ -332,6 +332,41 @@ export function MarkdownPreview({
   const components = useMemo<Components>(
     () => ({
       ...staticComponents,
+      h1: ({ children, id, node }) => (
+        <h1
+          id={id}
+          data-source-start={sourceOffset + (node?.position?.start.offset ?? 0)}
+          className="text-[1.57em] font-display font-bold text-ink mt-6 mb-4 tracking-wide"
+        >
+          {children}
+        </h1>
+      ),
+      h2: ({ children, id, node }) => (
+        <h2
+          id={id}
+          data-source-start={sourceOffset + (node?.position?.start.offset ?? 0)}
+          className="text-[1.21em] font-display font-bold text-ink mt-7 mb-3 tracking-wide"
+        >
+          {children}
+        </h2>
+      ),
+      h3: ({ children, id, node }) => (
+        <h3
+          id={id}
+          data-source-start={sourceOffset + (node?.position?.start.offset ?? 0)}
+          className="text-[1.07em] font-display font-bold text-ink mt-5 mb-2 tracking-wide"
+        >
+          {children}
+        </h3>
+      ),
+      p: ({ children, node }) => (
+        <p
+          data-source-start={sourceOffset + (node?.position?.start.offset ?? 0)}
+          className="text-ink-soft leading-[1.9]"
+        >
+          {children}
+        </p>
+      ),
       li: ({ children, className, node }) => {
         const rawOffset = node?.properties?.dataTaskOffset;
         const offset =
@@ -343,6 +378,7 @@ export function MarkdownPreview({
         return (
           <TaskOffsetContext.Provider value={offset}>
             <li
+              data-source-start={sourceOffset + (node?.position?.start.offset ?? 0)}
               className={`text-ink-soft leading-[1.9] ${className?.includes("task-list-item") ? "list-none" : ""}`}
             >
               {children}
@@ -373,7 +409,7 @@ export function MarkdownPreview({
         );
       },
     }),
-    [allowRemoteImages, imageBaseDir, imageRootDir, onTaskToggle],
+    [allowRemoteImages, imageBaseDir, imageRootDir, onTaskToggle, sourceOffset],
   );
   return (
     <div className="font-body markdown-selectable" style={{ fontSize: `${fontSize}px` }}>

@@ -200,6 +200,10 @@ export function NotePad({
   const titleRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const tileContentRef = useRef<HTMLTextAreaElement>(null);
+  const tileScrollRef = useRef<HTMLDivElement>(null);
+  const tileClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tileScrollTopRef = useRef(0);
+  const composingRef = useRef(false);
   const lockButtonRef = useRef<HTMLButtonElement>(null);
   const tileDragIntentRef = useRef<{ x: number; y: number } | null>(null);
   const windowLabelRef = useRef("");
@@ -787,16 +791,26 @@ export function NotePad({
     tileDragIntentRef.current = null;
   }, []);
 
-  const startTileWriting = useCallback(async () => {
-    if (tileLocked || tileWriting) return;
-    try {
-      await invoke("surface_edit_mode", { editing: true });
-      setTileWriting(true);
-      requestAnimationFrame(() => tileContentRef.current?.focus());
-    } catch (error) {
-      showToast(getErrorMessage(error));
-    }
-  }, [tileLocked, tileWriting]);
+  const startTileWriting = useCallback(
+    async (anchor?: number) => {
+      if (tileLocked || tileWriting) return;
+      try {
+        tileScrollTopRef.current = tileScrollRef.current?.scrollTop ?? 0;
+        await invoke("surface_edit_mode", { editing: true });
+        setTileWriting(true);
+        requestAnimationFrame(() => {
+          const editor = tileContentRef.current;
+          if (!editor) return;
+          editor.focus();
+          if (anchor != null) editor.setSelectionRange(anchor, anchor);
+          tileScrollRef.current?.scrollTo({ top: tileScrollTopRef.current });
+        });
+      } catch (error) {
+        showToast(getErrorMessage(error));
+      }
+    },
+    [tileLocked, tileWriting],
+  );
 
   const finishTileWriting = useCallback(async () => {
     if (!tileWriting) return;
@@ -804,11 +818,16 @@ export function NotePad({
       await saveNote();
       await invoke("surface_edit_mode", { editing: false });
       setTileWriting(false);
+      requestAnimationFrame(() =>
+        tileScrollRef.current?.scrollTo({ top: tileScrollTopRef.current }),
+      );
     } catch (error) {
       setStatus("saveFailed");
       showToast(getErrorMessage(error));
     }
   }, [saveNote, tileWriting]);
+  const finishTileWritingRef = useRef(finishTileWriting);
+  finishTileWritingRef.current = finishTileWriting;
 
   const reportLockButtonBounds = useCallback(async () => {
     if (!navigator.userAgent.includes("Windows")) return;
@@ -894,6 +913,7 @@ export function NotePad({
 
   const handleTileDoubleClick = useCallback(
     (event: MouseEvent<HTMLElement>) => {
+      if (tileClickTimerRef.current) clearTimeout(tileClickTimerRef.current);
       const textTarget = isTileTextHit(event);
       if (
         !shouldEnterPadFromTileOnDoubleClick(
@@ -912,6 +932,69 @@ export function NotePad({
     [clearPendingTileDrag, startTileWriting, tileDoubleClickToEdit],
   );
 
+  const handleTileClick = useCallback(
+    (event: MouseEvent<HTMLElement>) => {
+      if (surfaceMode !== "tile" || tileWriting || tileLocked || event.detail !== 1) return;
+      const target = event.target;
+      if (!(target instanceof HTMLElement) || isTileControlDoubleClickTarget(target)) return;
+      if (!target.closest('[data-tile-selectable="true"]') || !isTileTextHit(event)) return;
+      if (window.getSelection()?.toString()) return;
+      const sourceBlock = target.closest<HTMLElement>("[data-source-start]");
+      const blockStart = Number(sourceBlock?.dataset.sourceStart);
+      const caret = document.caretRangeFromPoint(event.clientX, event.clientY);
+      // AST 块源位置优先；普通文本回退到 DOM 光标位置。
+      const anchor = Number.isFinite(blockStart) && sourceBlock ? blockStart : caret?.startOffset;
+      if (tileClickTimerRef.current) clearTimeout(tileClickTimerRef.current);
+      tileClickTimerRef.current = setTimeout(() => {
+        tileClickTimerRef.current = null;
+        if (!document.hasFocus() || window.getSelection()?.toString()) return;
+        void startTileWriting(anchor);
+      }, 300);
+    },
+    [surfaceMode, tileWriting, tileLocked, startTileWriting],
+  );
+
+  useEffect(
+    () => () => {
+      if (tileClickTimerRef.current) clearTimeout(tileClickTimerRef.current);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (surfaceMode !== "tile" || !tileWriting) return undefined;
+    let blurTimer: ReturnType<typeof setTimeout> | null = null;
+    const onCompositionStart = () => {
+      composingRef.current = true;
+    };
+    const onCompositionEnd = () => {
+      composingRef.current = false;
+      if (!document.hasFocus() && !linkedConflict) onBlur();
+    };
+    const onBlur = () => {
+      if (blurTimer) clearTimeout(blurTimer);
+      blurTimer = setTimeout(() => {
+        if (
+          !document.hasFocus() &&
+          !composingRef.current &&
+          !linkedConflict &&
+          !document.querySelector('[role="menu"], [role="dialog"]')
+        ) {
+          void finishTileWritingRef.current();
+        }
+      }, 180);
+    };
+    window.addEventListener("compositionstart", onCompositionStart);
+    window.addEventListener("compositionend", onCompositionEnd);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      if (blurTimer) clearTimeout(blurTimer);
+      window.removeEventListener("compositionstart", onCompositionStart);
+      window.removeEventListener("compositionend", onCompositionEnd);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, [surfaceMode, tileWriting, linkedConflict]);
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (
@@ -919,10 +1002,12 @@ export function NotePad({
         surfaceMode === "tile" &&
         tileWriting &&
         document.hasFocus() &&
-        !event.isComposing
+        !event.isComposing &&
+        !composingRef.current &&
+        !document.querySelector('[role="menu"], [role="dialog"]')
       ) {
         event.preventDefault();
-        void finishTileWriting();
+        void finishTileWritingRef.current();
         return;
       }
       if ((event.ctrlKey || event.metaKey) && event.key === "s") {
@@ -933,7 +1018,7 @@ export function NotePad({
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [finishTileWriting, surfaceMode, tileWriting]);
+  }, [surfaceMode, tileWriting]);
 
   const handleOpenNote = async (noteId: string) => {
     try {
@@ -1008,10 +1093,45 @@ export function NotePad({
 
   const handleCloseRef = useRef(handleClose);
   handleCloseRef.current = handleClose;
-  const copyTileContentRef = useRef(copyTileContent);
-  copyTileContentRef.current = copyTileContent;
   const startTileWritingRef = useRef(startTileWriting);
   startTileWritingRef.current = startTileWriting;
+  useEffect(() => {
+    if (!bootstrapReady || surfaceMode !== "tile") return;
+    void invoke<boolean>("surface_take_edit_request")
+      .then((requested) => {
+        if (requested) void startTileWritingRef.current();
+      })
+      .catch(() => undefined);
+  }, [bootstrapReady, surfaceMode]);
+  useEffect(() => {
+    if (surfaceMode !== "tile") return undefined;
+    const unlisten = getCurrentWindow().listen("surface-hide-request", () => {
+      void (async () => {
+        try {
+          if (statusRef.current === "dirty" || statusRef.current === "saveFailed")
+            await saveNoteRef.current();
+          handleCloseRef.current();
+        } catch (error) {
+          setStatus("saveFailed");
+          showToast(getErrorMessage(error));
+        }
+      })();
+    });
+    return () => {
+      void unlisten.then((dispose) => dispose());
+    };
+  }, [surfaceMode]);
+  useEffect(() => {
+    if (surfaceMode !== "tile") return undefined;
+    const unlisten = getCurrentWindow().listen("surface-begin-editing", () => {
+      void startTileWritingRef.current();
+    });
+    return () => {
+      void unlisten.then((dispose) => dispose());
+    };
+  }, [surfaceMode]);
+  const copyTileContentRef = useRef(copyTileContent);
+  copyTileContentRef.current = copyTileContent;
 
   useEffect(() => {
     function handleSurfaceActionRequest(event: Event) {
@@ -1102,6 +1222,7 @@ export function NotePad({
     <div className={surfaceWrapperClassName}>
       {isTile ? (
         <Tile
+          scrollContainerRef={tileScrollRef}
           title={tileTitle || undefined}
           content={content}
           color={tileColor}
@@ -1141,6 +1262,7 @@ export function NotePad({
           data-note-id={tileNoteId}
           onMouseDown={handleDrag}
           onDoubleClick={handleTileDoubleClick}
+          onClick={handleTileClick}
         >
           {(!tileLocked || navigator.userAgent.includes("Windows")) && (
             <div className="absolute top-2 right-2 z-10 flex items-center gap-1">

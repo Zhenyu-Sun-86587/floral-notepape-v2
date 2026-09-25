@@ -164,6 +164,20 @@ export function SurfaceSessionControls({ sessionKey }: { sessionKey: string }) {
               : "锁定后便签置顶且不接收鼠标；从这里解锁。"}
           </p>
           <div className="mb-1 text-ink-faint">全局快捷键（默认不占用）</div>
+          <label className="block mb-1 text-ink-faint">再次触发快捷键时</label>
+          <select
+            value={session?.shortcutToggleAction ?? "store"}
+            disabled={!session || busy}
+            onChange={(event) =>
+              void save({
+                shortcutToggleAction: event.target.value as SurfaceSession["shortcutToggleAction"],
+              })
+            }
+            className="w-full rounded-lg border border-paper-deep bg-paper-warm p-2 mb-3"
+          >
+            <option value="store">收回胶囊</option>
+            <option value="hide">取消桌面固定（不删除内容）</option>
+          </select>
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -193,6 +207,7 @@ export function SurfaceSessionControls({ sessionKey }: { sessionKey: string }) {
               void save({
                 startupBehavior: "hidden",
                 shortcut: "",
+                shortcutToggleAction: "store",
                 windowMode: "alwaysOnTop",
                 locked: false,
                 capsuleSide: "right",
