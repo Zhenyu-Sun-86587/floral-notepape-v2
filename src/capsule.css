@@ -110,10 +110,6 @@ button:disabled {
 .edge-tab[data-pressed] {
   filter: brightness(0.9);
 }
-.edge-tab[data-error] {
-  outline: 2px solid #be7868;
-  outline-offset: -2px;
-}
 .edge-group-grip {
   flex: 0 0 var(--grip);
   min-width: 0;

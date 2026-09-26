@@ -46,6 +46,11 @@ interface CapsuleGroup {
   contentCss: number;
 }
 
+// 交互失败保留诊断日志，不将一次失败变成整组胶囊的永久描边。
+function reportCapsuleError(error: unknown) {
+  console.error("胶囊交互失败", error);
+}
+
 export function CapsuleRail() {
   const [group, setGroup] = useState<CapsuleGroup | null>(null);
   const rail = useRef<HTMLElement>(null);
@@ -57,7 +62,6 @@ export function CapsuleRail() {
   const entries = group?.members ?? [];
   const side = group?.side ?? "right";
   const overflow = !!group && group.contentCss > group.viewportCss + 0.001;
-  const [failed, setFailed] = useState(false);
   const [pressedKey, setPressedKey] = useState<string | null>(null);
   const busy = useRef(false);
   const insideKey = useRef<string | null>(null);
@@ -81,8 +85,8 @@ export function CapsuleRail() {
       .then((next) => {
         if (active) receive(next);
       })
-      .catch(() => {
-        if (active) setFailed(true);
+      .catch((error: unknown) => {
+        if (active) reportCapsuleError(error);
       });
     return () => {
       active = false;
@@ -116,8 +120,8 @@ export function CapsuleRail() {
     slots.current = { id: group.runtimeId, positions };
     // 隐藏 WebView 的 rAF 可能被暂停；DOM commit + 上面的 layout 测量作为 ready 边界。
     // 不把定时器/动画结束当作 native 交接的正确性条件。
-    void invoke("surface_capsule_group_ready", { revision: group.revision }).catch(() =>
-      setFailed(true),
+    void invoke("surface_capsule_group_ready", { revision: group.revision }).catch(
+      reportCapsuleError,
     );
   }, [group]);
   const leave = (key: string) => {
@@ -151,7 +155,7 @@ export function CapsuleRail() {
           generation,
         });
       })
-      .catch(() => setFailed(true));
+      .catch(reportCapsuleError);
   };
 
   const drag = (entry: CapsuleEntry, group: boolean) => {
@@ -163,7 +167,7 @@ export function CapsuleRail() {
       .then((dragged) => {
         if (!dragged && !group) return invoke("surface_restore_stored", { key: entry.key });
       })
-      .catch(() => setFailed(true))
+      .catch(reportCapsuleError)
       .finally(() => {
         busy.current = false;
         setPressedKey(null);
@@ -215,7 +219,6 @@ export function CapsuleRail() {
                 } as CSSProperties
               }
               className="edge-tab"
-              data-error={failed || undefined}
               data-pressed={pressedKey === entry.key || undefined}
               data-expanded={entry.expanded || undefined}
               aria-label={`${entry.expanded ? "聚焦" : "展开"} ${entry.title}`}
@@ -239,9 +242,7 @@ export function CapsuleRail() {
               onContextMenu={(event) => {
                 event.preventDefault();
                 clearHoverTimer();
-                void invoke("surface_capsule_menu", { key: entry.key }).catch(() =>
-                  setFailed(true),
-                );
+                void invoke("surface_capsule_menu", { key: entry.key }).catch(reportCapsuleError);
               }}
               onPointerDown={(event) => {
                 if (event.button !== 0 || !navigator.userAgent.includes("Windows")) return;
@@ -252,8 +253,8 @@ export function CapsuleRail() {
                 // Windows 鼠标由原生拖动判定；键盘及 Mac 单击直接展开。
                 if (event.detail === 0 || !navigator.userAgent.includes("Windows")) {
                   clearHoverTimer();
-                  void invoke("surface_restore_stored", { key: entry.key }).catch(() =>
-                    setFailed(true),
+                  void invoke("surface_restore_stored", { key: entry.key }).catch(
+                    reportCapsuleError,
                   );
                 }
               }}
