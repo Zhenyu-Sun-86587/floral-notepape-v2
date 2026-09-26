@@ -1,30 +1,44 @@
 import type { EditorState, Range } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
-import { Decoration, ViewPlugin, type EditorView } from "@codemirror/view";
+import { Decoration, WidgetType } from "@codemirror/view";
 
-export interface ContainerPrefix {
+type Marker = {
+  from: number;
+  to: number;
+  kind: "bullet" | "ordered" | "quote" | "task";
+  text: string;
+  checked?: boolean;
+};
+
+export interface ContainerPrefixLayout {
   lineFrom: number;
+  sourceFrom: number;
+  sourceTo: number;
   bodyFrom: number;
-  markers: {
-    from: number;
-    to: number;
-    kind: "bullet" | "ordered" | "quote" | "task";
-    checked?: boolean;
-  }[];
+  quoteDepth: number;
+  indentEm: number;
+  markerColumnEm: number;
+  bodyIndentEm: number;
+  list?: { kind: "bullet" | "ordered"; sourceMarker: string; depth: number };
+  task?: { checked: boolean; sourceFrom: number; sourceTo: number };
+  visualSlots: { kind: "quote" | "bullet" | "ordered" | "task"; text: string }[];
+  markers: Marker[];
 }
 
-// 结构只来自 Lezer；这里只读取已解析 marker 后的空白，不另建 Markdown parser。
-export function containerPrefixes(state: EditorState): ContainerPrefix[] {
-  const lines = new Map<number, ContainerPrefix>();
+const QUOTE_EM = 1.5;
+const LIST_EM = 1.8;
+
+// Lezer 决定哪些字符是容器标记；这里仅把同一行已解析的标记归并成一个视觉前缀。
+export function containerPrefixes(state: EditorState): ContainerPrefixLayout[] {
+  const lines = new Map<number, { bodyFrom: number; markers: Marker[] }>();
   syntaxTree(state).iterate({
     enter(node) {
       if (!["ListMark", "TaskMarker", "QuoteMark"].includes(node.name)) return;
       const line = state.doc.lineAt(node.from);
       let prefix = lines.get(line.from);
-      if (!prefix)
-        lines.set(line.from, (prefix = { lineFrom: line.from, bodyFrom: node.to, markers: [] }));
-      const source = state.sliceDoc(node.from, node.to);
-      const kind =
+      if (!prefix) lines.set(line.from, (prefix = { bodyFrom: node.to, markers: [] }));
+      const text = state.sliceDoc(node.from, node.to);
+      const kind: Marker["kind"] =
         node.name === "TaskMarker"
           ? "task"
           : node.name === "QuoteMark"
@@ -36,14 +50,95 @@ export function containerPrefixes(state: EditorState): ContainerPrefix[] {
         from: node.from,
         to: node.to,
         kind,
-        checked: kind === "task" ? source[1].toLowerCase() === "x" : undefined,
+        text,
+        checked: kind === "task" ? text[1]?.toLowerCase() === "x" : undefined,
       });
       let end = node.to;
       while (end < line.to && /[\t ]/.test(state.sliceDoc(end, end + 1))) end++;
       prefix.bodyFrom = Math.max(prefix.bodyFrom, end);
     },
   });
-  return [...lines.values()];
+  return [...lines].map(([lineFrom, raw]) => {
+    const markers = raw.markers.sort((a, b) => a.from - b.from);
+    const first = markers[0];
+    const leading = state.sliceDoc(lineFrom, first.from);
+    const indentEm = [...leading].reduce((sum, char) => sum + (char === "\t" ? 2 : 0.5), 0);
+    const quoteDepth = markers.filter((marker) => marker.kind === "quote").length;
+    const listMarkers = markers.filter(
+      (marker) => marker.kind === "bullet" || marker.kind === "ordered",
+    );
+    const owner = listMarkers[listMarkers.length - 1];
+    const taskMarker = markers.find((marker) => marker.kind === "task");
+    // task 取代最内层 list marker 的视觉槽；source 范围仍包含完整的 "- [ ] "。
+    const visualSlots: ContainerPrefixLayout["visualSlots"] = [
+      ...Array.from({ length: quoteDepth }, () => ({ kind: "quote" as const, text: "│" })),
+      ...(owner
+        ? [
+            taskMarker
+              ? { kind: "task" as const, text: taskMarker.checked ? "☑" : "☐" }
+              : { kind: owner.kind, text: owner.kind === "ordered" ? owner.text : "•" },
+          ]
+        : []),
+    ];
+    const markerColumnEm = indentEm + quoteDepth * QUOTE_EM;
+    return {
+      lineFrom,
+      sourceFrom: lineFrom,
+      sourceTo: raw.bodyFrom,
+      bodyFrom: raw.bodyFrom,
+      quoteDepth,
+      indentEm,
+      markerColumnEm,
+      bodyIndentEm: markerColumnEm + (owner ? LIST_EM : 0),
+      list: owner
+        ? {
+            kind: owner.kind as "bullet" | "ordered",
+            sourceMarker: owner.text,
+            depth: indentEm / 0.5,
+          }
+        : undefined,
+      task: taskMarker
+        ? { checked: !!taskMarker.checked, sourceFrom: taskMarker.from, sourceTo: taskMarker.to }
+        : undefined,
+      visualSlots,
+      markers,
+    };
+  });
+}
+
+class PrefixCell extends WidgetType {
+  constructor(readonly layout: ContainerPrefixLayout) {
+    super();
+  }
+  eq(other: PrefixCell) {
+    return (
+      this.layout.sourceFrom === other.layout.sourceFrom &&
+      this.layout.sourceTo === other.layout.sourceTo &&
+      this.layout.bodyIndentEm === other.layout.bodyIndentEm &&
+      JSON.stringify(this.layout.visualSlots) === JSON.stringify(other.layout.visualSlots)
+    );
+  }
+  toDOM() {
+    const prefix = document.createElement("span");
+    prefix.className = "source-prefix-visual";
+    prefix.style.width = `${this.layout.bodyIndentEm}em`;
+    prefix.style.paddingLeft = `${this.layout.indentEm}em`;
+    for (const slot of this.layout.visualSlots) {
+      const cell = document.createElement("span");
+      cell.className = `source-prefix-cell source-prefix-${slot.kind}`;
+      cell.textContent = slot.text;
+      if (slot.kind === "task" && this.layout.task) {
+        cell.dataset.taskOffset = String(this.layout.task.sourceFrom);
+        cell.dataset.taskChecked = String(this.layout.task.checked);
+        cell.setAttribute("aria-label", "切换任务状态");
+      }
+      prefix.append(cell);
+    }
+    return prefix;
+  }
+  ignoreEvent() {
+    return false;
+  }
 }
 
 export function prefixDecorations(
@@ -53,78 +148,22 @@ export function prefixDecorations(
 ): Range<Decoration>[] {
   const ranges: Range<Decoration>[] = [];
   const activeStart = state.doc.lineAt(head).from;
-  for (const prefix of containerPrefixes(state)) {
+  for (const layout of containerPrefixes(state)) {
+    const revealed = active && layout.lineFrom === activeStart;
+    const indent = revealed ? (layout.sourceTo - layout.sourceFrom) * 0.55 : layout.bodyIndentEm;
     ranges.push(
       Decoration.line({
         class: "source-container-line",
-        attributes: {
-          "data-prefix-end": String(prefix.bodyFrom),
-        },
-      }).range(prefix.lineFrom),
+        attributes: { style: `--container-indent:${indent}em` },
+      }).range(layout.lineFrom),
     );
-    ranges.push(
-      Decoration.mark({ class: "source-container-prefix" }).range(prefix.lineFrom, prefix.bodyFrom),
-    );
-    const revealed = active && prefix.lineFrom === activeStart;
-    const task = prefix.markers.find((marker) => marker.kind === "task");
-    const taskOwner =
-      task &&
-      prefix.markers
-        .filter((marker) => marker.kind === "bullet" && marker.to <= task.from)
-        .slice(-1)[0];
-    for (const marker of prefix.markers) {
-      const attributes: Record<string, string> = {};
-      if (marker.kind === "task" && !revealed) {
-        attributes["data-task-offset"] = String(marker.from);
-        attributes["data-task-checked"] = String(marker.checked);
-        attributes["aria-label"] = "切换任务状态";
-      }
-      // mark 始终保留每个真实字符；伪元素绝对定位，不进入文本流。
+    if (!revealed && layout.sourceTo > layout.sourceFrom)
       ranges.push(
-        Decoration.mark({
-          class: `source-prefix-slot ${revealed ? "" : `source-prefix-${marker === taskOwner ? "silent" : marker.kind}`}`,
-          attributes,
-        }).range(marker.from, marker.to),
+        Decoration.replace({ widget: new PrefixCell(layout) }).range(
+          layout.sourceFrom,
+          layout.sourceTo,
+        ),
       );
-    }
   }
   return ranges;
 }
-
-// 使用实际字体的原生字符宽度设置悬挂缩进；首行原点不变，续行对齐正文。
-// 只测量可见行，不派发 presentation transaction，也不干涉 composition DOM。
-export const containerWrapping = ViewPlugin.fromClass(
-  class {
-    constructor(readonly view: EditorView) {
-      this.measure();
-    }
-    update() {
-      this.measure();
-    }
-    measure() {
-      if (this.view.composing) return;
-      this.view.requestMeasure({
-        key: this,
-        read: () =>
-          Array.from(
-            this.view.contentDOM.querySelectorAll<HTMLElement>(".source-container-line"),
-          ).map((line) => {
-            const from = this.view.state.doc.lineAt(this.view.posAtDOM(line)).from;
-            const end = Number(line.dataset.prefixEnd);
-            const first = this.view.domAtPos(from);
-            const last = this.view.domAtPos(end);
-            const range = document.createRange();
-            range.setStart(first.node, first.offset);
-            range.setEnd(last.node, last.offset);
-            // 用源码边界测量整个 prefix，避免 CM 嵌套 mark 分片时重复计宽或只算最后一片。
-            return { line, width: range.getBoundingClientRect().width };
-          }),
-        write: (rows) => {
-          if (this.view.composing) return;
-          for (const { line, width } of rows)
-            line?.style.setProperty("--container-indent", `${width}px`);
-        },
-      });
-    }
-  },
-);

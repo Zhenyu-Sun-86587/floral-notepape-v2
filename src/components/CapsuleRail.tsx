@@ -49,12 +49,14 @@ interface CapsuleGroup {
 export function CapsuleRail() {
   const [group, setGroup] = useState<CapsuleGroup | null>(null);
   const rail = useRef<HTMLElement>(null);
+  const strip = useRef<HTMLDivElement>(null);
   const revision = useRef(0);
   const slots = useRef<{ id: number; positions: Map<string, { x: number; y: number }> } | null>(
     null,
   );
   const entries = group?.members ?? [];
   const side = group?.side ?? "right";
+  const overflow = !!group && group.contentCss > group.viewportCss + 0.001;
   const [failed, setFailed] = useState(false);
   const [pressedKey, setPressedKey] = useState<string | null>(null);
   const busy = useRef(false);
@@ -172,6 +174,7 @@ export function CapsuleRail() {
     <nav
       ref={rail}
       className={`capsule-group edge-rail edge-${side}`}
+      data-overflow={overflow || undefined}
       style={
         {
           "--slot": `${group?.slotCss ?? 44}px`,
@@ -182,81 +185,84 @@ export function CapsuleRail() {
       }
       aria-label="已收纳便签"
       onWheel={(event) => {
-        if (side === "top" && group && group.contentCss > group.viewportCss)
-          event.currentTarget.scrollLeft += event.deltaY;
+        if (side === "top" && overflow && strip.current) strip.current.scrollLeft += event.deltaY;
       }}
       onPointerLeave={() => {
         if (insideKey.current) leave(insideKey.current);
       }}
     >
-      {!!group?.gripCss && entries[0] && (
-        <button
-          type="button"
-          className="edge-group-grip"
-          aria-label={`拖动合并的 ${entries.length} 个胶囊`}
-          title="拖动整组胶囊"
-          onPointerDown={(event) => {
-            if (event.button !== 0 || !navigator.userAgent.includes("Windows")) return;
-            event.preventDefault();
-            drag(entries[0], true);
-          }}
-        >
-          <span aria-hidden="true" />
-        </button>
-      )}
-      {entries.map((entry) => (
-        <div className="edge-member" key={entry.key} data-member-key={entry.key}>
+      <div ref={strip} className="capsule-strip">
+        {!!group?.gripCss && entries[0] && (
           <button
             type="button"
-            style={
-              {
-                "--tab-color": CAPSULE_COLORS[entry.colorKey % CAPSULE_COLORS.length],
-              } as CSSProperties
-            }
-            className="edge-tab"
-            data-error={failed || undefined}
-            data-pressed={pressedKey === entry.key || undefined}
-            data-expanded={entry.expanded || undefined}
-            aria-label={`${entry.expanded ? "聚焦" : "展开"} ${entry.title}`}
-            onPointerEnter={(event) => {
-              if (entry.expanded) {
-                if (insideKey.current) leave(insideKey.current);
-                return;
-              }
-              insideKey.current = entry.key;
-              void invoke("surface_capsule_hover", {
-                inside: true,
-                source: "rail",
-                key: entry.key,
-              });
-              dwell(entry, event.currentTarget);
-            }}
-            onFocus={() => {
-              insideKey.current = entry.key;
-            }}
-            onBlur={() => leave(entry.key)}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              clearHoverTimer();
-              void invoke("surface_capsule_menu", { key: entry.key }).catch(() => setFailed(true));
-            }}
+            className="edge-group-grip"
+            aria-label={`拖动合并的 ${entries.length} 个胶囊`}
+            title="拖动整组胶囊"
             onPointerDown={(event) => {
               if (event.button !== 0 || !navigator.userAgent.includes("Windows")) return;
               event.preventDefault();
-              drag(entry, false);
+              drag(entries[0], true);
             }}
-            onClick={(event) => {
-              // Windows 鼠标由原生拖动判定；键盘及 Mac 单击直接展开。
-              if (event.detail === 0 || !navigator.userAgent.includes("Windows")) {
+          >
+            <span aria-hidden="true" />
+          </button>
+        )}
+        {entries.map((entry) => (
+          <div className="edge-member" key={entry.key} data-member-key={entry.key}>
+            <button
+              type="button"
+              style={
+                {
+                  "--tab-color": CAPSULE_COLORS[entry.colorKey % CAPSULE_COLORS.length],
+                } as CSSProperties
+              }
+              className="edge-tab"
+              data-error={failed || undefined}
+              data-pressed={pressedKey === entry.key || undefined}
+              data-expanded={entry.expanded || undefined}
+              aria-label={`${entry.expanded ? "聚焦" : "展开"} ${entry.title}`}
+              onPointerEnter={(event) => {
+                if (entry.expanded) {
+                  if (insideKey.current) leave(insideKey.current);
+                  return;
+                }
+                insideKey.current = entry.key;
+                void invoke("surface_capsule_hover", {
+                  inside: true,
+                  source: "rail",
+                  key: entry.key,
+                });
+                dwell(entry, event.currentTarget);
+              }}
+              onFocus={() => {
+                insideKey.current = entry.key;
+              }}
+              onBlur={() => leave(entry.key)}
+              onContextMenu={(event) => {
+                event.preventDefault();
                 clearHoverTimer();
-                void invoke("surface_restore_stored", { key: entry.key }).catch(() =>
+                void invoke("surface_capsule_menu", { key: entry.key }).catch(() =>
                   setFailed(true),
                 );
-              }
-            }}
-          />
-        </div>
-      ))}
+              }}
+              onPointerDown={(event) => {
+                if (event.button !== 0 || !navigator.userAgent.includes("Windows")) return;
+                event.preventDefault();
+                drag(entry, false);
+              }}
+              onClick={(event) => {
+                // Windows 鼠标由原生拖动判定；键盘及 Mac 单击直接展开。
+                if (event.detail === 0 || !navigator.userAgent.includes("Windows")) {
+                  clearHoverTimer();
+                  void invoke("surface_restore_stored", { key: entry.key }).catch(() =>
+                    setFailed(true),
+                  );
+                }
+              }}
+            />
+          </div>
+        ))}
+      </div>
     </nav>
   );
 }

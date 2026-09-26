@@ -43,6 +43,14 @@ export interface TileProps extends Omit<
 const MARK_SIZE = 8;
 const MARK_OFFSET = 6;
 
+export function textAgainst(background: string, target: string, contrast: number) {
+  for (let amount = 0.25; amount <= 1.001; amount += 0.05) {
+    const color = chroma.mix(background, target, Math.min(amount, 1)).hex();
+    if (chroma.contrast(background, color) >= contrast) return color;
+  }
+  return target;
+}
+
 const cornerPaths = [
   {
     pos: { top: MARK_OFFSET, left: MARK_OFFSET },
@@ -120,21 +128,35 @@ export function Tile({
 }: TileProps) {
   const { t } = useTranslation();
   const tileColor = normalizeTileColor(color);
-  const { borderColor, cornerColor, titleColor, contentColor, emptyColor } = useMemo(() => {
-    const isLightBg = chroma(tileColor).luminance() > 0.18;
-    const mixTarget = isLightBg ? "#1a1a18" : "#ffffff";
-    return {
-      borderColor: chroma.mix(tileColor, mixTarget, 0.18).alpha(0.55).css(),
-      cornerColor: chroma.mix(tileColor, mixTarget, 0.3).alpha(0.26).css(),
-      titleColor: chroma.mix(tileColor, mixTarget, 0.4).alpha(0.5).css(),
-      contentColor: chroma.mix(tileColor, mixTarget, 0.65).alpha(0.85).css(),
-      emptyColor: chroma.mix(tileColor, mixTarget, 0.25).alpha(0.4).css(),
-    };
-  }, [tileColor]);
-  const mergedStyle: CSSProperties = {
+  const { borderColor, cornerColor, titleColor, contentColor, emptyColor, accentColor } =
+    useMemo(() => {
+      const isLightBg = chroma(tileColor).luminance() > 0.18;
+      const mixTarget = isLightBg ? "#141816" : "#f7f8f4";
+      const accentTarget = isLightBg ? "#254f3a" : "#a8d2ae";
+      return {
+        borderColor: chroma.mix(tileColor, mixTarget, 0.18).alpha(0.55).css(),
+        cornerColor: chroma.mix(tileColor, mixTarget, 0.3).alpha(0.26).css(),
+        titleColor: textAgainst(tileColor, mixTarget, 7),
+        contentColor: textAgainst(tileColor, mixTarget, 4.5),
+        emptyColor: textAgainst(tileColor, mixTarget, 3),
+        accentColor: textAgainst(tileColor, accentTarget, 4.5),
+      };
+    }, [tileColor]);
+  const mergedStyle: CSSProperties & Record<`--${string}`, string> = {
     width,
     backgroundColor: `color-mix(in srgb, ${tileColor} var(--appearance-opacity-percent, 100%), transparent)`,
     borderColor,
+    // 局部语义色同时供 CodeMirror 与 MarkdownPreview 使用，正文不叠透明度。
+    "--surface-text-primary": titleColor,
+    "--surface-text-secondary": contentColor,
+    "--surface-text-muted": emptyColor,
+    "--surface-accent": accentColor,
+    "--color-ink": titleColor,
+    "--color-ink-soft": contentColor,
+    "--color-ink-faint": emptyColor,
+    "--color-bamboo": accentColor,
+    "--color-bamboo-light": accentColor,
+    "--color-accent": accentColor,
     transition: "box-shadow 0.3s ease",
     ...(rotation ? { transform: `rotate(${rotation}deg)` } : {}),
     ...style,

@@ -1,4 +1,9 @@
-//! 边缘布局的唯一几何 authority。输入/输出均为物理像素，无窗口或持久化依赖。
+//! 边缘布局的唯一几何 authority。输入/输出均为逻辑像素，物理取整仅在窗口边界执行。
+pub const SLOT: f64 = 44.0;
+pub const GRIP: f64 = 14.0;
+pub const CROSS: f64 = 18.0;
+pub const MERGE: f64 = 52.0;
+pub const GAP: f64 = 4.0;
 #[derive(Clone, Debug, PartialEq)]
 pub struct VisualGroup {
     pub members: Vec<String>,
@@ -54,7 +59,7 @@ pub fn solve(
                 let length = content.min(extent);
                 VisualGroup {
                     members: items.iter().map(|item| item.0.clone()).collect(),
-                    axis_start: (items[0].1 - head).clamp(0.0, extent - length).round(),
+                    axis_start: (items[0].1 - head).clamp(0.0, extent - length),
                     axis_length: length,
                     slot_length: slot,
                     grip_length: head,
@@ -72,6 +77,15 @@ pub fn solve(
             return CapsuleLayoutPlan { extent, groups };
         }
     }
+}
+
+/// 只转换组的两个端点；当两个端点各自四舍五入会少半像素时，末端向外补至完整内容。
+pub fn physical_interval(start: f64, length: f64, scale: f64) -> (i32, u32) {
+    assert!(start >= 0.0 && length >= 0.0 && scale.is_finite() && scale > 0.0);
+    let first = (start * scale).round() as i32;
+    let last =
+        (((start + length) * scale).round() as i32).max(first + (length * scale).ceil() as i32);
+    (first, (last - first) as u32)
 }
 
 /// 一对一匹配最大成员交集；组内排序变化不改变窗口 identity。
@@ -122,24 +136,23 @@ mod tests {
             assert_eq!(group.axis_length, group.content_length.min(plan.extent));
         }
     }
-    fn plan(positions: &[f64], extent: f64, scale: f64) -> CapsuleLayoutPlan {
-        let slot = (44.0 * scale).round();
+    fn plan(positions: &[f64], extent: f64) -> CapsuleLayoutPlan {
         solve(
             positions
                 .iter()
                 .enumerate()
-                .map(|(i, x)| (i.to_string(), x * scale / (extent - slot)))
+                .map(|(i, x)| (i.to_string(), x / (extent - SLOT)))
                 .collect(),
             extent,
-            slot,
-            (14.0 * scale).round(),
-            52.0 * scale,
-            (4.0 * scale).round(),
+            SLOT,
+            GRIP,
+            MERGE,
+            GAP,
         )
     }
     #[test]
     fn capsule_global_geometry_regressions() {
-        for scale in [1.0, 1.25, 1.5, 2.0] {
+        for scale in [1.0, 1.25, 1.5, 1.75, 2.0] {
             for positions in [
                 &[100.0, 110.0][..],
                 &[100.0, 101.0, 160.0],
@@ -149,33 +162,38 @@ mod tests {
                 &[950.0, 960.0],
                 &[0.0, 60.0, 120.0, 180.0, 240.0, 300.0],
             ] {
-                let p = plan(positions, 1000.0 * scale, scale);
+                let p = plan(positions, 1000.0);
                 assert_layout_invariants(&p);
+                for group in &p.groups {
+                    let (start, length) =
+                        physical_interval(group.axis_start, group.axis_length, scale);
+                    assert_eq!(start, (group.axis_start * scale).round() as i32);
+                    assert!(
+                        start + length as i32
+                            >= ((group.axis_start + group.axis_length) * scale).round() as i32
+                    );
+                    assert!(length as f64 >= (group.axis_length * scale).ceil());
+                }
                 assert_eq!(
                     p.groups.iter().map(|g| g.members.len()).sum::<usize>(),
                     positions.len()
                 );
             }
         }
-        assert_eq!(plan(&[100.0, 101.0, 160.0], 1000.0, 1.0).groups.len(), 1);
-        assert_eq!(
-            plan(&[100.0, 110.0, 400.0, 410.0], 1000.0, 1.0)
-                .groups
-                .len(),
-            2
-        );
+        assert_eq!(plan(&[100.0, 101.0, 160.0], 1000.0).groups.len(), 1);
+        assert_eq!(plan(&[100.0, 110.0, 400.0, 410.0], 1000.0).groups.len(), 2);
     }
     #[test]
     fn capsule_dense_capacity_and_identity() {
-        let p = plan(&vec![0.0; 100], 200.0, 1.0);
+        let p = plan(&vec![0.0; 100], 200.0);
         assert_layout_invariants(&p);
         assert_eq!(p.groups.len(), 1);
-        let groups = plan(&[100.0, 110.0, 400.0], 1000.0, 1.0).groups;
+        let groups = plan(&[100.0, 110.0, 400.0], 1000.0).groups;
         assert_eq!(
             reuse_indices(&[vec!["1".into(), "0".into()], vec!["2".into()]], &groups),
             vec![Some(0), Some(1)]
         );
-        let merged = plan(&[100.0, 110.0, 120.0], 1000.0, 1.0).groups;
+        let merged = plan(&[100.0, 110.0, 120.0], 1000.0).groups;
         assert_eq!(
             reuse_indices(
                 &groups.iter().map(|g| g.members.clone()).collect::<Vec<_>>(),
@@ -201,5 +219,13 @@ mod tests {
                 .collect();
             assert_layout_invariants(&solve(items, 760.0, 55.0, 18.0, 65.0, 5.0));
         }
+    }
+
+    #[test]
+    fn fractional_group_start_does_not_crop_the_final_slot() {
+        // 125% 时独立 round 两端会得到 182px，但 14 + 3×44 的 DOM 需要 183px。
+        let (start, length) = physical_interval(86.2, 146.0, 1.25);
+        assert_eq!(start, (86.2_f64 * 1.25).round() as i32);
+        assert_eq!(length, 183);
     }
 }

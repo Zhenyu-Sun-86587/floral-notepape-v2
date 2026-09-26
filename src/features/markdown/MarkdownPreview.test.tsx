@@ -85,4 +85,22 @@ describe("MarkdownPreview", () => {
     expect(interactive).not.toMatch(/<input[^>]*disabled/);
     expect(passive).toMatch(/<input[^>]*disabled/);
   });
+
+  test("shows alt text and reason when remote image loading is disabled", () => {
+    const markup = renderToStaticMarkup(
+      <MarkdownPreview content="![测试图片](https://placehold.co/160x90/png)" />,
+    );
+    expect(markup).toContain("测试图片");
+    expect(markup).toContain("远程图片加载已关闭");
+    expect(markup).not.toContain('<img src="https://placehold.co');
+  });
+
+  test("preserves GFM table column alignment", () => {
+    const markup = renderToStaticMarkup(
+      <MarkdownPreview content={"| 左 | 中 | 右 |\n| :--- | :---: | ---: |\n| A | B | C |"} />,
+    );
+    expect(markup).toContain("text-align:left");
+    expect(markup).toContain("text-align:center");
+    expect(markup).toContain("text-align:right");
+  });
 });

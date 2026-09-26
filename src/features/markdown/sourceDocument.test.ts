@@ -3,7 +3,8 @@ import { EditorState, Transaction } from "@codemirror/state";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { syntaxTree } from "@codemirror/language";
 import { history, undo } from "@codemirror/commands";
-import { decorate } from "./SourceEditor";
+import { decorate } from "./sourcePresentation";
+import { containerPrefixes } from "./containerPrefix";
 import { mathSyntax, sourceChange } from "./sourceDocument";
 
 describe("常驻 Markdown 源文档", () => {
@@ -16,15 +17,14 @@ describe("常驻 Markdown 源文档", () => {
   it("隐藏语法只生成装饰，保留源码和任务偏移", () => {
     const decorations = decorate(state, false, 0, content.length, props);
     const hidden: string[] = [];
-    const tasks: number[] = [];
     decorations.between(0, content.length, (from, to, value) => {
       if (!value.spec.widget && !value.spec.class && from < to)
         hidden.push(content.slice(from, to));
-      if (value.spec.attributes?.["data-task-offset"] != null)
-        tasks.push(Number(value.spec.attributes["data-task-offset"]));
     });
     expect(hidden).toContain("**");
-    expect(tasks).toEqual([content.indexOf("[ ]")]);
+    expect(containerPrefixes(state).find((row) => row.task)?.task?.sourceFrom).toBe(
+      content.indexOf("[ ]"),
+    );
     expect(state.doc.toString()).toBe(content);
     expect(syntaxTree(state).toString()).toContain("DisplayMath");
   });

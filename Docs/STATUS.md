@@ -1,6 +1,12 @@
 # Hermes Surface Dev：Windows 阶段状态
 
-当前 Windows 源码版本为 **1.7.3**；历史 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
+当前 Windows 源码版本为 **1.7.4**；历史 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
+
+## 1.7.4 胶囊 viewport 与 Markdown 呈现修正
+
+- 组布局改用逻辑尺寸，原生边界统一投影并补足小数 DPI 下的末端像素；普通组 viewport 不滚动，只有密集超容量组启用内部滚动。
+- Markdown 容器标记归并为语义前缀，任务框取代所属列表标记的视觉槽。横线改为行级分隔线，裸 URL、代码高亮、图片受阻占位、标题与表格对齐补齐。
+- 便签局部文字色按背景对比度计算，编辑器与只读 Markdown 共用。回归文本、测试及待人工验收范围见 [RELEASE_1.7.4](RELEASE_1.7.4.md) 与 [MANUAL_ACCEPTANCE](MANUAL_ACCEPTANCE.md)。
 
 ## 1.7.3 组布局与容器前缀重构
 

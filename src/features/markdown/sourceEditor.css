@@ -46,6 +46,22 @@
 .source-h3 {
   font-size: 1.2em;
 }
+.source-h4 {
+  font-size: 1.1em;
+}
+.source-h5 {
+  font-size: 1.03em;
+}
+.source-h6 {
+  font-size: 1em;
+}
+.source-editor .cm-line.source-setext-underline {
+  height: 0;
+  min-height: 0;
+  line-height: 0;
+  font-size: 0;
+  overflow: clip;
+}
 .source-strong {
   font-weight: 700;
 }
@@ -61,14 +77,26 @@
   font-family: monospace;
 }
 .source-link {
-  color: var(--color-accent, #658976);
+  color: var(--surface-accent, var(--color-accent, #658976));
   text-decoration: underline;
 }
-.source-marker {
-  display: inline-block;
-  min-width: 0.7em;
-  color: var(--color-accent, #849b7b);
-  vertical-align: baseline;
+.source-editor.is-reading .source-link {
+  cursor: pointer;
+}
+.source-horizontal-rule {
+  position: relative;
+}
+.source-horizontal-rule-source {
+  color: transparent;
+}
+.source-horizontal-rule::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px solid var(--surface-text-muted, currentColor);
+  pointer-events: none;
 }
 .source-rich-block {
   max-width: 100%;
@@ -79,45 +107,28 @@
 .source-rich-inline .markdown-selectable > p {
   display: inline;
 }
-/* 容器前缀保持原生 inline 字符和空格，覆盖图形不占用 flow width。 */
+/* 整个源码前缀映射到一个语义槽；列表和任务共享 marker/body 两列。 */
 .source-editor .cm-line.source-container-line {
   padding-left: var(--container-indent, 0px);
   text-indent: calc(-1 * var(--container-indent, 0px));
 }
-.source-container-prefix {
-  white-space: pre;
+.source-prefix-visual {
+  display: inline-flex;
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: baseline;
+  color: var(--surface-accent, var(--color-accent, #849b7b));
 }
-.source-prefix-slot {
-  position: relative;
-}
-.source-prefix-bullet,
-.source-prefix-task,
-.source-prefix-quote,
-.source-prefix-silent {
-  color: transparent;
-}
-.source-prefix-bullet::after,
-.source-prefix-quote::after,
-.source-prefix-task::after {
-  position: absolute;
-  inset: 0;
-  color: var(--color-accent, #849b7b);
+.source-prefix-cell {
+  display: inline-block;
+  flex: 0 0 1.8em;
+  text-align: left;
   text-indent: 0;
-  text-align: center;
-  pointer-events: none;
 }
-.source-prefix-bullet::after {
-  content: "•";
+.source-prefix-quote {
+  flex-basis: 1.5em;
 }
-.source-prefix-quote::after {
-  content: "│";
-}
-.source-prefix-task::after {
-  content: "☐";
-}
-.source-prefix-task[data-task-checked="true"]::after {
-  content: "☑";
-}
-.source-prefix-ordered {
-  color: var(--color-accent, #849b7b);
+.source-prefix-task {
+  cursor: pointer;
 }

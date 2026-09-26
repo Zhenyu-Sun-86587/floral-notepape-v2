@@ -47,24 +47,32 @@ button:disabled {
   cursor: wait;
   opacity: 0.6;
 }
-/* 一个组只有一个轮廓；尺寸来自 Rust physical snapshot 的 CSS 单位投影。 */
+/* 一个组只有一个轮廓；DOM 使用原始逻辑尺寸，物理取整仅属于窗口边界。 */
 .capsule-group {
+  width: 100%;
+  height: 100%;
+  border-radius: calc(var(--cross) / 2);
+  overflow: clip;
+}
+.capsule-strip {
   display: flex;
   flex-direction: column;
   width: 100%;
   height: 100%;
-  border-radius: calc(var(--cross) / 2);
-  overflow: auto;
+  overflow: clip;
   scrollbar-width: none;
   overscroll-behavior: contain;
 }
-.capsule-group::-webkit-scrollbar {
+.capsule-group[data-overflow="true"] .capsule-strip {
+  overflow: auto;
+}
+.capsule-strip::-webkit-scrollbar {
   display: none;
 }
 .edge-member {
   position: relative;
   flex: 0 0 var(--slot);
-  width: var(--cross);
+  width: 100%;
   height: var(--slot);
 }
 .edge-tab {
@@ -106,7 +114,7 @@ button:disabled {
 }
 .edge-group-grip {
   flex: 0 0 var(--grip);
-  width: var(--cross);
+  width: 100%;
   height: var(--grip);
   display: grid;
   place-items: center;
@@ -121,16 +129,16 @@ button:disabled {
   box-shadow: 0 3px #fff9;
   border-radius: 2px;
 }
-.edge-top {
+.edge-top .capsule-strip {
   flex-direction: row;
 }
 .edge-top .edge-member {
   width: var(--slot);
-  height: var(--cross);
+  height: 100%;
 }
 .edge-top .edge-group-grip {
   width: var(--grip);
-  height: var(--cross);
+  height: 100%;
 }
 .edge-top .edge-tab::after {
   width: 18px;

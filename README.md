@@ -2,11 +2,11 @@
 
 **简体中文** · [繁體中文](README_zh-HK.md) · [English](README_en-US.md)
 
-把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.3**。
+把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.4**。
 
 [下载 Windows 1.7.2](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.2) · [反馈问题](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [Mac 开发交接](Docs/MAC_HANDOFF.md)
 
-> **平台状态**：Windows x64 已提供 NSIS 安装包。macOS 正由协作者适配，当前没有本项目的 Mac 安装包。1.7.3 的组窗口、Markdown 前缀与多 DPI 交互仍待人工 GUI 验收，详情见 [项目状态](Docs/STATUS.md)。
+> **平台状态**：Windows x64 已提供 NSIS 安装包。macOS 正由协作者适配，当前没有本项目的 Mac 安装包。1.7.4 的小数 DPI 与 Markdown 呈现仍待人工 GUI 验收，详情见 [项目状态](Docs/STATUS.md)。
 
 ## 能做什么
 
@@ -17,11 +17,11 @@
 - **贴边收纳**：把便签收成左、右或顶部色条，Windows 拖动色条可换边或跨屏。悬停可读/可复制预览，单击直接恢复原窗口；右键可关闭所选胶囊。12 色槽位持久分配；展开后胶囊保留，高亮当前成员。相邻组的前端拖动头可移动整组。
 - **外观与唤起**：主题、字体、背景与透明度可调整；支持托盘、静默启动和应用/单便签快捷键。Windows Acrylic 由系统控制，桌面附着模式不使用 Acrylic。
 
-  1.7.3 使用整条边缘统一布局、每个视觉组一个原生窗口，以及保留源码宽度的 Markdown 容器前缀。范围与待验收项见 [发布说明](Docs/RELEASE_1.7.3.md) 与 [交互设计](Docs/INTERACTION_1.7.3.md)。
+  1.7.4 修正小数 DPI 下组窗口裁切，并把列表/任务/引用组合成语义视觉前缀；补齐横线、裸 URL、代码高亮、图片占位与文字对比度。范围与待验收项见 [发布说明](Docs/RELEASE_1.7.4.md)。
 
 ## 下载安装
 
-1.7.3 本地构建安装包位于 `src-tauri/target/release/bundle/nsis/`；本轮只推送源码，不创建 GitHub Release。下方保留上一版已发布下载。
+1.7.4 本地构建安装包位于 `src-tauri/target/release/bundle/nsis/`；本轮只推送源码，不创建 GitHub Release。下方保留上一版已发布下载。
 
 下载 [v1.7.2 Windows x64 安装包](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/download/v1.7.2/Hermes.Surface.Dev_1.7.2_x64-setup.exe)。同一 [Release 页面](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.2) 提供 `SHA256SUMS.txt`；安装包 SHA-256 为：
 

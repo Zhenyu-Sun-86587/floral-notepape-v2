@@ -1,5 +1,11 @@
 # macOS 开发交接：还原 Windows 便签体验
 
+## 1.7.4 源码增量（Mac 未编译、未实测）
+
+- 胶囊 solver 的逻辑尺寸及端点物理投影位于跨平台 Rust 模型与 adapter 边界；macOS 应核对窗口原生尺寸、普通组不可滚动和各 scale 最末成员完整性。
+- Markdown 语义前缀、横线、链接、图片占位、代码语言及便签局部文字色均为跨平台 React/CodeMirror 逻辑；用 [固定回归文本](fixtures/markdown-presentation-1.7.4.md) 人工复核。
+- 本版本的 macOS 编译、GUI、DPI 和拖动均为 **manual verification required**。Windows 发布范围见 [RELEASE_1.7.4](RELEASE_1.7.4.md)。
+
 ## 1.7.3 源码增量（Mac 未编译、未实测）
 
 - 共享 `capsule_layout.rs` 以物理像素解整条 edge；`VisualGroup` 只存在于运行时，session 没有新增 group 持久字段。展开和颜色保留旧协议。

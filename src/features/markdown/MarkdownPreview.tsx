@@ -182,7 +182,7 @@ function Blockquote({
     );
   }
   return (
-    <blockquote className="border-l-2 border-bamboo/40 pl-4 my-3 text-ink-soft/80 italic leading-[1.9]">
+    <blockquote className="border-l-2 border-bamboo/40 pl-4 my-3 text-ink-soft italic leading-[1.9]">
       {children}
     </blockquote>
   );
@@ -208,6 +208,16 @@ const staticComponents: Components = {
     <h4 id={id} className="text-[1em] font-display font-semibold text-ink mt-4 mb-2 tracking-wide">
       {children}
     </h4>
+  ),
+  h5: ({ children, id }) => (
+    <h5 id={id} className="text-[0.96em] font-display font-semibold text-ink mt-3 mb-2">
+      {children}
+    </h5>
+  ),
+  h6: ({ children, id }) => (
+    <h6 id={id} className="text-[0.92em] font-display font-semibold text-ink mt-3 mb-2">
+      {children}
+    </h6>
   ),
   p: ({ children }) => <p className="text-ink-soft leading-[1.9]">{children}</p>,
   strong: ({ children }) => <strong className="font-semibold text-ink">{children}</strong>,
@@ -281,13 +291,18 @@ const staticComponents: Components = {
       </table>
     </div>
   ),
-  th: ({ children }) => (
-    <th className="text-left px-3 py-1.5 border border-paper-deep/40 font-semibold text-ink text-[0.85em] bg-paper-warm/50">
+  th: ({ children, style }) => (
+    <th
+      style={style}
+      className="px-3 py-1.5 border border-paper-deep/40 font-semibold text-ink text-[0.85em] bg-paper-warm/50"
+    >
       {children}
     </th>
   ),
-  td: ({ children }) => (
-    <td className="px-3 py-1.5 border border-paper-deep/35 text-ink-soft">{children}</td>
+  td: ({ children, style }) => (
+    <td style={style} className="px-3 py-1.5 border border-paper-deep/35 text-ink-soft">
+      {children}
+    </td>
   ),
 };
 
@@ -408,7 +423,21 @@ export const MarkdownPreview = memo(function MarkdownPreview({
           imageRootDir,
           allowRemoteImages,
         );
-        if (!resolvedSrc) return null;
+        if (!resolvedSrc)
+          return (
+            <span
+              className="inline-flex max-w-full flex-col rounded border border-paper-deep px-3 py-2 text-ink-soft"
+              role="img"
+              aria-label={alt || "图片不可用"}
+            >
+              <span>🖼 {alt || "图片"}</span>
+              <small className="text-ink-faint">
+                {/^https?:\/\//i.test(src ?? "") && !allowRemoteImages
+                  ? "远程图片加载已关闭"
+                  : "图片路径不可用"}
+              </small>
+            </span>
+          );
         return (
           <img
             src={resolvedSrc}

@@ -17,6 +17,8 @@ pub struct GroupSurface {
     pub viewport_css: f64,
     pub content_css: f64,
     #[serde(skip)]
+    axis_start_css: f64,
+    #[serde(skip)]
     monitor: usize,
     #[serde(skip)]
     label: String,
@@ -110,9 +112,18 @@ pub(super) fn surface_bounds(
     side: CapsuleSide,
     group: &VisualGroup,
 ) -> WindowBounds {
-    let cross = (18.0 * scale).round() as u32;
-    let axis = group.axis_start as i32;
-    let length = group.axis_length as u32;
+    let cross = (capsule_layout::CROSS * scale).round() as u32;
+    let (axis, length) =
+        capsule_layout::physical_interval(group.axis_start, group.axis_length, scale);
+    // 满屏末端的向外补偿可能多出 1px，此时只移动窗口起点，不缩小内容 viewport。
+    let physical_extent = if side == CapsuleSide::Top {
+        work.width
+    } else {
+        work.height
+    };
+    let axis = axis
+        .min(physical_extent.saturating_sub(length) as i32)
+        .max(0);
     match side {
         CapsuleSide::Top => WindowBounds {
             x: work.x + axis,
@@ -192,21 +203,17 @@ fn create_window(app: &AppHandle, label: &str) -> Result<tauri::WebviewWindow, A
     Ok(window)
 }
 
-fn edge_plan(
-    sessions: &[SurfaceSession],
-    extent: f64,
-    scale: f64,
-) -> capsule_layout::CapsuleLayoutPlan {
+fn edge_plan(sessions: &[SurfaceSession], extent: f64) -> capsule_layout::CapsuleLayoutPlan {
     capsule_layout::solve(
         sessions
             .iter()
             .map(|s| (s.key.clone(), s.capsule_offset.unwrap_or(0.5)))
             .collect(),
         extent,
-        (44.0 * scale).round(),
-        (14.0 * scale).round(),
-        52.0 * scale,
-        (4.0 * scale).round(),
+        capsule_layout::SLOT,
+        capsule_layout::GRIP,
+        capsule_layout::MERGE,
+        capsule_layout::GAP,
     )
 }
 
@@ -262,15 +269,15 @@ pub fn sync(app: &AppHandle) -> Result<(), AppError> {
                 continue;
             }
             let scale = monitor.scale_factor();
-            let extent = if side == CapsuleSide::Top {
+            let physical_extent = if side == CapsuleSide::Top {
                 monitor.work_area().size.width
             } else {
                 monitor.work_area().size.height
             } as f64;
-            if extent == 0.0 {
+            if physical_extent == 0.0 {
                 continue;
             }
-            let plan = edge_plan(&sessions, extent, scale);
+            let plan = edge_plan(&sessions, physical_extent / scale);
             debug_assert!(plan
                 .groups
                 .iter()
@@ -294,8 +301,8 @@ pub fn sync(app: &AppHandle) -> Result<(), AppError> {
                     let label = existing
                         .filter(|g| {
                             g.members.len() == group.members.len()
-                                && g.slot_css == group.slot_length / scale
-                                && g.cross_css == (18.0 * scale).round() / scale
+                                && g.slot_css == group.slot_length
+                                && g.cross_css == capsule_layout::CROSS
                                 && g.bounds.width == bounds(monitor, side, group).width
                                 && g.bounds.height == bounds(monitor, side, group).height
                                 && group
@@ -322,11 +329,12 @@ pub fn sync(app: &AppHandle) -> Result<(), AppError> {
                             all_entries.iter().find(|entry| &entry.key == key).cloned()
                         })
                         .collect(),
-                    slot_css: group.slot_length / scale,
-                    grip_css: group.grip_length / scale,
-                    cross_css: (18.0 * scale).round() / scale,
-                    viewport_css: group.axis_length / scale,
-                    content_css: group.content_length / scale,
+                    slot_css: group.slot_length,
+                    grip_css: group.grip_length,
+                    cross_css: capsule_layout::CROSS,
+                    viewport_css: group.axis_length,
+                    content_css: group.content_length,
+                    axis_start_css: group.axis_start,
                 });
             }
         }
@@ -550,16 +558,22 @@ pub fn detach(app: &AppHandle, label: &str, key: &str) -> Result<tauri::WebviewW
         .get_webview_window(label)
         .ok_or_else(|| error("组窗口已关闭"))?
         .scale_factor()?;
-    let local = ((source.grip_css + member_index as f64 * source.slot_css) * scale).round() as i32;
+    let member_start =
+        source.axis_start_css + source.grip_css + member_index as f64 * source.slot_css;
+    let (source_physical, _) = capsule_layout::physical_interval(source.axis_start_css, 0.0, scale);
+    let (member_physical, member_length) =
+        capsule_layout::physical_interval(member_start, source.slot_css, scale);
+    let local = member_physical - source_physical;
+    floating.axis_start_css = member_start;
     floating.grip_css = 0.0;
     floating.viewport_css = floating.slot_css;
     floating.content_css = floating.slot_css;
     if source.side == CapsuleSide::Top {
         floating.bounds.x += local;
-        floating.bounds.width = (floating.slot_css * scale).round() as u32;
+        floating.bounds.width = member_length;
     } else {
         floating.bounds.y += local;
-        floating.bounds.height = (floating.slot_css * scale).round() as u32;
+        floating.bounds.height = member_length;
     }
     source.grip_css = if source.members.len() > 1 {
         source.grip_css
@@ -568,10 +582,12 @@ pub fn detach(app: &AppHandle, label: &str, key: &str) -> Result<tauri::WebviewW
     };
     source.content_css = source.grip_css + source.members.len() as f64 * source.slot_css;
     source.viewport_css = source.content_css.min(source.viewport_css);
+    let (_, source_length) =
+        capsule_layout::physical_interval(source.axis_start_css, source.viewport_css, scale);
     if source.side == CapsuleSide::Top {
-        source.bounds.width = (source.viewport_css * scale).round() as u32;
+        source.bounds.width = source_length;
     } else {
-        source.bounds.height = (source.viewport_css * scale).round() as u32;
+        source.bounds.height = source_length;
     }
     // 两个新成员集合先在隐藏窗口准备，原窗口在 native batch 中一次退役。
     for group in [&mut source, &mut floating] {
@@ -593,6 +609,85 @@ pub fn detach(app: &AppHandle, label: &str, key: &str) -> Result<tauri::WebviewW
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn assert_physical_projection_contains_logical_group(
+        group: &VisualGroup,
+        scale: f64,
+        side: CapsuleSide,
+    ) {
+        let screen = WindowBounds {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
+        let work = WindowBounds {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1040,
+        };
+        let bounds = surface_bounds(screen, work, scale, side, group);
+        let physical_axis = if side == CapsuleSide::Top {
+            bounds.width
+        } else {
+            bounds.height
+        };
+        let physical_cross = if side == CapsuleSide::Top {
+            bounds.height
+        } else {
+            bounds.width
+        };
+        assert!(physical_axis as f64 >= (group.axis_length * scale).ceil());
+        assert_eq!(
+            physical_cross,
+            (capsule_layout::CROSS * scale).round() as u32
+        );
+        assert!(
+            group.content_length > group.axis_length
+                || physical_axis as f64 >= (group.content_length * scale).ceil()
+        );
+        if side == CapsuleSide::Top {
+            assert!(
+                bounds.x >= work.x && bounds.x + bounds.width as i32 <= work.x + work.width as i32
+            );
+        } else {
+            assert!(
+                bounds.y >= work.y
+                    && bounds.y + bounds.height as i32 <= work.y + work.height as i32
+            );
+        }
+    }
+
+    #[test]
+    fn capsule_fractional_dpi_viewports_contain_every_member() {
+        for scale in [1.0, 1.25, 1.5, 1.75, 2.0] {
+            for side in [CapsuleSide::Left, CapsuleSide::Right, CapsuleSide::Top] {
+                let extent = if side == CapsuleSide::Top {
+                    1920.0
+                } else {
+                    1040.0
+                } / scale;
+                for count in [1, 2, 3, 4, 8] {
+                    let offset = 100.0 / (extent - capsule_layout::SLOT);
+                    let group = capsule_layout::solve(
+                        (0..count).map(|i| (i.to_string(), offset)).collect(),
+                        extent,
+                        capsule_layout::SLOT,
+                        capsule_layout::GRIP,
+                        capsule_layout::MERGE,
+                        capsule_layout::GAP,
+                    )
+                    .groups
+                    .remove(0);
+                    assert_eq!(
+                        group.content_length,
+                        group.grip_length + count as f64 * capsule_layout::SLOT
+                    );
+                    assert_physical_projection_contains_logical_group(&group, scale, side);
+                }
+            }
+        }
+    }
     #[test]
     fn capsule_expanded_and_color_do_not_change_geometry() {
         let mut sessions: Vec<_> = (0..3)
@@ -604,11 +699,11 @@ mod tests {
                 ..Default::default()
             })
             .collect();
-        for scale in [1.0, 1.25, 1.5, 2.0] {
-            let before = edge_plan(&sessions, 1000.0, scale);
+        for scale in [1.0, 1.25, 1.5, 1.75, 2.0] {
+            let before = edge_plan(&sessions, 1000.0 / scale);
             sessions[1].presentation = crate::surface_sessions::Presentation::Expanded;
             sessions[1].capsule_color_key = Some(11);
-            assert_eq!(before.groups, edge_plan(&sessions, 1000.0, scale).groups);
+            assert_eq!(before.groups, edge_plan(&sessions, 1000.0 / scale).groups);
             sessions[1].presentation = crate::surface_sessions::Presentation::Stored;
             sessions[1].capsule_color_key = Some(1);
         }
