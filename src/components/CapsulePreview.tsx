@@ -23,16 +23,18 @@ export function CapsulePreview() {
   const taskEpoch = useRef(0);
   const reconcile = useRef<() => void>(() => {});
   const current = useRef<Preview | null>(null);
+  const dismissedGeneration = useRef(-1);
   current.current = preview;
   useEffect(() => {
     let active = true;
     let refreshQueued = false;
     let refreshRunning = false;
     const accept = (value: Preview | null) => {
-      if (active && value)
+      if (active && value && value.generation > dismissedGeneration.current)
         setPreview((old) => (!old || value.generation >= old.generation ? value : old));
     };
     const refreshEntry = () => {
+      if (!active) return;
       if (savingTask.current || refreshRunning) {
         refreshQueued = true;
         return;
@@ -68,6 +70,16 @@ export function CapsulePreview() {
       if (refreshQueued) refreshEntry();
     };
     const listeners = [
+      listen<number>("capsule-preview-hidden", ({ payload: generation }) => {
+        if (!active) return;
+        dismissedGeneration.current = Math.max(dismissedGeneration.current, generation);
+        if (current.current && current.current.generation > generation) return;
+        // 隐藏后卸载 Markdown，停止响应正文更新；迟到的旧 state 不能重新呈现。
+        current.current = null;
+        refreshQueued = false;
+        selecting.current = false;
+        setPreview((old) => (old && old.generation > generation ? old : null));
+      }),
       listen<Preview>("capsule-preview-changed", (event) => {
         setError("");
         accept(event.payload);
@@ -127,9 +139,10 @@ export function CapsulePreview() {
   const dismiss = async () => {
     if (closing.current) return;
     closing.current = true;
+    const generation = preview?.generation ?? -1;
     try {
       await invoke("surface_capsule_dismiss");
-      setPreview(null);
+      setPreview((old) => (old && old.generation > generation ? old : null));
     } catch (cause) {
       setError(String(cause));
     } finally {
@@ -151,12 +164,18 @@ export function CapsulePreview() {
       selecting.current = false;
       markInteraction(false);
     };
+    const releaseIfUp = (event: PointerEvent) => {
+      // 在窗口外松开鼠标时可能收不到 pointerup，返回后也要释放交互占用。
+      if ((event.buttons & 1) === 0) release();
+    };
     window.addEventListener("pointerup", release);
+    window.addEventListener("pointermove", releaseIfUp);
     window.addEventListener("pointercancel", release);
     window.addEventListener("blur", release);
     return () => {
       release();
       window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointermove", releaseIfUp);
       window.removeEventListener("pointercancel", release);
       window.removeEventListener("blur", release);
     };

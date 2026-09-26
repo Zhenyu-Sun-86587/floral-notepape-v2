@@ -1,6 +1,13 @@
 # Hermes Surface Dev：Windows 阶段状态
 
-当前 Windows 源码版本为 **1.7.6**；历史 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
+当前 Windows 源码版本为 **1.7.7**；历史 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
+
+## 1.7.7 悬停预览生命周期
+
+- 原生鼠标位置兜底关闭；Windows 同时核对左键释放，避免漏掉 WebView leave/up 后预览常驻。
+- 显示、悬停与关闭串行处理；关闭使旧会话失效，切换会话重置选择状态。
+- 隐藏时卸载预览内容、停止正文刷新；hover 不再复制全文，窗口高度最多统计十行。
+- 代码审查、验证与人工验收范围见 [RELEASE_1.7.7](RELEASE_1.7.7.md)。
 
 ## 1.7.6 完整预览与胶囊末端空间
 

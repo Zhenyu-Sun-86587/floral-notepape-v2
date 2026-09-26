@@ -2585,12 +2585,13 @@ pub fn popup_capsule_menu(window: &tauri::WebviewWindow, key: &str) -> Result<()
 const CAPSULE_PREVIEW_LABEL: &str = "capsule-preview";
 static PREVIEW_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static PREVIEW_CONTENT: Mutex<Option<CapsulePreview>> = Mutex::new(None);
+static PREVIEW_MONITOR_RUNNING: AtomicBool = AtomicBool::new(false);
 static PREVIEW_OCCUPANCY: Mutex<PreviewOccupancy> = Mutex::new(PreviewOccupancy {
     rail_key: None,
     preview_inside: false,
     interacting: false,
     menu_open: false,
-    revision: 0,
+    outside_since: None,
 });
 
 struct PreviewOccupancy {
@@ -2598,7 +2599,109 @@ struct PreviewOccupancy {
     preview_inside: bool,
     interacting: bool,
     menu_open: bool,
-    revision: u64,
+    outside_since: Option<std::time::Instant>,
+}
+
+impl PreviewOccupancy {
+    fn should_close(&mut self, now: std::time::Instant) -> bool {
+        if self.rail_key.is_some() || self.preview_inside || self.interacting || self.menu_open {
+            self.outside_since = None;
+            return false;
+        }
+        now.duration_since(*self.outside_since.get_or_insert(now))
+            >= std::time::Duration::from_millis(550)
+    }
+}
+
+fn cursor_in_window(window: &tauri::WebviewWindow, point: PhysicalPosition<f64>) -> bool {
+    if !window.is_visible().unwrap_or(false) {
+        return false;
+    }
+    let (Ok(origin), Ok(size)) = (window.outer_position(), window.outer_size()) else {
+        return false;
+    };
+    point.x >= origin.x as f64
+        && point.y >= origin.y as f64
+        && point.x < origin.x as f64 + size.width as f64
+        && point.y < origin.y as f64 + size.height as f64
+}
+
+fn monitor_capsule_preview(app: &AppHandle) {
+    if PREVIEW_MONITOR_RUNNING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            let app = app.clone();
+            let keep_running = run_capsule_task(move || {
+                // 与显示/关闭共用操作锁；退出标记也在锁内更新，避免新会话漏启动检查。
+                let result = check_capsule_preview(&app);
+                if !matches!(result, Ok(true)) {
+                    PREVIEW_MONITOR_RUNNING.store(false, Ordering::SeqCst);
+                }
+                result
+            })
+            .await;
+            match keep_running {
+                Ok(true) => {}
+                Ok(false) => break,
+                Err(error) => {
+                    eprintln!("capsule preview monitor failed: {error}");
+                    break;
+                }
+            }
+        }
+    });
+}
+
+fn check_capsule_preview(app: &AppHandle) -> Result<bool, AppError> {
+    if PREVIEW_CONTENT
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .is_none()
+    {
+        return Ok(false);
+    }
+    let Some(window) = app.get_webview_window(CAPSULE_PREVIEW_LABEL) else {
+        return Ok(false);
+    };
+    // 原生坐标不依赖 WebView 的 pointerleave；跨窗、失焦或隐藏时漏事件也能收尾。
+    let Ok(point) = window.cursor_position() else {
+        return Ok(true);
+    };
+    let rail_key = PREVIEW_OCCUPANCY
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .rail_key
+        .clone();
+    let over_rail = rail_key
+        .as_deref()
+        .and_then(capsule_groups::owner_label)
+        .and_then(|label| app.get_webview_window(&label))
+        .is_some_and(|rail| cursor_in_window(&rail, point));
+    let over_preview = cursor_in_window(&window, point);
+    let mut state = PREVIEW_OCCUPANCY.lock().unwrap_or_else(|e| e.into_inner());
+    // 位置查询期间可能收到新 rail enter，不能用旧坐标结果清掉新 owner。
+    if !over_rail && state.rail_key == rail_key {
+        state.rail_key = None;
+    }
+    state.preview_inside = over_preview;
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
+        if unsafe { GetAsyncKeyState(VK_LBUTTON as i32) } >= 0 {
+            state.interacting = false;
+        }
+    }
+    let close = state.should_close(std::time::Instant::now());
+    drop(state);
+    if close {
+        dismiss_capsule_preview(app)?;
+        return Ok(false);
+    }
+    Ok(true)
 }
 
 #[derive(Clone, Serialize)]
@@ -2633,14 +2736,16 @@ pub fn present_capsule_preview(
 }
 
 pub fn capsule_hover(
-    app: &AppHandle,
+    _app: &AppHandle,
     inside: bool,
     source: &str,
     key: Option<&str>,
     session: Option<u64>,
 ) -> u64 {
     let mut occupancy = PREVIEW_OCCUPANCY.lock().unwrap_or_else(|e| e.into_inner());
-    let current = capsule_preview_state();
+    // hover 热路径只比对身份，不克隆完整 Markdown 正文。
+    let current = PREVIEW_CONTENT.lock().unwrap_or_else(|e| e.into_inner());
+    let previous_rail = occupancy.rail_key.clone();
     match source {
         "rail" if inside => occupancy.rail_key = key.map(str::to_owned),
         "rail" if occupancy.rail_key.as_deref() == key => occupancy.rail_key = None,
@@ -2661,42 +2766,20 @@ pub fn capsule_hover(
         "menu" => occupancy.menu_open = inside,
         _ => return PREVIEW_GENERATION.load(Ordering::SeqCst),
     }
-    occupancy.revision += 1;
-    let revision = occupancy.revision;
+    drop(current);
     let occupied = occupancy.rail_key.is_some()
         || occupancy.preview_inside
         || occupancy.interacting
         || occupancy.menu_open;
-    drop(occupancy);
-    let generation = if source == "rail" && inside {
+    if occupied {
+        occupancy.outside_since = None;
+    }
+    let generation = if source == "rail" && inside && previous_rail.as_deref() != key {
         advance_capsule_preview()
     } else {
         PREVIEW_GENERATION.load(Ordering::SeqCst)
     };
-    if occupied {
-        return generation;
-    }
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        // 容错时间只覆盖小窗口间隙；旧来源的 leave 不能关闭新 owner。
-        tokio::time::sleep(std::time::Duration::from_millis(550)).await;
-        let _ = run_capsule_task(move || {
-            let state = PREVIEW_OCCUPANCY.lock().unwrap_or_else(|e| e.into_inner());
-            let should_close = state.revision == revision
-                && state.rail_key.is_none()
-                && !state.preview_inside
-                && !state.interacting
-                && !state.menu_open;
-            drop(state);
-            if should_close {
-                if let Some(window) = app.get_webview_window(CAPSULE_PREVIEW_LABEL) {
-                    hide_capsule_preview_window(&window)?;
-                }
-            }
-            Ok(())
-        })
-        .await;
-    });
+    drop(occupancy);
     generation
 }
 
@@ -2750,7 +2833,7 @@ pub fn show_capsule_preview(
     let scale = monitor.scale_factor();
     let work = monitor.work_area();
     let width = (300.0 * scale).round().min(work.size.width as f64) as u32;
-    let lines = entry.preview.lines().count().clamp(2, 10) as f64;
+    let lines = entry.preview.lines().take(10).count().clamp(2, 10) as f64;
     let height = ((86.0 + lines * 25.0).clamp(146.0, 336.0) * scale)
         .round()
         .min(work.size.height as f64) as u32;
@@ -2808,19 +2891,17 @@ pub fn show_capsule_preview(
         side,
         generation,
     };
-    let previous_key = {
+    {
         let mut content = PREVIEW_CONTENT.lock().unwrap_or_else(|e| e.into_inner());
-        let previous_key = content.as_ref().map(|value| value.entry.key.clone());
         *content = Some(preview.clone());
-        previous_key
-    };
-    if previous_key.as_deref() != Some(key) {
-        PREVIEW_OCCUPANCY
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .preview_inside = false;
     }
+    let mut occupancy = PREVIEW_OCCUPANCY.lock().unwrap_or_else(|e| e.into_inner());
+    occupancy.preview_inside = false;
+    occupancy.interacting = false;
+    occupancy.outside_since = None;
+    drop(occupancy);
     app.emit_to(CAPSULE_PREVIEW_LABEL, "capsule-preview-changed", preview)?;
+    monitor_capsule_preview(app);
     // 首次加载通过 state 命令读取同一份数据；渲染完成后再 present，避免空白闪烁。
     Ok(())
 }
@@ -2846,16 +2927,18 @@ fn hide_capsule_preview_window(window: &tauri::WebviewWindow) -> Result<(), AppE
 }
 
 pub fn dismiss_capsule_preview(app: &AppHandle) -> Result<(), AppError> {
-    advance_capsule_preview();
+    let generation = advance_capsule_preview();
     *PREVIEW_CONTENT.lock().unwrap_or_else(|e| e.into_inner()) = None;
     let mut occupancy = PREVIEW_OCCUPANCY.lock().unwrap_or_else(|e| e.into_inner());
     occupancy.preview_inside = false;
     occupancy.interacting = false;
-    occupancy.revision += 1;
+    occupancy.rail_key = None;
+    occupancy.outside_since = None;
     drop(occupancy);
     if let Some(window) = app.get_webview_window(CAPSULE_PREVIEW_LABEL) {
         hide_capsule_preview_window(&window)?;
     }
+    app.emit_to(CAPSULE_PREVIEW_LABEL, "capsule-preview-hidden", generation)?;
     Ok(())
 }
 
@@ -4254,6 +4337,48 @@ mod tests {
             "正文\n".repeat(100)
         );
         assert_eq!(super::capsule_preview(&long), long);
+    }
+
+    #[test]
+    fn capsule_preview_closes_only_after_continuous_absence() {
+        let mut state = super::PreviewOccupancy {
+            rail_key: None,
+            preview_inside: false,
+            interacting: false,
+            menu_open: false,
+            outside_since: None,
+        };
+        let start = std::time::Instant::now();
+        let at = |ms| start + std::time::Duration::from_millis(ms);
+        assert!(!state.should_close(at(0)));
+        assert!(!state.should_close(at(549)));
+        // 穿过胶囊到预览的间隙后重新进入，应重新计算离开时间。
+        state.preview_inside = true;
+        assert!(!state.should_close(at(550)));
+        state.preview_inside = false;
+        assert!(!state.should_close(at(700)));
+        assert!(!state.should_close(at(1249)));
+        assert!(state.should_close(at(1250)));
+    }
+
+    #[test]
+    fn capsule_preview_preserves_selection_and_menu_until_released() {
+        let mut state = super::PreviewOccupancy {
+            rail_key: None,
+            preview_inside: false,
+            interacting: true,
+            menu_open: false,
+            outside_since: None,
+        };
+        let start = std::time::Instant::now();
+        assert!(!state.should_close(start));
+        assert!(!state.should_close(start + std::time::Duration::from_secs(2)));
+        state.interacting = false;
+        state.menu_open = true;
+        assert!(!state.should_close(start + std::time::Duration::from_secs(3)));
+        state.menu_open = false;
+        assert!(!state.should_close(start + std::time::Duration::from_secs(4)));
+        assert!(state.should_close(start + std::time::Duration::from_secs(5)));
     }
 
     #[test]

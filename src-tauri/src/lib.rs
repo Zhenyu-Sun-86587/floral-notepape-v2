@@ -137,14 +137,23 @@ fn surface_take_edit_request(window: tauri::WebviewWindow) -> bool {
 }
 
 #[tauri::command]
-fn surface_capsule_hover(
+async fn surface_capsule_hover(
     app: AppHandle,
     inside: bool,
     source: String,
     key: Option<String>,
     session: Option<u64>,
-) -> u64 {
-    desktop::capsule_hover(&app, inside, &source, key.as_deref(), session)
+) -> Result<u64, AppError> {
+    desktop::run_capsule_task(move || {
+        Ok(desktop::capsule_hover(
+            &app,
+            inside,
+            &source,
+            key.as_deref(),
+            session,
+        ))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -165,8 +174,12 @@ fn surface_capsule_preview_state() -> Option<desktop::CapsulePreview> {
 }
 
 #[tauri::command]
-fn surface_capsule_present(window: tauri::WebviewWindow, generation: u64) -> Result<(), AppError> {
-    desktop::present_capsule_preview(&window, generation)
+async fn surface_capsule_present(
+    window: tauri::WebviewWindow,
+    generation: u64,
+) -> Result<(), AppError> {
+    // 显示与自动关闭串行执行，避免校验后被关闭的旧会话重新弹出。
+    desktop::run_capsule_task(move || desktop::present_capsule_preview(&window, generation)).await
 }
 
 #[tauri::command]

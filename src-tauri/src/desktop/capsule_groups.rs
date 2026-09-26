@@ -65,6 +65,18 @@ pub fn owner(label: &str, key: &str) -> Option<GroupSurface> {
         .find(|g| g.label == label && g.members.iter().any(|m| m.key == key))
         .cloned()
 }
+
+pub fn owner_label(key: &str) -> Option<String> {
+    // 鼠标位置检查只需要窗口标识，避免每次复制组内所有便签正文。
+    REGISTRY
+        .0
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .active
+        .iter()
+        .find(|group| group.members.iter().any(|entry| entry.key == key))
+        .map(|group| group.label.clone())
+}
 pub fn ready(label: &str, revision: u64) {
     let mut registry = REGISTRY.0.lock().unwrap_or_else(|e| e.into_inner());
     if registry
