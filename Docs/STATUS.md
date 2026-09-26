@@ -1,6 +1,13 @@
 # Hermes Surface Dev：Windows 阶段状态
 
-当前 Windows 源码版本为 **1.7.2**；历史 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
+当前 Windows 源码版本为 **1.7.3**；历史 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
+
+## 1.7.3 组布局与容器前缀重构
+
+- Rust `capsule_layout` 对整条 monitor/side 求解；冲突组全局合并，固定成员槽位，超容量使用一个可滚动 viewport。颜色、expanded 状态不参与几何。
+- `desktop/capsule_groups` 是运行时 snapshot/window registry；每个视觉组一个 WebView，复用 identity 和窗口池。Windows 在 DOM-ready 后使用一个 DeferWindowPos batch 交接；组拖动只移动一个 HWND，单成员拆出使用隐藏 surface 交接，drop 一次保存。
+- Markdown 容器前缀消费 Lezer 节点，以 source-preserving mark + 绝对定位图形呈现；有序编号原样保留，实际字体测量决定软换行正文缩进。单文档、常驻 EditorView、IME 保护及外部 ChangeSet 保留。
+- 构建与测试结果见 [RELEASE_1.7.3](RELEASE_1.7.3.md)。全部 GUI、混合 DPI 和 macOS 实测均为 **manual verification required**；编译结果不等于体验已验收。
 
 ## 1.7.2 常驻编辑与胶囊修复
 

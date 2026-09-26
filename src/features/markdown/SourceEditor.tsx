@@ -16,6 +16,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { MarkdownPreviewLazy } from "./MarkdownPreviewLazy";
 import { mathSyntax, sourceChange } from "./sourceDocument";
 import { hideLeadingFrontmatter } from "./frontmatter";
+import { prefixDecorations, containerWrapping } from "./containerPrefix";
 import "./sourceEditor.css";
 
 export interface SourceEditorHandle {
@@ -47,27 +48,16 @@ interface Props {
 const presentation = StateEffect.define<boolean>();
 
 class Marker extends WidgetType {
-  constructor(
-    readonly text: string,
-    readonly checked?: boolean,
-    readonly offset = 0,
-  ) {
+  constructor(readonly text: string) {
     super();
   }
   eq(other: Marker) {
-    return (
-      this.text === other.text && this.checked === other.checked && this.offset === other.offset
-    );
+    return this.text === other.text;
   }
   toDOM() {
-    const element = document.createElement(this.checked == null ? "span" : "input");
+    const element = document.createElement("span");
     element.className = "source-marker";
-    if (element instanceof HTMLInputElement) {
-      element.type = "checkbox";
-      element.checked = this.checked!;
-      element.dataset.taskOffset = String(this.offset);
-      element.setAttribute("aria-label", "切换任务状态");
-    } else element.textContent = this.text;
+    element.textContent = this.text;
     return element;
   }
   ignoreEvent() {
@@ -199,13 +189,6 @@ export function decorate(
         ranges.push(Decoration.replace({ widget: new Marker("―") }).range(a, b));
         return false;
       }
-      if (name === "TaskMarker") {
-        // 任务槽位始终可点；列表符号和任务框不能重复显示。
-        ranges.push(
-          Decoration.replace({ widget: new Marker("", /x/i.test(source()), a) }).range(a, b),
-        );
-        return false;
-      }
       if (!reveal(a, b)) {
         if (
           ["HeaderMark", "EmphasisMark", "StrikethroughMark", "CodeMark", "LinkMark"].includes(name)
@@ -213,17 +196,16 @@ export function decorate(
           hide(a, b);
         if ((name === "URL" || name === "LinkTitle") && node.node.parent?.name === "Link")
           hide(a, b);
-        if (name === "QuoteMark")
-          ranges.push(Decoration.replace({ widget: new Marker("│") }).range(a, b));
-        if (name === "ListMark") {
-          const tail = state.sliceDoc(b, Math.min(line.to, b + 5));
-          const text = /^\s*\[[ xX]\]/.test(tail) ? "" : /^\d/.test(source()) ? source() : "•";
-          ranges.push(Decoration.replace({ widget: new Marker(text) }).range(a, b));
-        }
         if (name === "CodeInfo") hide(a, b);
       }
     },
   });
+  ranges.push(
+    ...prefixDecorations(state, active, revealHead).filter(
+      (range) =>
+        frontmatterEnd === 0 || reveal(0, frontmatterEnd - 1) || range.from >= frontmatterEnd,
+    ),
+  );
   return Decoration.set(ranges, true);
 }
 
@@ -333,6 +315,7 @@ export function SourceEditor(props: Props) {
           markdown({ base: markdownLanguage, extensions: mathSyntax }),
           history(),
           EditorView.lineWrapping,
+          containerWrapping,
           access.current.of(EditorState.readOnly.of(!latest.current.editing)),
           decorations,
           keymap.of([
@@ -361,12 +344,16 @@ export function SourceEditor(props: Props) {
             mousedown(event, editor) {
               if (event.button !== 0 || latest.current.locked) return false;
               const target = event.target as HTMLElement;
-              const task = target.closest<HTMLInputElement>("[data-task-offset]");
+              const task = target.closest<HTMLElement>("[data-task-offset]");
               if (task) {
                 event.preventDefault();
                 const offset = Number(task.dataset.taskOffset);
                 editor.dispatch({
-                  changes: { from: offset + 1, to: offset + 2, insert: task.checked ? " " : "x" },
+                  changes: {
+                    from: offset + 1,
+                    to: offset + 2,
+                    insert: task.dataset.taskChecked === "true" ? " " : "x",
+                  },
                   userEvent: "input.task",
                 });
                 return true;

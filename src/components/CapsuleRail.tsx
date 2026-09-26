@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -9,10 +16,6 @@ export interface CapsuleEntry {
   colorKey: number;
   expanded: boolean;
   truncated: boolean;
-  joinedBefore: boolean;
-  joinedAfter: boolean;
-  groupKeys: string[];
-  groupHead: boolean;
 }
 
 // 色相分散，便签持久化保存的是槽位；主题和展开状态都不覆盖独立颜色。
@@ -31,16 +34,28 @@ const CAPSULE_COLORS = [
   "#cb8056",
 ];
 
-export function CapsuleRail({
-  monitorIndex,
-  side,
-}: {
-  monitorIndex: number;
+interface CapsuleGroup {
+  runtimeId: number;
+  revision: number;
   side: "left" | "right" | "top";
-}) {
-  const [entries, setEntries] = useState<CapsuleEntry[]>([]);
+  members: CapsuleEntry[];
+  slotCss: number;
+  gripCss: number;
+  crossCss: number;
+  viewportCss: number;
+  contentCss: number;
+}
+
+export function CapsuleRail() {
+  const [group, setGroup] = useState<CapsuleGroup | null>(null);
+  const rail = useRef<HTMLElement>(null);
+  const revision = useRef(0);
+  const slots = useRef<{ id: number; positions: Map<string, { x: number; y: number }> } | null>(
+    null,
+  );
+  const entries = group?.members ?? [];
+  const side = group?.side ?? "right";
   const [failed, setFailed] = useState(false);
-  const [draggingKey, setDraggingKey] = useState<string | null>(null);
   const [pressedKey, setPressedKey] = useState<string | null>(null);
   const busy = useRef(false);
   const insideKey = useRef<string | null>(null);
@@ -49,30 +64,20 @@ export function CapsuleRail({
     if (hoverTimer.current != null) clearTimeout(hoverTimer.current);
     hoverTimer.current = null;
   };
-  const refresh = useCallback(async () => {
-    const next = await invoke<CapsuleEntry[]>("surface_capsules_list", { monitorIndex, side });
-    setEntries(next);
-  }, [monitorIndex, side]);
-
+  const receive = useCallback((next: CapsuleGroup | null) => {
+    if (!next || next.revision < revision.current) return;
+    revision.current = next.revision;
+    setGroup(next);
+  }, []);
   useEffect(() => {
     let active = true;
-    const listeners = ["capsules-changed", "notes-changed", "bindings-changed"].map((name) =>
-      listen(name, () => {
-        if (active) void refresh().catch(() => setFailed(true));
-      }),
-    );
-    listeners.push(
-      listen<string[]>("capsule-drag-state", ({ payload }) => {
-        if (!active) return;
-        clearHoverTimer();
-        // 整组拖动保留拼接轮廓，只有独立拖出的成员恢复两端圆角。
-        setDraggingKey(payload.length === 1 ? payload[0] : null);
-      }),
-    );
-    void Promise.all(listeners)
-      .then(refresh)
-      .then(() => {
-        if (active) return invoke("show_silent_surface");
+    const listener = listen<CapsuleGroup>("capsule-group-changed", ({ payload }) => {
+      if (active) receive(payload);
+    });
+    void listener
+      .then(() => invoke<CapsuleGroup | null>("surface_capsule_group"))
+      .then((next) => {
+        if (active) receive(next);
       })
       .catch(() => {
         if (active) setFailed(true);
@@ -80,10 +85,39 @@ export function CapsuleRail({
     return () => {
       active = false;
       clearHoverTimer();
-      listeners.forEach((item) => void item.then((dispose) => dispose()));
+      void listener.then((dispose) => dispose());
     };
-  }, [refresh]);
-
+  }, [receive]);
+  useLayoutEffect(() => {
+    if (!group) return;
+    const positions = new Map<string, { x: number; y: number }>();
+    for (const element of rail.current?.querySelectorAll<HTMLElement>("[data-member-key]") ?? []) {
+      const key = element.dataset.memberKey!;
+      const point = { x: element.offsetLeft, y: element.offsetTop };
+      const old =
+        slots.current?.id === group.runtimeId ? slots.current.positions.get(key) : undefined;
+      if (
+        old &&
+        (old.x !== point.x || old.y !== point.y) &&
+        !matchMedia("(prefers-reduced-motion: reduce)").matches
+      ) {
+        element.animate(
+          [
+            { transform: `translate(${old.x - point.x}px, ${old.y - point.y}px)` },
+            { transform: "none" },
+          ],
+          { duration: 160, easing: "ease-out" },
+        );
+      }
+      positions.set(key, point);
+    }
+    slots.current = { id: group.runtimeId, positions };
+    // 隐藏 WebView 的 rAF 可能被暂停；DOM commit + 上面的 layout 测量作为 ready 边界。
+    // 不把定时器/动画结束当作 native 交接的正确性条件。
+    void invoke("surface_capsule_group_ready", { revision: group.revision }).catch(() =>
+      setFailed(true),
+    );
+  }, [group]);
   const leave = (key: string) => {
     clearHoverTimer();
     if (insideKey.current === key) insideKey.current = null;
@@ -136,14 +170,42 @@ export function CapsuleRail({
 
   return (
     <nav
-      className={`edge-rail edge-${side} ${entries.some((entry) => entry.groupHead) ? "edge-has-head" : ""}`}
+      ref={rail}
+      className={`capsule-group edge-rail edge-${side}`}
+      style={
+        {
+          "--slot": `${group?.slotCss ?? 44}px`,
+          "--grip": `${group?.gripCss ?? 0}px`,
+          "--cross": `${group?.crossCss ?? 18}px`,
+          "--content": `${group?.contentCss ?? 44}px`,
+        } as CSSProperties
+      }
       aria-label="已收纳便签"
+      onWheel={(event) => {
+        if (side === "top" && group && group.contentCss > group.viewportCss)
+          event.currentTarget.scrollLeft += event.deltaY;
+      }}
       onPointerLeave={() => {
         if (insideKey.current) leave(insideKey.current);
       }}
     >
+      {!!group?.gripCss && entries[0] && (
+        <button
+          type="button"
+          className="edge-group-grip"
+          aria-label={`拖动合并的 ${entries.length} 个胶囊`}
+          title="拖动整组胶囊"
+          onPointerDown={(event) => {
+            if (event.button !== 0 || !navigator.userAgent.includes("Windows")) return;
+            event.preventDefault();
+            drag(entries[0], true);
+          }}
+        >
+          <span aria-hidden="true" />
+        </button>
+      )}
       {entries.map((entry) => (
-        <div className="edge-member" key={entry.key}>
+        <div className="edge-member" key={entry.key} data-member-key={entry.key}>
           <button
             type="button"
             style={
@@ -151,13 +213,16 @@ export function CapsuleRail({
                 "--tab-color": CAPSULE_COLORS[entry.colorKey % CAPSULE_COLORS.length],
               } as CSSProperties
             }
-            className={`edge-tab edge-tone-${entry.colorKey % 12} ${entry.joinedBefore ? "joined-before" : ""} ${entry.joinedAfter ? "joined-after" : ""} ${draggingKey === entry.key ? "is-dragging" : ""}`}
+            className="edge-tab"
             data-error={failed || undefined}
             data-pressed={pressedKey === entry.key || undefined}
             data-expanded={entry.expanded || undefined}
             aria-label={`${entry.expanded ? "聚焦" : "展开"} ${entry.title}`}
             onPointerEnter={(event) => {
-              if (entry.expanded) return;
+              if (entry.expanded) {
+                if (insideKey.current) leave(insideKey.current);
+                return;
+              }
               insideKey.current = entry.key;
               void invoke("surface_capsule_hover", {
                 inside: true,
@@ -166,7 +231,6 @@ export function CapsuleRail({
               });
               dwell(entry, event.currentTarget);
             }}
-            onPointerLeave={() => leave(entry.key)}
             onFocus={() => {
               insideKey.current = entry.key;
             }}
@@ -191,27 +255,6 @@ export function CapsuleRail({
               }
             }}
           />
-          {entry.groupHead && (
-            <button
-              type="button"
-              className="edge-group-grip"
-              aria-label={`拖动合并的 ${entry.groupKeys.length} 个胶囊`}
-              title="拖动整组胶囊"
-              onContextMenu={(event) => {
-                event.preventDefault();
-                void invoke("surface_capsule_menu", { key: entry.key }).catch(() =>
-                  setFailed(true),
-                );
-              }}
-              onPointerDown={(event) => {
-                if (event.button !== 0 || !navigator.userAgent.includes("Windows")) return;
-                event.preventDefault();
-                drag(entry, true);
-              }}
-            >
-              <span aria-hidden="true" />
-            </button>
-          )}
         </div>
       ))}
     </nav>

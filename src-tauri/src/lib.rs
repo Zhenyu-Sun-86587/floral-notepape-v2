@@ -1,3 +1,4 @@
+pub mod capsule_layout;
 pub mod desktop;
 #[cfg(target_os = "windows")]
 pub mod desktop_attachment;
@@ -90,15 +91,15 @@ async fn surface_store_current(window: tauri::WebviewWindow) -> Result<(), AppEr
 }
 
 #[tauri::command]
-async fn surface_capsules_list(
-    app: AppHandle,
+fn surface_capsule_group(
     window: tauri::WebviewWindow,
-    monitor_index: usize,
-    side: surface_sessions::CapsuleSide,
-) -> Result<Vec<desktop::CapsuleEntry>, AppError> {
-    desktop::capsule_entries(&app, monitor_index, side, window.label())
+) -> Option<desktop::capsule_groups::GroupSurface> {
+    desktop::capsule_groups::snapshot(window.label())
 }
-
+#[tauri::command]
+fn surface_capsule_group_ready(window: tauri::WebviewWindow, revision: u64) {
+    desktop::capsule_groups::ready(window.label(), revision);
+}
 #[tauri::command]
 async fn surface_capsule_entry(key: String) -> Result<Option<desktop::CapsuleEntry>, AppError> {
     desktop::capsule_entry(&key)
@@ -908,7 +909,8 @@ pub fn run() {
             surface_bounds_save,
             surface_session_close_current,
             surface_store_current,
-            surface_capsules_list,
+            surface_capsule_group,
+            surface_capsule_group_ready,
             surface_capsule_entry,
             surface_capsule_preview,
             surface_capsule_hover,

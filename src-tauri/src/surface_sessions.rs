@@ -279,7 +279,10 @@ pub fn dock_capsule_group(
 ) -> Result<(), AppError> {
     let _guard = lock().lock().map_err(|_| error("会话锁不可用"))?;
     let mut map = read_map()?;
-    let step = step.max(0.0);
+    // 超容量时 offset 仍保持严格顺序；实际固定槽宽由 layout 的滚动 viewport 承载。
+    let step = step
+        .max(0.0)
+        .min(1.0 / keys.len().saturating_sub(1).max(1) as f64);
     let first = offset.clamp(
         0.0,
         (1.0 - step * keys.len().saturating_sub(1) as f64).max(0.0),

@@ -70,13 +70,6 @@
   color: var(--color-accent, #849b7b);
   vertical-align: baseline;
 }
-input.source-marker {
-  width: 1em;
-  height: 1em;
-  margin: 0 0.25em 0 0;
-  accent-color: #849b7b;
-  cursor: default;
-}
 .source-rich-block {
   max-width: 100%;
   overflow: auto;
@@ -85,4 +78,46 @@ input.source-marker {
 .source-rich-inline .markdown-selectable,
 .source-rich-inline .markdown-selectable > p {
   display: inline;
+}
+/* 容器前缀保持原生 inline 字符和空格，覆盖图形不占用 flow width。 */
+.source-editor .cm-line.source-container-line {
+  padding-left: var(--container-indent, 0px);
+  text-indent: calc(-1 * var(--container-indent, 0px));
+}
+.source-container-prefix {
+  white-space: pre;
+}
+.source-prefix-slot {
+  position: relative;
+}
+.source-prefix-bullet,
+.source-prefix-task,
+.source-prefix-quote,
+.source-prefix-silent {
+  color: transparent;
+}
+.source-prefix-bullet::after,
+.source-prefix-quote::after,
+.source-prefix-task::after {
+  position: absolute;
+  inset: 0;
+  color: var(--color-accent, #849b7b);
+  text-indent: 0;
+  text-align: center;
+  pointer-events: none;
+}
+.source-prefix-bullet::after {
+  content: "•";
+}
+.source-prefix-quote::after {
+  content: "│";
+}
+.source-prefix-task::after {
+  content: "☐";
+}
+.source-prefix-task[data-task-checked="true"]::after {
+  content: "☑";
+}
+.source-prefix-ordered {
+  color: var(--color-accent, #849b7b);
 }

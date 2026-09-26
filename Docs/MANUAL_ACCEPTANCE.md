@@ -1,5 +1,65 @@
 # 首轮人工验收
 
+## 1.7.3 Capsule Group / Markdown Prefix
+
+状态：下列 GUI 项全部 **未测 / manual verification required**。由用户在虚构笔记/测试目录执行；build/test 不能替代 GUI 验收。
+
+| 胶囊场景                                              | 必须满足                                                                                   |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| 单成员、两成员、三成员、四到六成员分别靠近            | 每个 visual group 一个可见 native surface；轮廓连续，无重叠、明显 1px seam、错位或不同尺寸 |
+| 两组靠近，尤其 A=100/B=101/C=160 的归一化等价位置     | 全局合并/解碰撞；所有组有序且不越界                                                        |
+| 拖动 grip 整组；快速按下/松开、Esc、跨屏、切换侧边    | 只移动一个组 surface；一次 drop 保存，顺序、颜色不变；取消恢复                             |
+| 从组中分别拖出首/中/末成员；Esc 取消                  | 无 duplicate、ghost 或错误空白槽；旧 surface 与新 surface 明确交接                         |
+| left / right / top；screen beginning / end            | grip 与成员共轴，组完整位于轴向工作区                                                      |
+| 100% / 125% / 150% / 200% DPI                         | 固定等尺寸成员，组内无 seam；各档分别记录结果                                              |
+| 双屏 mixed DPI；负坐标副屏；运行时改变 DPI/拔插显示器 | 正确恢复并使用目标 monitor 尺寸；无透明残留窗口                                            |
+| expanded member、expanded → stored、重启 restore      | 成员不消失、不变槽位、不重排；颜色不变                                                     |
+| 删除/隐藏首中末成员、增加成员、清空再恢复             | 归属与窗口生命周期正确，真正删除才释放颜色槽                                               |
+| 右键 / hover preview；组内 A → B 连续悬停             | owner 平滑转移，无 dismiss/reopen 闪烁                                                     |
+| 预览任务连续勾选、滚动、链接、选区/复制               | 保留 optimistic update、滚动与无白闪行为                                                   |
+| 超过边缘容纳数量                                      | 单个有界组 viewport 可滚动，槽位不压缩；滚动后仍可展开/拖出                                |
+
+Markdown 使用下面原文，并把窗口缩窄到多次软换行：
+
+```markdown
+- A
+
+* B
+
+- C
+
+1. A
+2. B
+3. C
+
+- [ ] A
+- [x] B
+
+- parent
+  - child
+    - 孙子
+
+- [ ] parent
+  - [ ] child
+
+1. first
+   1. nested
+2. second
+
+> Quote
+>
+> - [ ] nested task
+
+- This is a very very very long list item that wraps to a second visual line and keeps wrapping at the body column.
+- 中文长列表正文：反复输入中文内容并缩窄窗口，观察续行与正文起点是否对齐。
+```
+
+- 点击每个 item 正文中间，再 focus → blur → focus，连续几十次。marker 不独占一行，正文不被挤到下一行；active line 恢复真实源码，caret 保持命中的 source offset。
+- 点击任务框优先只切换 `[ ]` / `[x]`；点击 prefix 附近不产生非法选区。有序编号 `10.` 始终保留源码。
+- 长段落与嵌套续行对齐正文列；切换时没有明显 scroll jump/caret drift。
+- Chinese IME 连续组词、撤销/重做、复制粘贴、Ctrl/Cmd+B/I/K、Tab、Enter 列表延续、图片粘贴/拖入、外部 `.md` 修改与冲突处理全部复核。
+- 复杂块 image/math/table/Mermaid 保持既有管线；不把 rich block 切换问题混同前缀测试。
+
 ## 1.7.1 胶囊最短检查
 
 使用虚构笔记测试；GUI 由用户执行，未测项保持“未测”。

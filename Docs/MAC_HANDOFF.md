@@ -1,5 +1,13 @@
 # macOS 开发交接：还原 Windows 便签体验
 
+## 1.7.3 源码增量（Mac 未编译、未实测）
+
+- 共享 `capsule_layout.rs` 以物理像素解整条 edge；`VisualGroup` 只存在于运行时，session 没有新增 group 持久字段。展开和颜色保留旧协议。
+- `desktop/capsule_groups.rs` 发布唯一布局快照；`CapsuleRail` 一次渲染整组，所有组内局部 CSS 尺寸来自 Rust 的 physical/scale 投影。IPC 改为 `surface_capsule_group` 与 revision ready；预览和菜单通过 registry 成员归属校验，不解析每 note window label。
+- Windows 使用原生 batch show/hide/position 与整组/拆出拖动；非 Windows adapter 目前依次应用窗口位置和可见性，不能声称有 Windows 同等原子交接或 native drag。既有 Mac 单击展开保留；请在 Mac adapter 实现并实测组交接和拖动。
+- `containerPrefix.ts` 基于 Lezer 保留前缀字符宽度，并测量可见行的完整 source range 设置悬挂缩进。WebKit 必须实测 nested/wrapped lists、task click、Cmd+B/I/K、IME、source offset、focus/blur、图片与外部文件映射。
+- 不迁移 PaperTodo 源码/资源；参照原则与边界见 [INTERACTION_1.7.3](INTERACTION_1.7.3.md)。所有 Mac 检查均为 **manual verification required**。
+
 ## 1.7.2 源码增量
 
 共享的 `SourceEditor` 使用 CodeMirror/Lezer 常驻文档及源码装饰，替代便签正文完整切换。Mac 无需重写编辑器；请验证 WebKit 的 IME、Cmd+B/I/K、Cmd+点击链接、source offset、失焦与 Esc 保存、图片粘贴/拖入及复杂块显示。CodeMirror 依赖通过 `npm ci` 安装。验收用例见 MANUAL_ACCEPTANCE，设计见 INTERACTION_1.7.2。

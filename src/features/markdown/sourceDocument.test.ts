@@ -20,7 +20,8 @@ describe("常驻 Markdown 源文档", () => {
     decorations.between(0, content.length, (from, to, value) => {
       if (!value.spec.widget && !value.spec.class && from < to)
         hidden.push(content.slice(from, to));
-      if (value.spec.widget?.checked != null) tasks.push(value.spec.widget.offset);
+      if (value.spec.attributes?.["data-task-offset"] != null)
+        tasks.push(Number(value.spec.attributes["data-task-offset"]));
     });
     expect(hidden).toContain("**");
     expect(tasks).toEqual([content.indexOf("[ ]")]);
