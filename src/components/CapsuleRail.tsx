@@ -165,7 +165,7 @@ export function CapsuleRail() {
     setPressedKey(entry.key);
     void invoke<boolean>("surface_capsule_drag", { key: entry.key, group })
       .then((dragged) => {
-        if (!dragged && !group) return invoke("surface_restore_stored", { key: entry.key });
+        if (!dragged && !group) return invoke("surface_toggle_capsule", { key: entry.key });
       })
       .catch(reportCapsuleError)
       .finally(() => {
@@ -221,7 +221,7 @@ export function CapsuleRail() {
               className="edge-tab"
               data-pressed={pressedKey === entry.key || undefined}
               data-expanded={entry.expanded || undefined}
-              aria-label={`${entry.expanded ? "聚焦" : "展开"} ${entry.title}`}
+              aria-label={`${entry.expanded ? "收回" : "展开"} ${entry.title}`}
               onPointerEnter={(event) => {
                 if (entry.expanded) {
                   if (insideKey.current) leave(insideKey.current);
@@ -253,7 +253,7 @@ export function CapsuleRail() {
                 // Windows 鼠标由原生拖动判定；键盘及 Mac 单击直接展开。
                 if (event.detail === 0 || !navigator.userAgent.includes("Windows")) {
                   clearHoverTimer();
-                  void invoke("surface_restore_stored", { key: entry.key }).catch(
+                  void invoke("surface_toggle_capsule", { key: entry.key }).catch(
                     reportCapsuleError,
                   );
                 }

@@ -179,7 +179,7 @@ export function Tile({
             value={title ?? ""}
             onChange={(event) => onTitleChange?.(event.target.value)}
             aria-label="便签标题"
-            className="font-display tracking-wide mb-3 leading-snug bg-transparent border-0 outline-none w-full pl-0 pr-24 py-0 select-text"
+            className="block font-display tracking-wide mb-3 leading-snug bg-transparent border-0 outline-none w-full pl-0 pr-24 py-0 select-text"
             style={{ color: titleColor, fontSize: `${fontSize + 1}px` }}
           />
         ) : title ? (

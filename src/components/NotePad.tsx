@@ -606,7 +606,9 @@ export function NotePad({
     if (storingRef.current) return;
     storingRef.current = true;
     try {
-      if (statusRef.current === "dirty") await saveNoteRef.current();
+      if (tileContentRef.current?.composing) return;
+      if (statusRef.current === "dirty" || statusRef.current === "saveFailed")
+        await saveNoteRef.current();
       // 后端先建立边缘入口，再销毁原窗口；失败时原便签保留，可直接重试。
       await invoke("surface_store_current");
     } catch (error) {

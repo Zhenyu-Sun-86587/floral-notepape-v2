@@ -1,6 +1,10 @@
 # Hermes Surface Dev：Windows 阶段状态
 
-当前 Windows 源码版本为 **1.7.7**；历史 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
+当前 Windows 源码版本为 **1.7.8**；历史 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
+
+## 1.7.8 编辑区符号与首行
+
+源码编辑区关闭符号连字，标题输入框采用块级布局；空白便签进入编辑时复位首行。构建和定向检查已通过，真实字体显示仍待用户验收，详见 [RELEASE_1.7.8](RELEASE_1.7.8.md)。
 
 ## 1.7.7 悬停预览生命周期
 

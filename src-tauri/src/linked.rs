@@ -395,6 +395,44 @@ pub fn create_in_root(root_id: &str, name: &str) -> Result<LinkedBinding, AppErr
     bind(path.to_string_lossy().as_ref())
 }
 
+fn retry_file_read<T>(
+    mut read: impl FnMut() -> std::io::Result<T>,
+    mut wait: impl FnMut(std::time::Duration),
+) -> std::io::Result<T> {
+    // 同步工具原子替换时可能短暂缺失或共享冲突；只重试读取，不重试写入。
+    for attempt in 0..=3 {
+        match read() {
+            Err(cause)
+                if attempt < 3
+                    && (cause.kind() == std::io::ErrorKind::NotFound
+                        || matches!(cause.raw_os_error(), Some(32 | 33))
+                            && cfg!(target_os = "windows")) =>
+            {
+                wait(std::time::Duration::from_millis(100 * (1 << attempt)));
+            }
+            result => return result,
+        }
+    }
+    unreachable!()
+}
+
+fn read_external_bytes(path: &Path) -> Result<Vec<u8>, AppError> {
+    retry_file_read(|| fs::read(path), std::thread::sleep).map_err(|cause| {
+        let mut result = error(
+            "externalFileUnavailable",
+            format!(
+            "无法读取外部文件 {}：{}。文件可能正在同步、已移动或已删除，请稍后重试并确认原路径。",
+            path.display(), cause
+        ),
+        );
+        result
+            .details
+            .insert("path".into(), path.display().to_string());
+        result.details.insert("cause".into(), cause.to_string());
+        result
+    })
+}
+
 pub fn read(id: &str) -> Result<LinkedContent, AppError> {
     let (binding, image_root) = {
         let _guard = operation_lock()
@@ -414,7 +452,7 @@ pub fn read(id: &str) -> Result<LinkedContent, AppError> {
         let image_root = root.to_string_lossy().into_owned();
         (binding, image_root)
     };
-    let bytes = fs::read(&binding.path)?;
+    let bytes = read_external_bytes(Path::new(&binding.path))?;
     let revision = revision(&bytes);
     let content = String::from_utf8(bytes)
         .map_err(|_| error("invalidEncoding", "外部文件必须使用 UTF-8 编码"))?;
@@ -451,7 +489,7 @@ fn save_file(
     expected_revision: &str,
     overwrite: bool,
 ) -> Result<String, AppError> {
-    let current = fs::read(path)?;
+    let current = read_external_bytes(path)?;
     if !overwrite && revision(&current) != expected_revision {
         return Err(error(
             "externalConflict",
@@ -504,6 +542,41 @@ fn save_file(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transient_read_retries_but_permanent_errors_stop() {
+        let mut calls = 0;
+        let mut delays = Vec::new();
+        let value = retry_file_read(
+            || {
+                calls += 1;
+                if calls < 3 {
+                    Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+                } else {
+                    Ok(b"latest".to_vec())
+                }
+            },
+            |delay| delays.push(delay.as_millis()),
+        )
+        .unwrap();
+        assert_eq!(value, b"latest");
+        assert_eq!(delays, [100, 200]);
+        let mut calls = 0;
+        let result = retry_file_read::<()>(
+            || {
+                calls += 1;
+                Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+            },
+            |_| {},
+        );
+        assert!(result.is_err());
+        assert_eq!(calls, 4);
+        let result = retry_file_read::<()>(
+            || Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
+            |_| panic!("权限错误不应重试"),
+        );
+        assert!(result.is_err());
+    }
 
     #[test]
     fn revisions_change_with_content() {

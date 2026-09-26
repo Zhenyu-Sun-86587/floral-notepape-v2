@@ -123,8 +123,14 @@ export function MarkdownSurface(props: SurfaceProps) {
       if (!cancelled && scroll && y != null) scroll.scrollTop += y - target.y;
     };
     if (active) {
-      const target = entering.current ?? anchor.current;
-      if (entering.current)
+      // 空白便签没有可恢复的正文锚点，应从首行开始；已有正文仍保留点击位置。
+      const empty = view.state.doc.length === 0;
+      const target = empty ? null : (entering.current ?? anchor.current);
+      if (empty) {
+        handle.setSelectionRange(0, 0);
+        anchor.current = null;
+        if (scroll) scroll.scrollTop = 0;
+      } else if (entering.current)
         handle.setSelectionRange(entering.current.offset, entering.current.offset);
       entering.current = null;
       view.focus();

@@ -64,6 +64,25 @@ afterEach(async () => {
 });
 
 describe("常驻 MarkdownSurface", () => {
+  it("空白便签进入编辑从正文首行开始，组合输入不经过普通键入通道", async () => {
+    source = "";
+    await act(async () => render(false));
+    host.scrollTop = 120;
+    await act(async () => render(true));
+    expect(host.scrollTop).toBe(0);
+    expect(ref.current!.selectionStart).toBe(0);
+    const event = new InputEvent("beforeinput", {
+      bubbles: true,
+      cancelable: true,
+      inputType: "insertText",
+      data: "中文",
+      isComposing: true,
+    });
+    await act(async () => ref.current!.view!.contentDOM.dispatchEvent(event));
+    expect(event.defaultPrevented).toBe(false);
+    expect(source).toBe("");
+  });
+
   it("跨读写切换保留 EditorView、选区、撤销历史；阅读缓存来自 doc", async () => {
     await act(async () => render(true));
     const view = ref.current!.view!;

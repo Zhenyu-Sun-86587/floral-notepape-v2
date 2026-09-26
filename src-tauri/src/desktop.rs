@@ -2138,7 +2138,7 @@ pub fn surface_key_for_window(window: &tauri::WebviewWindow) -> Result<String, A
     })
 }
 
-fn surface_label(key: &str) -> String {
+pub(crate) fn surface_label(key: &str) -> String {
     if let Some(id) = key.strip_prefix("linked:") {
         format!("tile-linked-{}", sanitize_label_part(id))
     } else {
@@ -3076,7 +3076,6 @@ pub fn restore_stored_surface(app: &AppHandle, key: &str) -> Result<(), AppError
         return Ok(());
     };
     if kind == "linked" {
-        crate::linked::read(id)?;
         open_linked_tile_window_now(app, id, None)?;
     } else {
         default_store()?.read_note(id)?;

@@ -19,6 +19,13 @@
   padding: 0 0 2rem;
   min-height: 8rem;
   caret-color: currentColor;
+  /* 源码必须逐字符可见；编程字体的上下文连字会合并连续标点。 */
+  font-variant-ligatures: none;
+  font-feature-settings:
+    "liga" 0,
+    "clig" 0,
+    "dlig" 0,
+    "calt" 0;
 }
 .source-editor .cm-line {
   padding: 0;

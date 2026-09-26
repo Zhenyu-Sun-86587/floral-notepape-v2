@@ -120,6 +120,20 @@ async fn surface_capsule_preview(
 }
 
 #[tauri::command]
+async fn surface_toggle_capsule(app: AppHandle, key: String) -> Result<(), AppError> {
+    desktop::run_capsule_task(move || {
+        if surface_sessions::get(&key)?.presentation == surface_sessions::Presentation::Expanded {
+            // 交给便签保存流程收回，不能直接销毁可能含未保存内容的窗口。
+            app.emit_to(desktop::surface_label(&key), "surface-store-request", ())?;
+            Ok(())
+        } else {
+            desktop::restore_stored_surface(&app, &key)
+        }
+    })
+    .await
+}
+
+#[tauri::command]
 async fn surface_restore_stored(app: AppHandle, key: String) -> Result<(), AppError> {
     desktop::advance_capsule_preview();
     desktop::run_capsule_task(move || desktop::restore_stored_surface(&app, &key)).await
@@ -934,6 +948,7 @@ pub fn run() {
             surface_capsule_hide,
             surface_capsule_drag,
             surface_restore_stored,
+            surface_toggle_capsule,
             surface_restore_edit,
             surface_take_edit_request,
             show_silent_surface,

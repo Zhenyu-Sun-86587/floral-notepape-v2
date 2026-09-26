@@ -2,7 +2,7 @@
 
 **简体中文** · [繁體中文](README_zh-HK.md) · [English](README_en-US.md)
 
-把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.7**。
+把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.8**。
 
 [下载 Windows 1.7.2](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.2) · [反馈问题](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [Mac 开发交接](Docs/MAC_HANDOFF.md)
 
@@ -21,7 +21,7 @@
 
 ## 下载安装
 
-1.7.7 本地构建安装包位于 `src-tauri/target/release/bundle/nsis/`。下方保留上一版已发布下载。
+1.7.8 本地构建安装包位于 `src-tauri/target/release/bundle/nsis/`。编辑区符号显示与首行修复见 [1.7.8 发布说明](Docs/RELEASE_1.7.8.md)。下方保留上一版已发布下载。
 
 下载 [v1.7.2 Windows x64 安装包](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/download/v1.7.2/Hermes.Surface.Dev_1.7.2_x64-setup.exe)。同一 [Release 页面](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.2) 提供 `SHA256SUMS.txt`；安装包 SHA-256 为：
 
