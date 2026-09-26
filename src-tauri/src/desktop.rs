@@ -2199,7 +2199,6 @@ pub struct CapsuleEntry {
     preview: String,
     color_key: u8,
     expanded: bool,
-    truncated: bool,
 }
 
 // WebView2 建窗不能运行在同步 IPC / UI 事件回调中。所有收纳变更串行排到工作线程，
@@ -2466,14 +2465,8 @@ fn capsule_monitor_index(monitors: &[tauri::Monitor], name: Option<&str>) -> usi
 }
 
 fn capsule_preview(content: &str) -> String {
-    // 保留原文前缀和源位置；Markdown 管线负责隐藏 frontmatter 与安全渲染。
-    content
-        .split_inclusive('\n')
-        .take(60)
-        .collect::<String>()
-        .chars()
-        .take(2400)
-        .collect()
+    // 预览保留完整原文与源位置，长文由前端滚动容器承载，不能截断公式或代码围栏。
+    content.to_owned()
 }
 
 fn capsule_entry_from_session(
@@ -2519,7 +2512,6 @@ fn capsule_entry_from_session(
         preview: capsule_preview(&content),
         color_key: session.capsule_color_key.unwrap_or(0),
         expanded: session.presentation == crate::surface_sessions::Presentation::Expanded,
-        truncated: content.lines().count() > 60 || content.chars().count() > 2400,
     }))
 }
 
@@ -4255,8 +4247,13 @@ mod tests {
         assert_eq!(super::capsule_preview(source), source);
         assert_eq!(
             super::capsule_preview(&"字".repeat(5000)).chars().count(),
-            2400
+            5000
         );
+        let long = format!(
+            "{}\n```text\n完整末尾\n```\n- [ ] 最后任务\n",
+            "正文\n".repeat(100)
+        );
+        assert_eq!(super::capsule_preview(&long), long);
     }
 
     #[test]

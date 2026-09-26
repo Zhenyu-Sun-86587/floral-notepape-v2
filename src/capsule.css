@@ -47,7 +47,7 @@ button:disabled {
   cursor: wait;
   opacity: 0.6;
 }
-/* 一个组只有一个轮廓；DOM 使用原始逻辑尺寸，物理取整仅属于窗口边界。 */
+/* 一个组只有一个轮廓；槽位按原生计划占 viewport 的比例分配，包含拖动头。 */
 .capsule-group {
   width: 100%;
   height: 100%;
@@ -72,6 +72,8 @@ button:disabled {
 .edge-member {
   position: relative;
   flex: 0 0 var(--slot);
+  min-width: 0;
+  min-height: 0;
   width: 100%;
   height: var(--slot);
 }
@@ -114,6 +116,8 @@ button:disabled {
 }
 .edge-group-grip {
   flex: 0 0 var(--grip);
+  min-width: 0;
+  min-height: 0;
   width: 100%;
   height: var(--grip);
   display: grid;
@@ -300,11 +304,6 @@ button:disabled {
 .preview-body td {
   border: 1px solid var(--edge-border);
   padding: 4px;
-}
-.preview-truncated {
-  color: var(--edge-muted);
-  border-top: 1px solid var(--edge-border);
-  padding-top: 8px;
 }
 .preview-body p {
   margin: 3px 0;

@@ -8,6 +8,7 @@ import {
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { capsuleGeometry } from "../features/surface/capsuleGeometry";
 
 export interface CapsuleEntry {
   key: string;
@@ -15,7 +16,6 @@ export interface CapsuleEntry {
   preview: string;
   colorKey: number;
   expanded: boolean;
-  truncated: boolean;
 }
 
 // 色相分散，便签持久化保存的是槽位；主题和展开状态都不覆盖独立颜色。
@@ -177,10 +177,8 @@ export function CapsuleRail() {
       data-overflow={overflow || undefined}
       style={
         {
-          "--slot": `${group?.slotCss ?? 44}px`,
-          "--grip": `${group?.gripCss ?? 0}px`,
+          ...capsuleGeometry(group?.slotCss ?? 44, group?.gripCss ?? 0, group?.viewportCss ?? 44),
           "--cross": `${group?.crossCss ?? 18}px`,
-          "--content": `${group?.contentCss ?? 44}px`,
         } as CSSProperties
       }
       aria-label="已收纳便签"

@@ -1,6 +1,12 @@
 # Hermes Surface Dev：Windows 阶段状态
 
-当前 Windows 源码版本为 **1.7.5**；历史 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
+当前 Windows 源码版本为 **1.7.6**；历史 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
+
+## 1.7.6 完整预览与胶囊末端空间
+
+- 移除悬停预览行数/字符限制，全文在预览内滚动阅读；任务写回比较完整正文。
+- 拖动头与成员按原生计划的同一比例分配实际 viewport，避免固定 CSS 尺寸与窗口边界不一致导致最后成员被裁切。
+- 保留 1.7.5 Editor，修复范围与验证记录见 [RELEASE_1.7.6](RELEASE_1.7.6.md)；原截图环境的 GUI 仍待用户复测。
 
 ## 1.7.5 Editor 架构纠偏
 

@@ -1,5 +1,9 @@
 # macOS 开发交接：还原 Windows 便签体验
 
+## 1.7.6 预览 / 胶囊修复（Mac 未实测）
+
+悬停预览不再截断源文，长文在原预览窗口内滚动；DOM 槽位与拖动头改用原生布局计划相对于 viewport 的比例。请在 WebKit 验证最后成员完整、超容量滚动与全文末尾任务勾选。原生布局和拖动协议未改，Editor 保持 1.7.5 实现。参见 [RELEASE_1.7.6](RELEASE_1.7.6.md)。
+
 ## 1.7.5 源码增量（Mac 未编译、未实测）
 
 - 以 [EDITOR_ARCHITECTURE](EDITOR_ARCHITECTURE.md) 替代旧版 CodeMirror 装饰说明。阅读使用 MarkdownPreview，编辑使用同一常驻 SourceEditor；不再迁移旧容器前缀或富块替换。

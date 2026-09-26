@@ -53,9 +53,7 @@ export function CapsulePreview() {
             setPreview((old) =>
               old?.entry.key === next.key &&
               old.generation === snapshot.generation &&
-              (old.entry.preview !== next.preview ||
-                old.entry.title !== next.title ||
-                old.entry.truncated !== next.truncated)
+              (old.entry.preview !== next.preview || old.entry.title !== next.title)
                 ? { ...old, entry: next }
                 : old,
             );
@@ -182,7 +180,7 @@ export function CapsulePreview() {
       if (key.startsWith("linked:")) {
         const id = key.slice(7);
         const latest = await readLinkedFile(id);
-        if (!latest.content.startsWith(preview.entry.preview))
+        if (latest.content !== preview.entry.preview)
           throw new Error("原文件已变化，请等待预览更新后重试");
         const next = toggleTaskMarker(latest.content, offset, checked);
         if (next == null) return;
@@ -190,7 +188,7 @@ export function CapsulePreview() {
       } else {
         const id = key.slice(5);
         const latest = await getNote(id);
-        if (!latest.content.startsWith(preview.entry.preview))
+        if (latest.content !== preview.entry.preview)
           throw new Error("便签已变化，请等待预览更新后重试");
         const next = toggleTaskMarker(latest.content, offset, checked);
         if (next == null) return;
@@ -300,9 +298,6 @@ export function CapsulePreview() {
           />
         ) : (
           <p className="preview-empty">空白便签</p>
-        )}
-        {preview.entry.truncated && (
-          <p className="preview-truncated">内容未完 · 展开便签查看全文</p>
         )}
       </div>
       {error && (
