@@ -1,9 +1,15 @@
 import chroma from "chroma-js";
-import type { CSSProperties, HTMLAttributes, Ref, TextareaHTMLAttributes } from "react";
-import { useMemo } from "react";
+import type { CSSProperties, HTMLAttributes, Ref } from "react";
+import { lazy, Suspense, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { DEFAULT_TILE_COLOR, normalizeTileColor } from "../features/settings/tileColor";
 import { MarkdownPreviewLazy as MarkdownPreview } from "../features/markdown/MarkdownPreviewLazy";
+import type { SourceEditorHandle } from "../features/markdown/SourceEditor";
+
+// 列表中的只读 Tile 不加载编辑器；独立便签首次打开时才按需加载一次。
+const SourceEditor = lazy(() =>
+  import("../features/markdown/SourceEditor").then((module) => ({ default: module.SourceEditor })),
+);
 
 export interface TileProps extends Omit<
   HTMLAttributes<HTMLDivElement>,
@@ -24,11 +30,14 @@ export interface TileProps extends Omit<
   titleEditable?: boolean;
   onTitleChange?: (value: string) => void;
   onContentChange?: (value: string) => void;
-  contentEditorRef?: Ref<HTMLTextAreaElement>;
+  contentEditorRef?: Ref<SourceEditorHandle>;
+  onEditorActivate?: () => void;
+  onEditorDeactivate?: () => void;
+  locked?: boolean;
   scrollContainerRef?: Ref<HTMLDivElement>;
-  onEditorPaste?: TextareaHTMLAttributes<HTMLTextAreaElement>["onPaste"];
-  onEditorDrop?: TextareaHTMLAttributes<HTMLTextAreaElement>["onDrop"];
-  onEditorDragOver?: TextareaHTMLAttributes<HTMLTextAreaElement>["onDragOver"];
+  onEditorPaste?: HTMLAttributes<HTMLDivElement>["onPaste"];
+  onEditorDrop?: HTMLAttributes<HTMLDivElement>["onDrop"];
+  onEditorDragOver?: HTMLAttributes<HTMLDivElement>["onDragOver"];
 }
 
 const MARK_SIZE = 8;
@@ -97,6 +106,9 @@ export function Tile({
   onTitleChange,
   onContentChange,
   contentEditorRef,
+  onEditorActivate,
+  onEditorDeactivate,
+  locked,
   scrollContainerRef,
   onEditorPaste,
   onEditorDrop,
@@ -136,7 +148,7 @@ export function Tile({
     >
       <div
         ref={scrollContainerRef}
-        className={`px-4 pt-4 pb-4 h-full overflow-y-auto scrollbar-hidden ${editing ? "flex flex-col" : ""}`}
+        className="px-4 pt-4 pb-4 h-full overflow-y-auto scrollbar-hidden"
       >
         {editing && titleEditable ? (
           <input
@@ -155,23 +167,29 @@ export function Tile({
             {title}
           </div>
         ) : null}
-        {editing ? (
-          <textarea
-            ref={contentEditorRef}
-            value={content}
-            onChange={(event) => onContentChange?.(event.target.value)}
-            onPaste={onEditorPaste}
-            onDrop={onEditorDrop}
-            onDragOver={onEditorDragOver}
-            aria-label="便签正文"
-            placeholder="写点什么……"
-            className="w-full flex-1 min-h-[8rem] bg-transparent border-0 outline-none resize-none font-body select-text p-0"
-            style={{
-              color: contentColor,
-              fontSize: `${fontSize}px`,
-              lineHeight: "var(--appearance-line-height)",
-            }}
-          />
+        {contentEditorRef ? (
+          <div style={{ color: contentColor }}>
+            <Suspense fallback={<div className="min-h-[8rem]" />}>
+              <SourceEditor
+                content={content}
+                editing={editing}
+                locked={locked}
+                markdown={renderMarkdown}
+                fontSize={fontSize}
+                editorRef={contentEditorRef}
+                onChange={onContentChange}
+                onActivate={onEditorActivate}
+                onDeactivate={onEditorDeactivate}
+                onTaskToggle={onTaskToggle}
+                imageBaseDir={imageBaseDir}
+                imageRootDir={imageRootDir}
+                allowRemoteImages={allowRemoteImages}
+                onPaste={onEditorPaste}
+                onDrop={onEditorDrop}
+                onDragOver={onEditorDragOver}
+              />
+            </Suspense>
+          </div>
         ) : content ? (
           renderMarkdown ? (
             <div

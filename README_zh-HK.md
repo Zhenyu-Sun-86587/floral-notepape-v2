@@ -4,9 +4,9 @@
 
 將 Markdown 筆記固定在桌面，需要時直接編輯，暫時不用時收納至螢幕邊緣。
 
-[下載 Windows 1.6.0](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.6.0) · [回報問題](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [简体中文](README.md)
+[下載 Windows 1.7.2](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.2) · [回報問題](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [简体中文](README.md)
 
-**平台狀態：**目前提供 Windows x64 NSIS 安裝程式。macOS 正由協作者適配，本 fork 尚無 Mac 安裝包。1.6.0 新增的拖動和陰影仍待人工 GUI 驗收；詳見[項目狀態](Docs/STATUS.md)。
+**平台狀態：**目前提供 Windows x64 NSIS 安裝程式。macOS 正由協作者適配，本 fork 尚無 Mac 安裝包。1.7.2 的常駐 Markdown 編輯器與膠囊互動仍待人工 GUI 驗收；詳見[項目狀態](Docs/STATUS.md)。
 
 ## 功能
 
@@ -18,7 +18,7 @@
 
 ## 下載與開發
 
-從本 fork 的 [Release](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.6.0) 下載 [Windows x64 安裝包](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/download/v1.6.0/Hermes.Surface.Dev_1.6.0_x64-setup.exe)與 `SHA256SUMS.txt`。安裝包未簽署；若系統缺少 WebView2 Runtime，安裝時需要連線下載。本 fork 目前沒有 Microsoft Store、Mirror 醬、Windows ARM64 或 macOS 產物。
+從本 fork 的 [Release](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.2) 下載 [Windows x64 安裝包](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/download/v1.7.2/Hermes.Surface.Dev_1.7.2_x64-setup.exe)與 `SHA256SUMS.txt`。安裝包未簽署；若系統缺少 WebView2 Runtime，安裝時需要連線下載。本 fork 目前沒有 Microsoft Store、Mirror 醬、Windows ARM64 或 macOS 產物。
 
 在 Windows 的 PowerShell 7 中從原始碼構建：
 

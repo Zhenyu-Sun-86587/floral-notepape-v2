@@ -169,8 +169,12 @@ fn surface_capsule_present(window: tauri::WebviewWindow, generation: u64) -> Res
 }
 
 #[tauri::command]
-async fn surface_capsule_drag(window: tauri::WebviewWindow, key: String) -> Result<bool, AppError> {
-    desktop::drag_capsule(window, key).await
+async fn surface_capsule_drag(
+    window: tauri::WebviewWindow,
+    key: String,
+    group: Option<bool>,
+) -> Result<bool, AppError> {
+    desktop::drag_capsule(window, key, group.unwrap_or(false)).await
 }
 
 #[tauri::command]

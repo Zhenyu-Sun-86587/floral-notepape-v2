@@ -1,4 +1,4 @@
-import { createContext, useState, useCallback, useContext, useMemo } from "react";
+import { createContext, useState, useCallback, useContext, useMemo, useRef, memo } from "react";
 import { useTranslation } from "react-i18next";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -313,7 +313,7 @@ function TaskInput({
   );
 }
 
-export function MarkdownPreview({
+export const MarkdownPreview = memo(function MarkdownPreview({
   content,
   fontSize = 14,
   renderHtml = false,
@@ -323,6 +323,13 @@ export function MarkdownPreview({
   onTaskToggle,
 }: MarkdownPreviewProps) {
   const { t } = useTranslation();
+  const taskAction = useRef(onTaskToggle);
+  taskAction.current = onTaskToggle;
+  const handleTaskToggle = useCallback(
+    (offset: number, checked: boolean) => taskAction.current?.(offset, checked),
+    [],
+  );
+  const hasTaskAction = !!onTaskToggle;
   const previewContent = useMemo(() => hideLeadingFrontmatter(content), [content]);
   const sourceOffset = content.length - previewContent.length;
   const remarkPlugins = useMemo(
@@ -387,7 +394,11 @@ export function MarkdownPreview({
         );
       },
       input: ({ checked, ...props }) => (
-        <TaskInput {...props} checked={checked} onTaskToggle={onTaskToggle} />
+        <TaskInput
+          {...props}
+          checked={checked}
+          onTaskToggle={hasTaskAction ? handleTaskToggle : undefined}
+        />
       ),
       img: ({ src, alt, srcSet: _srcSet, ...props }) => {
         const resolvedSrc = resolveMarkdownImageSrc(
@@ -409,7 +420,7 @@ export function MarkdownPreview({
         );
       },
     }),
-    [allowRemoteImages, imageBaseDir, imageRootDir, onTaskToggle, sourceOffset],
+    [allowRemoteImages, imageBaseDir, imageRootDir, hasTaskAction, handleTaskToggle, sourceOffset],
   );
   return (
     <div className="font-body markdown-selectable" style={{ fontSize: `${fontSize}px` }}>
@@ -428,4 +439,4 @@ export function MarkdownPreview({
       )}
     </div>
   );
-}
+});

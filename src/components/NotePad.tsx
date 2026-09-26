@@ -67,6 +67,7 @@ import {
 } from "../features/windows/tileWindowEvents";
 import { NotepadOpenPanel } from "./NotepadOpenPanel";
 import { Tile } from "./Tile";
+import type { SourceEditorHandle } from "../features/markdown/SourceEditor";
 import { toggleTaskMarker } from "../features/markdown/taskMarker";
 import { markdownImageDirectory } from "../features/markdown/imageSrc";
 import { continueMarkdownList } from "../features/markdown/listEnter";
@@ -112,7 +113,11 @@ const surfaceResizeHandles: Array<{
 function isTileControlDoubleClickTarget(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLElement &&
-    Boolean(target.closest('button,input,textarea,select,a,[data-surface-resize-handle="true"]'))
+    Boolean(
+      target.closest(
+        'button,input,textarea,select,a,.source-editor,[data-surface-resize-handle="true"]',
+      ),
+    )
   );
 }
 
@@ -199,10 +204,10 @@ export function NotePad({
   const [bootstrapReady, setBootstrapReady] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLTextAreaElement>(null);
-  const tileContentRef = useRef<HTMLTextAreaElement>(null);
+  const tileContentRef = useRef<SourceEditorHandle>(null);
   const tileScrollRef = useRef<HTMLDivElement>(null);
   const tileClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const tileScrollTopRef = useRef(0);
+
   const composingRef = useRef(false);
   const lockButtonRef = useRef<HTMLButtonElement>(null);
   const tileDragIntentRef = useRef<{ x: number; y: number } | null>(null);
@@ -707,7 +712,7 @@ export function NotePad({
     handleDragOver: imageDragOverHandler,
   } = useImagePaste({
     noteId: editingNoteId,
-    textareaRef: tileWriting ? tileContentRef : contentRef,
+    textareaRef: surfaceMode === "tile" ? tileContentRef : contentRef,
     setContent,
     markDirty: () => setStatus("dirty"),
     onEnsureNoteSaved: ensureNoteSaved,
@@ -795,7 +800,6 @@ export function NotePad({
     async (anchor?: number) => {
       if (tileLocked || tileWriting) return;
       try {
-        tileScrollTopRef.current = tileScrollRef.current?.scrollTop ?? 0;
         await invoke("surface_edit_mode", { editing: true });
         setTileWriting(true);
         requestAnimationFrame(() => {
@@ -803,7 +807,6 @@ export function NotePad({
           if (!editor) return;
           editor.focus();
           if (anchor != null) editor.setSelectionRange(anchor, anchor);
-          tileScrollRef.current?.scrollTo({ top: tileScrollTopRef.current });
         });
       } catch (error) {
         showToast(getErrorMessage(error));
@@ -818,9 +821,6 @@ export function NotePad({
       await saveNote();
       await invoke("surface_edit_mode", { editing: false });
       setTileWriting(false);
-      requestAnimationFrame(() =>
-        tileScrollRef.current?.scrollTo({ top: tileScrollTopRef.current }),
-      );
     } catch (error) {
       setStatus("saveFailed");
       showToast(getErrorMessage(error));
@@ -930,28 +930,6 @@ export function NotePad({
       void startTileWriting();
     },
     [clearPendingTileDrag, startTileWriting, tileDoubleClickToEdit],
-  );
-
-  const handleTileClick = useCallback(
-    (event: MouseEvent<HTMLElement>) => {
-      if (surfaceMode !== "tile" || tileWriting || tileLocked || event.detail !== 1) return;
-      const target = event.target;
-      if (!(target instanceof HTMLElement) || isTileControlDoubleClickTarget(target)) return;
-      if (!target.closest('[data-tile-selectable="true"]') || !isTileTextHit(event)) return;
-      if (window.getSelection()?.toString()) return;
-      const sourceBlock = target.closest<HTMLElement>("[data-source-start]");
-      const blockStart = Number(sourceBlock?.dataset.sourceStart);
-      const caret = document.caretRangeFromPoint(event.clientX, event.clientY);
-      // AST 块源位置优先；普通文本回退到 DOM 光标位置。
-      const anchor = Number.isFinite(blockStart) && sourceBlock ? blockStart : caret?.startOffset;
-      if (tileClickTimerRef.current) clearTimeout(tileClickTimerRef.current);
-      tileClickTimerRef.current = setTimeout(() => {
-        tileClickTimerRef.current = null;
-        if (!document.hasFocus() || window.getSelection()?.toString()) return;
-        void startTileWriting(anchor);
-      }, 300);
-    },
-    [surfaceMode, tileWriting, tileLocked, startTileWriting],
   );
 
   useEffect(
@@ -1178,6 +1156,11 @@ export function NotePad({
   const handleDrag = (event: MouseEvent<HTMLElement>) => {
     const target = event.target as HTMLElement;
     if (target.closest("button,input,textarea")) return;
+    if (
+      target.closest(".source-editor") &&
+      (tileWriting || !content.trim() || target.closest(".source-rich-block"))
+    )
+      return;
 
     // 阅读态正文保留浏览器原生选区；拖动只从便签空白处开始。
     if (surfaceMode === "tile" && !tileWriting && isTileTextHit(event)) return;
@@ -1252,6 +1235,9 @@ export function NotePad({
             setStatus("dirty");
           }}
           contentEditorRef={tileContentRef}
+          locked={tileLocked}
+          onEditorActivate={() => void startTileWriting()}
+          onEditorDeactivate={() => void finishTileWriting()}
           onEditorPaste={imagePasteHandler}
           onEditorDrop={imageDropHandler}
           onEditorDragOver={imageDragOverHandler}
@@ -1262,7 +1248,6 @@ export function NotePad({
           data-note-id={tileNoteId}
           onMouseDown={handleDrag}
           onDoubleClick={handleTileDoubleClick}
-          onClick={handleTileClick}
         >
           {(!tileLocked || navigator.userAgent.includes("Windows")) && (
             <div className="absolute top-2 right-2 z-10 flex items-center gap-1">

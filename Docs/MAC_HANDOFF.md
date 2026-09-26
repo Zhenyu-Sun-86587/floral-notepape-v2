@@ -1,5 +1,11 @@
 # macOS 开发交接：还原 Windows 便签体验
 
+## 1.7.2 源码增量
+
+共享的 `SourceEditor` 使用 CodeMirror/Lezer 常驻文档及源码装饰，替代便签正文完整切换。Mac 无需重写编辑器；请验证 WebKit 的 IME、Cmd+B/I/K、Cmd+点击链接、source offset、失焦与 Esc 保存、图片粘贴/拖入及复杂块显示。CodeMirror 依赖通过 `npm ci` 安装。验收用例见 MANUAL_ACCEPTANCE，设计见 INTERACTION_1.7.2。
+
+颜色身份、展开保留胶囊和预览任务乐观更新使用共享 TS/Rust。旧色迁移由 `capsulePaletteVersion` 标记；Mac 不应自行重分颜色。拖动头在整组前端，Windows 原生整组拖动仍按条件编译隔离，Mac 未显示不可用拖动头。原生布局已取消固定 sleep 补间，CSS 反馈共享。Mac 协作者需验证顶部安全区、Dock、多显示器、窗口焦点和组拖动，不将 Windows 构建视为 Mac 验收。
+
 ## 1.7.0 源码增量
 
 1.7.0 的共享会话新增 `shortcutToggleAction`（旧配置默认 `store`）和持久 `capsuleColorKey`。胶囊左键单击展开、右键原生菜单关闭/编辑、共享预览 owner/会话保持及安全 Markdown 渲染由共有 TS/Rust 实现；Mac 协作者需在 macOS 实机核验菜单弹出、预览焦点/选择、单键再次触发及输入法失焦。Windows 胶囊原生拖动仍是条件编译实现，非 Windows 分支返回 `false`；不得把共有 UI 编译成功当作 Mac 拖动完成。顶部菜单栏/刘海与 Dock 安全边距、原位解锁、原生材质和桌面附着继续按下文任务验收。此前 1.6.0 的尺寸/时序描述仅作历史基线，1.7.0 以 [交互契约](INTERACTION_1.7.0.md) 和当前源码为准。

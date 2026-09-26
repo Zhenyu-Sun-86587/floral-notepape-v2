@@ -1489,7 +1489,16 @@ fn handle_app_menu_event(app: &AppHandle, id: &str) -> Result<(), Box<dyn Error>
                     restore_stored_surface(app, key)?;
                 }
             }
-            "hide" => hide_stored_surface(app, key)?,
+            "hide" => {
+                if crate::surface_sessions::get(key)?.presentation
+                    == crate::surface_sessions::Presentation::Expanded
+                {
+                    app.emit_to(surface_label(key), "surface-hide-request", ())?;
+                } else {
+                    hide_stored_surface(app, key)?;
+                }
+            }
+            "store" => app.emit_to(surface_label(key), "surface-store-request", ())?,
             _ => {}
         }
         return Ok(());
@@ -2168,6 +2177,7 @@ pub fn record_surface_close(window: &tauri::WebviewWindow) {
         let _ = crate::surface_sessions::mutate(&key, |session| {
             session.presentation = crate::surface_sessions::Presentation::Hidden;
         });
+        queue_capsule_sync(window.app_handle());
     }
 }
 
@@ -2178,9 +2188,12 @@ pub struct CapsuleEntry {
     title: String,
     preview: String,
     color_key: u8,
+    expanded: bool,
     truncated: bool,
     joined_before: bool,
     joined_after: bool,
+    group_keys: Vec<String>,
+    group_head: bool,
 }
 
 // WebView2 建窗不能运行在同步 IPC / UI 事件回调中。所有收纳变更串行排到工作线程，
@@ -2199,7 +2212,11 @@ fn shortcut_foreground_window() -> usize {
     0
 }
 
-pub async fn drag_capsule(window: tauri::WebviewWindow, key: String) -> Result<bool, AppError> {
+pub async fn drag_capsule(
+    window: tauri::WebviewWindow,
+    key: String,
+    group: bool,
+) -> Result<bool, AppError> {
     #[cfg(target_os = "windows")]
     {
         if CAPSULE_DRAGGING.swap(true, Ordering::SeqCst) {
@@ -2216,7 +2233,7 @@ pub async fn drag_capsule(window: tauri::WebviewWindow, key: String) -> Result<b
         impl Drop for DragVisualGuard {
             fn drop(&mut self) {
                 if self.1.load(Ordering::SeqCst) {
-                    let _ = self.0.emit("capsule-drag-state", Option::<String>::None);
+                    let _ = self.0.emit("capsule-drag-state", Vec::<String>::new());
                 }
             }
         }
@@ -2227,7 +2244,7 @@ pub async fn drag_capsule(window: tauri::WebviewWindow, key: String) -> Result<b
         let drag_key = key.clone();
         // 只在按下鼠标期间采样，不持有收纳锁，不占用 UI 线程，也不增加常驻轮询。
         let result = tauri::async_runtime::spawn_blocking(
-            move || -> Result<Option<(PhysicalPosition<f64>, bool)>, AppError> {
+            move || -> Result<Option<(PhysicalPosition<f64>, bool, Vec<String>)>, AppError> {
                 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
                     GetAsyncKeyState, VK_ESCAPE, VK_LBUTTON, VK_RBUTTON,
                 };
@@ -2245,13 +2262,58 @@ pub async fn drag_capsule(window: tauri::WebviewWindow, key: String) -> Result<b
                             .and_then(|b| b.monitor_name.as_deref())
                     }),
                 );
-                if session.presentation != crate::surface_sessions::Presentation::Stored
-                    || rail.label() != capsule_label(index, session.capsule_side, &drag_key)
+                if !matches!(
+                    session.presentation,
+                    crate::surface_sessions::Presentation::Stored
+                        | crate::surface_sessions::Presentation::Expanded
+                ) || rail.label() != capsule_label(index, session.capsule_side, &drag_key)
                 {
                     return Ok(None);
                 }
+                let members = if group {
+                    let monitor = &monitors[index];
+                    let work = monitor.work_area();
+                    let length = (CAPSULE_TAB_STEP as f64 * monitor.scale_factor()).round();
+                    let available =
+                        if session.capsule_side == crate::surface_sessions::CapsuleSide::Top {
+                            work.size.width as f64 - length
+                        } else {
+                            work.size.height as f64 - length
+                        }
+                        .max(0.0);
+                    let placement = capsule_layout_placements(
+                        capsule_group(rail.app_handle(), index, session.capsule_side)?
+                            .into_iter()
+                            .map(|item| (item.key, item.capsule_offset.unwrap_or(0.5)))
+                            .collect(),
+                        available,
+                        length,
+                        CAPSULE_MERGE_DISTANCE * monitor.scale_factor(),
+                    )
+                    .into_iter()
+                    .find(|item| item.key == drag_key && item.group_head);
+                    let Some(placement) = placement else {
+                        return Ok(None);
+                    };
+                    placement.group_keys
+                } else {
+                    vec![drag_key.clone()]
+                };
                 let start = rail.cursor_position()?;
-                let origin = rail.outer_position()?;
+                let origins: Vec<_> = members
+                    .iter()
+                    .filter_map(|member| {
+                        let label = capsule_label(index, session.capsule_side, member);
+                        rail.app_handle().get_webview_window(&label)
+                    })
+                    .map(|window| {
+                        let origin = window.outer_position()?;
+                        Ok::<_, AppError>((window, origin))
+                    })
+                    .collect::<Result<_, _>>()?;
+                if origins.len() != members.len() {
+                    return Ok(None);
+                }
                 let threshold = 4.0 * rail.scale_factor()?;
                 let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
                 let button = if unsafe { GetSystemMetrics(SM_SWAPBUTTON) } != 0 {
@@ -2260,7 +2322,7 @@ pub async fn drag_capsule(window: tauri::WebviewWindow, key: String) -> Result<b
                     VK_LBUTTON
                 };
                 let mut dragged = false;
-                let mut last = origin;
+                let mut last = (0_i32, 0_i32);
                 loop {
                     if app_is_exiting(rail.app_handle())
                         || std::time::Instant::now() >= deadline
@@ -2276,21 +2338,23 @@ pub async fn drag_capsule(window: tauri::WebviewWindow, key: String) -> Result<b
                         visual_active.store(true, Ordering::SeqCst);
                         let _ = rail
                             .app_handle()
-                            .emit("capsule-drag-state", Some(drag_key.clone()));
+                            .emit("capsule-drag-state", members.clone());
                         // 单击保留已经打开的预览；真正拖动时才隐藏，避免重复建窗闪烁。
                         dismiss_capsule_preview(rail.app_handle())?;
                     }
                     if unsafe { GetAsyncKeyState(button as i32) } >= 0 {
-                        return Ok(Some((point, dragged)));
+                        return Ok(Some((point, dragged, members)));
                     }
                     if dragged {
-                        let position = PhysicalPosition::new(
-                            origin.x + dx.round() as i32,
-                            origin.y + dy.round() as i32,
-                        );
-                        if position != last {
-                            rail.set_position(position)?;
-                            last = position;
+                        let shift = (dx.round() as i32, dy.round() as i32);
+                        if shift != last {
+                            for (window, origin) in &origins {
+                                window.set_position(PhysicalPosition::new(
+                                    origin.x + shift.0,
+                                    origin.y + shift.1,
+                                ))?;
+                            }
+                            last = shift;
                         }
                     }
                     std::thread::sleep(std::time::Duration::from_millis(16));
@@ -2305,18 +2369,18 @@ pub async fn drag_capsule(window: tauri::WebviewWindow, key: String) -> Result<b
         })?;
         drop(_guard);
         // 普通单击不做窗口同步，直接交给前端打开预览，减少一次磁盘读取和重排。
-        if matches!(result, Ok(Some((_, false)))) {
+        if matches!(&result, Ok(Some((_, false, _)))) {
             return Ok(false);
         }
         // 松手后才持锁并重建目标边缘入口；Esc、错误或超时恢复已保存的位置。
         run_capsule_task(move || {
             let app = window.app_handle();
             let result = match result {
-                Ok(Some((point, true))) => {
-                    dock_capsule_at(app, &key, point)?;
+                Ok(Some((point, true, members))) => {
+                    dock_capsule_at(app, &members, point)?;
                     true
                 }
-                Ok(Some((_, false))) => false,
+                Ok(Some((_, false, _))) => false,
                 Ok(None) => true,
                 Err(error) => {
                     let _ = sync_capsule_windows(app);
@@ -2330,7 +2394,7 @@ pub async fn drag_capsule(window: tauri::WebviewWindow, key: String) -> Result<b
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = (window, key);
+        let _ = (window, key, group);
         Ok(false)
     }
 }
@@ -2340,12 +2404,15 @@ const CAPSULE_MERGE_DISTANCE: f64 = 52.0;
 
 fn dock_capsule_at(
     app: &AppHandle,
-    key: &str,
+    keys: &[String],
     point: PhysicalPosition<f64>,
 ) -> Result<(), AppError> {
     use crate::surface_sessions::CapsuleSide;
+    let Some(key) = keys.first() else {
+        return Ok(());
+    };
     let session = crate::surface_sessions::get(key)?;
-    if session.presentation != crate::surface_sessions::Presentation::Stored {
+    if session.presentation == crate::surface_sessions::Presentation::Hidden {
         return Ok(());
     }
     let monitors = app.available_monitors()?;
@@ -2385,16 +2452,14 @@ fn dock_capsule_at(
     };
     let offset = coordinate / available.max(1.0);
     // 每个入口保存自己的位置；靠近时仅在排版阶段吸附，拖动不再改写邻居。
-    crate::surface_sessions::dock_capsules(
-        &[key.to_owned()],
-        side,
-        monitor.name().cloned(),
-        offset,
-    )?;
-    app.emit(
-        "surface-session-changed",
-        crate::surface_sessions::get(key)?,
-    )?;
+    let step = length / available.max(1.0);
+    crate::surface_sessions::dock_capsule_group(keys, side, monitor.name().cloned(), offset, step)?;
+    for key in keys {
+        app.emit(
+            "surface-session-changed",
+            crate::surface_sessions::get(key)?,
+        )?;
+    }
     Ok(())
 }
 
@@ -2464,7 +2529,9 @@ fn capsule_group(
     Ok(crate::surface_sessions::list()?
         .into_iter()
         .filter(|session| {
-            session.presentation == crate::surface_sessions::Presentation::Stored
+            (session.presentation == crate::surface_sessions::Presentation::Stored
+                || (session.presentation == crate::surface_sessions::Presentation::Expanded
+                    && session.capsule_color_key.is_some()))
                 && session.capsule_side == side
                 && capsule_monitor_index(
                     &monitors,
@@ -2498,7 +2565,7 @@ pub fn capsule_entries(
 ) -> Result<Vec<CapsuleEntry>, AppError> {
     let group = capsule_group(app, monitor_index, side)?;
     let monitor = app.available_monitors()?.into_iter().nth(monitor_index);
-    let joined = if let Some(monitor) = monitor {
+    let layout = if let Some(monitor) = monitor {
         let work = monitor.work_area();
         let length = (CAPSULE_TAB_STEP as f64 * monitor.scale_factor()).round();
         let available = (if side == crate::surface_sessions::CapsuleSide::Top {
@@ -2507,32 +2574,19 @@ pub fn capsule_entries(
             work.size.height as f64
         } - length)
             .max(0.0);
-        let mut desired: Vec<_> = group
+        let desired: Vec<_> = group
             .iter()
             .map(|s| (s.key.clone(), s.capsule_offset.unwrap_or(0.5)))
             .collect();
-        desired.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
-        let positions = capsule_layout_offsets(
-            desired.clone(),
+        capsule_layout_placements(
+            desired,
             available,
             length,
             CAPSULE_MERGE_DISTANCE * monitor.scale_factor(),
-        );
-        positions
-            .iter()
-            .enumerate()
-            .map(|(index, (key, position))| {
-                let before = index > 0
-                    && (desired[index].1 - desired[index - 1].1) * available
-                        <= CAPSULE_MERGE_DISTANCE * monitor.scale_factor()
-                    && (position - positions[index - 1].1 - length).abs() <= 1.0;
-                let after = index + 1 < positions.len()
-                    && (desired[index + 1].1 - desired[index].1) * available
-                        <= CAPSULE_MERGE_DISTANCE * monitor.scale_factor()
-                    && (positions[index + 1].1 - position - length).abs() <= 1.0;
-                (key.clone(), (before, after))
-            })
-            .collect::<std::collections::HashMap<_, _>>()
+        )
+        .into_iter()
+        .map(|item| (item.key.clone(), item))
+        .collect::<std::collections::HashMap<_, _>>()
     } else {
         std::collections::HashMap::new()
     };
@@ -2573,16 +2627,21 @@ pub fn capsule_entries(
             None
         };
         if let Some(title) = title {
-            let (joined_before, joined_after) =
-                joined.get(&session.key).copied().unwrap_or_default();
+            let placement = layout.get(&session.key);
             entries.push(CapsuleEntry {
                 key: session.key,
                 title,
                 preview: String::new(),
                 color_key: session.capsule_color_key.unwrap_or(0),
+                expanded: session.presentation == crate::surface_sessions::Presentation::Expanded,
                 truncated: false,
-                joined_before,
-                joined_after,
+                joined_before: placement.is_some_and(|item| item.joined_before),
+                joined_after: placement.is_some_and(|item| item.joined_after),
+                group_keys: placement
+                    .map(|item| item.group_keys.clone())
+                    .unwrap_or_default(),
+                group_head: cfg!(target_os = "windows")
+                    && placement.is_some_and(|item| item.group_head),
             });
         }
     }
@@ -2632,9 +2691,12 @@ fn capsule_entry_from_session(
         title,
         preview: capsule_preview(&content),
         color_key: session.capsule_color_key.unwrap_or(0),
+        expanded: session.presentation == crate::surface_sessions::Presentation::Expanded,
         truncated: content.lines().count() > 60 || content.chars().count() > 2400,
         joined_before: false,
         joined_after: false,
+        group_keys: Vec::new(),
+        group_head: false,
     }))
 }
 
@@ -2655,16 +2717,24 @@ pub fn popup_capsule_menu(window: &tauri::WebviewWindow, key: &str) -> Result<()
     {
         return Ok(());
     }
-    if crate::surface_sessions::get(key)?.presentation
-        != crate::surface_sessions::Presentation::Stored
-    {
+    if !matches!(
+        crate::surface_sessions::get(key)?.presentation,
+        crate::surface_sessions::Presentation::Stored
+            | crate::surface_sessions::Presentation::Expanded
+    ) {
         return Ok(());
     }
     let app = window.app_handle();
+    let expanded = crate::surface_sessions::get(key)?.presentation
+        == crate::surface_sessions::Presentation::Expanded;
     let open = MenuItem::with_id(
         app,
         format!("capsule:restore:{key}"),
-        "展开便签",
+        if expanded {
+            "定位便签"
+        } else {
+            "展开便签"
+        },
         true,
         None::<&str>,
     )?;
@@ -2682,7 +2752,18 @@ pub fn popup_capsule_menu(window: &tauri::WebviewWindow, key: &str) -> Result<()
         true,
         None::<&str>,
     )?;
-    let menu = Menu::with_items(app, &[&open, &edit, &hide])?;
+    let store = MenuItem::with_id(
+        app,
+        format!("capsule:store:{key}"),
+        "收回便签",
+        expanded,
+        None::<&str>,
+    )?;
+    let menu = if expanded {
+        Menu::with_items(app, &[&open, &edit, &store, &hide])?
+    } else {
+        Menu::with_items(app, &[&open, &edit, &hide])?
+    };
     capsule_hover(app, true, "menu", None, None);
     let result = window.popup_menu(&menu);
     capsule_hover(app, false, "menu", None, None);
@@ -2690,12 +2771,12 @@ pub fn popup_capsule_menu(window: &tauri::WebviewWindow, key: &str) -> Result<()
     Ok(())
 }
 
-fn position_capsule_window(
-    window: &tauri::WebviewWindow,
+fn capsule_window_bounds(
     monitor: &tauri::Monitor,
     side: crate::surface_sessions::CapsuleSide,
     offset: f64,
-) -> Result<(), AppError> {
+    group_head: bool,
+) -> WindowBounds {
     let work = monitor.work_area();
     let mut bounds = capsule_rail_bounds(
         WindowBounds {
@@ -2722,13 +2803,21 @@ fn position_capsule_window(
     if side == crate::surface_sessions::CapsuleSide::Top {
         bounds.x = work.position.x
             + ((work.size.width.saturating_sub(bounds.width)) as f64 * offset).round() as i32;
+        if group_head {
+            let head = (14.0 * monitor.scale_factor()).round() as u32;
+            bounds.x -= head as i32;
+            bounds.width += head;
+        }
     } else {
         bounds.y = work.position.y
             + ((work.size.height.saturating_sub(bounds.height)) as f64 * offset).round() as i32;
+        if group_head {
+            let head = (14.0 * monitor.scale_factor()).round() as u32;
+            bounds.y -= head as i32;
+            bounds.height += head;
+        }
     }
-    window.set_size(PhysicalSize::new(bounds.width, bounds.height))?;
-    window.set_position(PhysicalPosition::new(bounds.x, bounds.y))?;
-    Ok(())
+    bounds
 }
 
 fn capsule_rail_bounds(
@@ -3074,6 +3163,7 @@ pub fn sync_capsule_windows(app: &AppHandle) -> Result<(), AppError> {
     let monitors = app.available_monitors()?;
     let mut active_labels = std::collections::HashSet::new();
     let mut changed_labels = Vec::new();
+    let mut motions = Vec::new();
     for (index, monitor) in monitors.iter().enumerate() {
         for side in [
             crate::surface_sessions::CapsuleSide::Left,
@@ -3098,7 +3188,7 @@ pub fn sync_capsule_windows(app: &AppHandle) -> Result<(), AppError> {
                 work.size.height as f64 - length
             }
             .max(0.0);
-            let offsets = capsule_layout_offsets(
+            let placements = capsule_layout_placements(
                 sessions
                     .iter()
                     .map(|s| (s.key.clone(), s.capsule_offset.unwrap_or(0.5)))
@@ -3107,11 +3197,12 @@ pub fn sync_capsule_windows(app: &AppHandle) -> Result<(), AppError> {
                 length,
                 CAPSULE_MERGE_DISTANCE * scale,
             );
-            for (key, position) in offsets {
-                let label = capsule_label(index, side, &key);
+            for placement in placements {
+                let label = capsule_label(index, side, &placement.key);
                 active_labels.insert(label.clone());
-                let window = if let Some(window) = app.get_webview_window(&label) {
-                    window
+                let (window, previous) = if let Some(window) = app.get_webview_window(&label) {
+                    let previous = (window.outer_position()?, window.outer_size()?);
+                    (window, Some(previous))
                 } else {
                     let url = format!("capsule.html?monitor={index}&side={side_name}");
                     let window =
@@ -3129,13 +3220,32 @@ pub fn sync_capsule_windows(app: &AppHandle) -> Result<(), AppError> {
                             .build()?;
                     #[cfg(target_os = "windows")]
                     crate::set_windows_corner_preference(&window, 0.0);
-                    window
+                    (window, None)
                 };
-                position_capsule_window(&window, monitor, side, position / available.max(1.0))?;
+                let bounds = capsule_window_bounds(
+                    monitor,
+                    side,
+                    placement.position / available.max(1.0),
+                    cfg!(target_os = "windows") && placement.group_head,
+                );
+                let target = PhysicalPosition::new(bounds.x, bounds.y);
+                window.set_size(PhysicalSize::new(bounds.width, bounds.height))?;
+                if let Some((previous_position, previous_size)) = previous {
+                    if previous_size.width != bounds.width || previous_size.height != bounds.height
+                    {
+                        // 把手出现或消失改变小窗横截面，立即对齐贴边条，避免补间时越过屏幕边缘。
+                        window.set_position(target)?;
+                    } else if previous_position != target {
+                        motions.push((window, previous_position, target));
+                    }
+                } else {
+                    window.set_position(target)?;
+                }
                 changed_labels.push(label);
             }
         }
     }
+    animate_capsule_windows(&motions)?;
     // 所有原生小窗先按同一布局快照定位，再通知各自 WebView 更新拼接边。
     for label in changed_labels {
         let _ = app.emit_to(&label, "capsules-changed", ());
@@ -3161,13 +3271,40 @@ pub fn sync_capsule_windows(app: &AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 
+fn animate_capsule_windows(
+    motions: &[(
+        tauri::WebviewWindow,
+        PhysicalPosition<i32>,
+        PhysicalPosition<i32>,
+    )],
+) -> Result<(), AppError> {
+    if motions.is_empty() {
+        return Ok(());
+    }
+    // 原生窗口一次定位；视觉过渡交给 WebView 合成器，避免固定 sleep 阻塞收纳队列。
+    for (window, _, target) in motions {
+        window.set_position(*target)?;
+    }
+    Ok(())
+}
+
 // 仅相距一个标签以内的入口并排吸附；布局结果不写回会话，移开后各自恢复原位。
-fn capsule_layout_offsets(
+#[derive(Clone)]
+struct CapsulePlacement {
+    key: String,
+    position: f64,
+    group_keys: Vec<String>,
+    group_head: bool,
+    joined_before: bool,
+    joined_after: bool,
+}
+
+fn capsule_layout_placements(
     mut items: Vec<(String, f64)>,
     available: f64,
     length: f64,
     merge_distance: f64,
-) -> Vec<(String, f64)> {
+) -> Vec<CapsulePlacement> {
     items.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
     let mut result = Vec::with_capacity(items.len());
     let mut cursor = 0;
@@ -3179,14 +3316,41 @@ fn capsule_layout_offsets(
             cursor += 1;
         }
         let count = cursor + 1 - start;
+        // 整组前端预留拖动头，首个正文胶囊仍与其他成员共用同一条轴线。
+        let head = if count > 1 { length * 14.0 / 44.0 } else { 0.0 };
         let first = (items[start].1.clamp(0.0, 1.0) * available)
+            .max(head)
             .min((available + length - count as f64 * length).max(0.0));
+        let group_keys: Vec<_> = items[start..=cursor]
+            .iter()
+            .map(|item| item.0.clone())
+            .collect();
         for (step, item) in items[start..=cursor].iter().enumerate() {
-            result.push((item.0.clone(), first + step as f64 * length));
+            result.push(CapsulePlacement {
+                key: item.0.clone(),
+                position: first + step as f64 * length,
+                group_keys: group_keys.clone(),
+                group_head: count > 1 && step == 0,
+                joined_before: step > 0,
+                joined_after: step + 1 < count,
+            });
         }
         cursor += 1;
     }
     result
+}
+
+#[cfg(test)]
+fn capsule_layout_offsets(
+    items: Vec<(String, f64)>,
+    available: f64,
+    length: f64,
+    merge_distance: f64,
+) -> Vec<(String, f64)> {
+    capsule_layout_placements(items, available, length, merge_distance)
+        .into_iter()
+        .map(|item| (item.key, item.position))
+        .collect()
 }
 
 pub fn hide_stored_surface(app: &AppHandle, key: &str) -> Result<(), AppError> {
@@ -3294,6 +3458,18 @@ pub fn store_surface(app: &AppHandle, key: &str) -> Result<(), AppError> {
 
 pub fn restore_stored_surface(app: &AppHandle, key: &str) -> Result<(), AppError> {
     let session = crate::surface_sessions::get(key)?;
+    if session.presentation == crate::surface_sessions::Presentation::Expanded {
+        if let Some(window) = app.get_webview_window(&surface_label(key)) {
+            window.show()?;
+            if !session.locked
+                && session.window_mode != crate::surface_sessions::WindowMode::DesktopAttached
+            {
+                window.set_focus()?;
+            }
+        }
+        dismiss_capsule_preview(app)?;
+        return Ok(());
+    }
     if session.presentation != crate::surface_sessions::Presentation::Stored {
         return Ok(());
     }
@@ -3323,6 +3499,13 @@ pub fn restore_stored_surface(app: &AppHandle, key: &str) -> Result<(), AppError
 }
 
 pub fn restore_stored_surface_edit(app: &AppHandle, key: &str) -> Result<(), AppError> {
+    if crate::surface_sessions::get(key)?.presentation
+        == crate::surface_sessions::Presentation::Expanded
+    {
+        restore_stored_surface(app, key)?;
+        app.emit_to(surface_label(key), "surface-begin-editing", ())?;
+        return Ok(());
+    }
     PENDING_SURFACE_EDIT
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -4522,6 +4705,34 @@ mod tests {
         );
     }
 
+    #[test]
+    fn capsule_layout_marks_one_handle_for_each_nearby_group() {
+        let placements = super::capsule_layout_placements(
+            vec![("b".into(), 0.13), ("a".into(), 0.1), ("c".into(), 0.8)],
+            1000.0,
+            44.0,
+            52.0,
+        );
+        assert_eq!(placements[0].group_keys, vec!["a", "b"]);
+        assert!(placements[0].group_head);
+        assert!(placements[0].joined_after);
+        assert!(!placements[1].group_head);
+        assert!(placements[1].joined_before);
+        assert_eq!(placements[2].group_keys, vec!["c"]);
+        assert!(!placements[2].group_head);
+    }
+
+    #[test]
+    fn capsule_group_head_has_space_at_start_of_screen() {
+        let group = super::capsule_layout_placements(
+            vec![("a".into(), 0.0), ("b".into(), 0.01)],
+            1000.0,
+            44.0,
+            52.0,
+        );
+        assert_eq!(group[0].position, 14.0);
+        assert_eq!(group[1].position, 58.0);
+    }
     #[test]
     fn capsule_preview_preserves_source_positions_for_markdown() {
         let source = "\u{feff}---\r\nsecret: value\r\n---\r\n# 标题\r\n\r\n- [ ] 任务\r\n第二段";

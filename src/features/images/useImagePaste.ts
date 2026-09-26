@@ -1,6 +1,7 @@
 import { useCallback, useRef } from "react";
 import type { TFunction } from "i18next";
 import { saveImage } from "./api";
+import type { SourceEditorHandle } from "../markdown/SourceEditor";
 
 const MAX_IMAGE_SIZE = 20 * 1024 * 1024; // 20 MB
 
@@ -15,7 +16,7 @@ const MIME_TO_EXT: Record<string, string> = {
 
 interface UseImagePasteOptions {
   noteId: string | null;
-  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  textareaRef: React.RefObject<HTMLTextAreaElement | SourceEditorHandle | null>;
   setContent: (content: string) => void;
   markDirty: () => void;
   onEnsureNoteSaved: () => Promise<string | null>;
@@ -40,7 +41,7 @@ async function processImageFile(file: File, noteId: string, t?: TFunction): Prom
 }
 
 export function insertTextAtCursor(
-  textarea: HTMLTextAreaElement,
+  textarea: HTMLTextAreaElement | SourceEditorHandle,
   setContent: (value: string) => void,
   text: string,
 ) {
@@ -49,6 +50,10 @@ export function insertTextAtCursor(
   const insertion = (needsLeadingNewline ? "\n" : "") + text + "\n";
 
   textarea.focus();
+  if ("insertText" in textarea) {
+    textarea.insertText(insertion);
+    return;
+  }
   document.execCommand("insertText", false, insertion);
   setContent(textarea.value);
 }
@@ -118,7 +123,7 @@ export function useImagePaste({
   );
 
   const handlePaste = useCallback(
-    (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    (event: React.ClipboardEvent<HTMLElement>) => {
       if (disabled) return;
       const files = getImageFiles(event.clipboardData);
       if (files.length === 0) return;
@@ -129,7 +134,7 @@ export function useImagePaste({
   );
 
   const handleDrop = useCallback(
-    (event: React.DragEvent<HTMLTextAreaElement>) => {
+    (event: React.DragEvent<HTMLElement>) => {
       if (disabled) return;
       const files = getImageFiles(event.dataTransfer);
       if (files.length === 0) return;
@@ -140,7 +145,7 @@ export function useImagePaste({
   );
 
   const handleDragOver = useCallback(
-    (event: React.DragEvent<HTMLTextAreaElement>) => {
+    (event: React.DragEvent<HTMLElement>) => {
       if (disabled) return;
       const hasImage = Array.from(event.dataTransfer.items).some(
         (item) => item.kind === "file" && item.type in MIME_TO_EXT,

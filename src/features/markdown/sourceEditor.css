@@ -1,0 +1,88 @@
+.source-editor {
+  min-height: 8rem;
+  user-select: text;
+}
+.source-editor .cm-editor {
+  background: transparent;
+  font: inherit;
+}
+.source-editor .cm-editor.cm-focused {
+  outline: none;
+}
+.source-editor .cm-scroller {
+  font-family: var(--font-body, inherit);
+  line-height: var(--appearance-line-height, 1.8);
+  overflow: visible;
+}
+.source-editor .cm-content {
+  padding: 0 0 2rem;
+  min-height: 8rem;
+  caret-color: currentColor;
+}
+.source-editor .cm-line {
+  padding: 0;
+}
+.source-editor.is-reading .cm-content,
+.source-editor.is-reading .cm-content * {
+  cursor: default;
+}
+.source-editor.is-reading .cm-content {
+  caret-color: transparent;
+}
+.source-editor.is-reading .cm-content ::selection {
+  background: transparent;
+}
+.source-heading {
+  font-weight: 700;
+  line-height: 1.5;
+  padding-block: 0.35em !important;
+}
+.source-h1 {
+  font-size: 1.65em;
+}
+.source-h2 {
+  font-size: 1.4em;
+}
+.source-h3 {
+  font-size: 1.2em;
+}
+.source-strong {
+  font-weight: 700;
+}
+.source-em {
+  font-style: italic;
+}
+.source-strike {
+  text-decoration: line-through;
+}
+.source-code,
+.source-fence {
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  font-family: monospace;
+}
+.source-link {
+  color: var(--color-accent, #658976);
+  text-decoration: underline;
+}
+.source-marker {
+  display: inline-block;
+  min-width: 0.7em;
+  color: var(--color-accent, #849b7b);
+  vertical-align: baseline;
+}
+input.source-marker {
+  width: 1em;
+  height: 1em;
+  margin: 0 0.25em 0 0;
+  accent-color: #849b7b;
+  cursor: default;
+}
+.source-rich-block {
+  max-width: 100%;
+  overflow: auto;
+}
+.source-rich-inline,
+.source-rich-inline .markdown-selectable,
+.source-rich-inline .markdown-selectable > p {
+  display: inline;
+}

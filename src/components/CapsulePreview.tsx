@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { CapsuleEntry } from "./CapsuleRail";
@@ -19,23 +19,55 @@ export function CapsulePreview() {
   const closing = useRef(false);
   const previewAreaRef = useRef<HTMLElement>(null);
   const selecting = useRef(false);
+  const savingTask = useRef(false);
+  const taskEpoch = useRef(0);
+  const reconcile = useRef<() => void>(() => {});
   const current = useRef<Preview | null>(null);
   current.current = preview;
   useEffect(() => {
     let active = true;
+    let refreshQueued = false;
+    let refreshRunning = false;
     const accept = (value: Preview | null) => {
       if (active && value)
         setPreview((old) => (!old || value.generation >= old.generation ? value : old));
     };
     const refreshEntry = () => {
-      const entry = current.current?.entry;
-      if (!entry) return;
+      if (savingTask.current || refreshRunning) {
+        refreshQueued = true;
+        return;
+      }
+      const snapshot = current.current;
+      const entry = snapshot?.entry;
+      if (!entry || !snapshot) return;
+      refreshRunning = true;
+      refreshQueued = false;
+      const epoch = taskEpoch.current;
       void invoke<CapsuleEntry | null>("surface_capsule_entry", { key: entry.key })
         .then((next) => {
+          if (savingTask.current || taskEpoch.current !== epoch) {
+            refreshQueued = true;
+            return;
+          }
           if (active && next)
-            setPreview((old) => (old?.entry.key === next.key ? { ...old, entry: next } : old));
+            setPreview((old) =>
+              old?.entry.key === next.key &&
+              old.generation === snapshot.generation &&
+              (old.entry.preview !== next.preview ||
+                old.entry.title !== next.title ||
+                old.entry.truncated !== next.truncated)
+                ? { ...old, entry: next }
+                : old,
+            );
         })
-        .catch(() => undefined);
+        .catch(() => undefined)
+        .finally(() => {
+          refreshRunning = false;
+          if (active && refreshQueued && !savingTask.current) refreshEntry();
+        });
+    };
+    reconcile.current = () => {
+      if (refreshQueued) refreshEntry();
     };
     const listeners = [
       listen<Preview>("capsule-preview-changed", (event) => {
@@ -132,9 +164,19 @@ export function CapsulePreview() {
     };
   }, [preview?.entry.key, preview?.generation]);
   const toggleTask = async (offset: number, checked: boolean) => {
-    if (!preview || busy) return;
+    if (!preview || busy || savingTask.current) return;
     const key = preview.entry.key;
     const generation = preview.generation;
+    const optimistic = toggleTaskMarker(preview.entry.preview, offset, checked);
+    if (optimistic == null) return;
+    savingTask.current = true;
+    taskEpoch.current++;
+    const previous = preview.entry.preview;
+    setPreview((old) =>
+      old?.entry.key === key && old.generation === generation
+        ? { ...old, entry: { ...old.entry, preview: optimistic } }
+        : old,
+    );
     setBusy(true);
     try {
       if (key.startsWith("linked:")) {
@@ -154,17 +196,25 @@ export function CapsulePreview() {
         if (next == null) return;
         await updateNote(id, { title: latest.title, category: latest.category, content: next });
       }
-      const entry = await invoke<CapsuleEntry | null>("surface_capsule_entry", { key });
-      if (entry)
-        setPreview((old) =>
-          old?.generation === generation && old.entry.key === key ? { ...old, entry } : old,
-        );
     } catch (cause) {
       setError(String(cause));
+      setPreview((old) =>
+        old?.entry.key === key && old.generation === generation
+          ? { ...old, entry: { ...old.entry, preview: previous } }
+          : old,
+      );
     } finally {
+      savingTask.current = false;
+      // 保存产生的多个通知合并为一次核对；相同正文保持现有 DOM、generation 和滚动。
+      reconcile.current();
       setBusy(false);
     }
   };
+  const taskAction = useRef(toggleTask);
+  taskAction.current = toggleTask;
+  const handleTaskToggle = useCallback((offset: number, checked: boolean) => {
+    void taskAction.current(offset, checked);
+  }, []);
   if (!preview) return null;
   return (
     <article
@@ -246,7 +296,7 @@ export function CapsulePreview() {
           <MarkdownPreviewLazy
             content={preview.entry.preview}
             fontSize={13}
-            onTaskToggle={(offset, checked) => void toggleTask(offset, checked)}
+            onTaskToggle={handleTaskToggle}
           />
         ) : (
           <p className="preview-empty">空白便签</p>
