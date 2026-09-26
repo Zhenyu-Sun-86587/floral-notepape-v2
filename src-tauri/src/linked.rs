@@ -89,10 +89,22 @@ fn draft_path(id: &str) -> Result<PathBuf, AppError> {
 
 pub fn read_draft(id: &str) -> Result<Option<LinkedDraft>, AppError> {
     let path = draft_path(id)?;
-    if !path.exists() {
-        return Ok(None);
-    }
-    let draft: LinkedDraft = serde_json::from_slice(&fs::read(path)?)?;
+    let bytes = match fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(cause) if cause.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(cause) => {
+            return Err(error(
+                "linkedDraftRead",
+                format!("读取本地草稿 {} 失败：{cause}", path.display()),
+            ))
+        }
+    };
+    let draft: LinkedDraft = serde_json::from_slice(&bytes).map_err(|cause| {
+        error(
+            "linkedDraftRead",
+            format!("解析本地草稿 {} 失败：{cause}", path.display()),
+        )
+    })?;
     Ok(if draft.content.is_some() {
         Some(draft)
     } else {

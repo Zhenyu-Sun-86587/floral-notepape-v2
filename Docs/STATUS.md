@@ -1,6 +1,10 @@
 # Hermes Surface Dev：Windows 阶段状态
 
-当前 Windows 源码版本为 **1.7.8**；历史 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
+当前 Windows 源码版本为 **1.7.9**；历史 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
+
+## 1.7.9 外部文件链路
+
+修复配置共用临时文件的并发竞争、Windows 扩展路径漏通知及内部笔记列表阻断外部初始化；读写重试移出 UI 线程。详见 [RELEASE_1.7.9](RELEASE_1.7.9.md)。
 
 ## 1.7.8 编辑区符号与首行
 

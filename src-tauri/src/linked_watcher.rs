@@ -23,6 +23,32 @@ struct ContentChanged {
 
 static WATCHER: OnceLock<Mutex<WatcherState>> = OnceLock::new();
 
+fn event_affects_binding(event: &Path, binding: &str) -> bool {
+    fn normalize(path: &str) -> String {
+        #[cfg(target_os = "windows")]
+        {
+            let path = path.replace('/', "\\");
+            let path = if let Some(tail) = path.strip_prefix("\\\\?\\UNC\\") {
+                format!("\\\\{tail}")
+            } else {
+                path.strip_prefix("\\\\?\\").unwrap_or(&path).to_owned()
+            };
+            path.trim_end_matches('\\').to_lowercase()
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            path.trim_end_matches('/').to_owned()
+        }
+    }
+    // 删除/替换时不能 canonicalize；统一路径前缀后也接受父目录的变更事件。
+    let event = normalize(&event.to_string_lossy());
+    let binding = normalize(binding);
+    event == binding
+        || binding
+            .strip_prefix(&event)
+            .is_some_and(|tail| tail.starts_with(std::path::MAIN_SEPARATOR))
+}
+
 fn watch(path: &Path, mode: RecursiveMode) -> Result<(), AppError> {
     let Some(state) = WATCHER.get() else {
         return Ok(());
@@ -194,9 +220,9 @@ pub fn start(app: AppHandle) -> Result<(), AppError> {
                     }
                     if let Ok(bindings) = linked::list() {
                         for binding in bindings {
-                            let affected = paths.iter().any(|path: &PathBuf| {
-                                path.to_string_lossy().eq_ignore_ascii_case(&binding.path)
-                            });
+                            let affected = paths
+                                .iter()
+                                .any(|path: &PathBuf| event_affects_binding(path, &binding.path));
                             if !affected {
                                 continue;
                             }
@@ -221,4 +247,33 @@ pub fn start(app: AppHandle) -> Result<(), AppError> {
         }
     });
     Ok(())
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod tests {
+    use super::*;
+    #[test]
+    fn watcher_matches_extended_paths_and_directory_replacement() {
+        let binding = r"\\?\C:\Sync\HermesSurface\Today.md";
+        assert!(event_affects_binding(
+            Path::new(r"C:\Sync\HermesSurface\Today.md"),
+            binding
+        ));
+        assert!(event_affects_binding(
+            Path::new(r"c:\sync\HermesSurface"),
+            binding
+        ));
+        assert!(!event_affects_binding(
+            Path::new(r"C:\Sync\HermesSurface\Today.md.tmp"),
+            binding
+        ));
+        assert!(!event_affects_binding(
+            Path::new(r"C:\Sync\Hermes"),
+            binding
+        ));
+        assert!(event_affects_binding(
+            Path::new(r"\\server\share\Today.md"),
+            r"\\?\UNC\server\share\Today.md"
+        ));
+    }
 }

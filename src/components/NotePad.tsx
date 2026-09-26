@@ -269,8 +269,11 @@ export function NotePad({
     let cancelled = false;
 
     async function bootstrap() {
+      let stage = "加载本地配置";
       try {
-        const [loadedConfig] = await Promise.all([getConfig(), refreshNotes()]);
+        // 内部笔记列表不是外部正文的前置条件，列表异常不能留下空白绑定窗口。
+        void refreshNotes().catch((error) => console.error("加载笔记列表失败", error));
+        const loadedConfig = await getConfig();
         if (!cancelled) {
           setNoteSurfaceAutoSave(loadedConfig.noteSurfaceAutoSave);
           setSurfaceFontSize(loadedConfig.surfaceFontSize ?? 14);
@@ -287,6 +290,7 @@ export function NotePad({
           );
         }
         if (initialBindingId) {
+          stage = "加载外部文件和本地草稿";
           const [linked, draft] = await Promise.all([
             readLinkedFile(initialBindingId),
             readLinkedDraft(initialBindingId),
@@ -309,11 +313,12 @@ export function NotePad({
             if (recovered && draft.baseRevision !== linked.revision) setLinkedConflict(linked);
           }
         } else if (initialNoteId) {
+          stage = "加载内部便签";
           const note = await getNote(initialNoteId);
           if (!cancelled) applyNote(note);
         }
       } catch (error) {
-        if (!cancelled) showToast(getErrorMessage(error));
+        if (!cancelled) showToast(`${stage}失败：${getErrorMessage(error)}`);
       } finally {
         if (!cancelled) setBootstrapReady(true);
       }

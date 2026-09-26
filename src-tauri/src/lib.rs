@@ -278,8 +278,15 @@ fn linked_scan_roots(app: AppHandle) -> Result<Vec<linked::LinkedBinding>, AppEr
 }
 
 #[tauri::command]
-fn linked_read(app: AppHandle, id: String) -> Result<linked::LinkedContent, AppError> {
-    let result = linked::read(&id)?;
+async fn linked_read(app: AppHandle, id: String) -> Result<linked::LinkedContent, AppError> {
+    // 同步替换的读取重试可能等待，不能阻塞窗口消息线程。
+    let result = tauri::async_runtime::spawn_blocking(move || linked::read(&id))
+        .await
+        .map_err(|cause| AppError {
+            code: "linkedReadTask".into(),
+            message: cause.to_string(),
+            details: Default::default(),
+        })??;
     // 仅开放用户已绑定目录（或单文件父目录）的本地图片给 asset 协议。
     app.asset_protocol_scope()
         .allow_directory(&result.image_root, true)?;
@@ -301,13 +308,21 @@ fn linked_write_draft(
 }
 
 #[tauri::command]
-fn linked_save(
+async fn linked_save(
     id: String,
     content: String,
     expected_revision: String,
     overwrite: bool,
 ) -> Result<String, AppError> {
-    linked::save(&id, &content, &expected_revision, overwrite)
+    tauri::async_runtime::spawn_blocking(move || {
+        linked::save(&id, &content, &expected_revision, overwrite)
+    })
+    .await
+    .map_err(|cause| AppError {
+        code: "linkedSaveTask".into(),
+        message: cause.to_string(),
+        details: Default::default(),
+    })?
 }
 
 #[tauri::command]
