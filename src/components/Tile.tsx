@@ -7,8 +7,10 @@ import { MarkdownPreviewLazy as MarkdownPreview } from "../features/markdown/Mar
 import type { SourceEditorHandle } from "../features/markdown/SourceEditor";
 
 // 列表中的只读 Tile 不加载编辑器；独立便签首次打开时才按需加载一次。
-const SourceEditor = lazy(() =>
-  import("../features/markdown/SourceEditor").then((module) => ({ default: module.SourceEditor })),
+const MarkdownSurface = lazy(() =>
+  import("../features/markdown/MarkdownSurface").then((module) => ({
+    default: module.MarkdownSurface,
+  })),
 );
 
 export interface TileProps extends Omit<
@@ -192,7 +194,7 @@ export function Tile({
         {contentEditorRef ? (
           <div style={{ color: contentColor }}>
             <Suspense fallback={<div className="min-h-[8rem]" />}>
-              <SourceEditor
+              <MarkdownSurface
                 content={content}
                 editing={editing}
                 locked={locked}
@@ -202,7 +204,6 @@ export function Tile({
                 onChange={onContentChange}
                 onActivate={onEditorActivate}
                 onDeactivate={onEditorDeactivate}
-                onTaskToggle={onTaskToggle}
                 imageBaseDir={imageBaseDir}
                 imageRootDir={imageRootDir}
                 allowRemoteImages={allowRemoteImages}

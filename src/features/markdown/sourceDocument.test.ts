@@ -3,8 +3,6 @@ import { EditorState, Transaction } from "@codemirror/state";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { syntaxTree } from "@codemirror/language";
 import { history, undo } from "@codemirror/commands";
-import { decorate } from "./sourcePresentation";
-import { containerPrefixes } from "./containerPrefix";
 import { mathSyntax, sourceChange } from "./sourceDocument";
 
 describe("常驻 Markdown 源文档", () => {
@@ -13,32 +11,9 @@ describe("常驻 Markdown 源文档", () => {
     doc: content,
     extensions: [markdown({ base: markdownLanguage, extensions: mathSyntax }), history()],
   });
-  const props = { content, editing: false, markdown: true, fontSize: 14 };
-  it("隐藏语法只生成装饰，保留源码和任务偏移", () => {
-    const decorations = decorate(state, false, 0, content.length, props);
-    const hidden: string[] = [];
-    decorations.between(0, content.length, (from, to, value) => {
-      if (!value.spec.widget && !value.spec.class && from < to)
-        hidden.push(content.slice(from, to));
-    });
-    expect(hidden).toContain("**");
-    expect(containerPrefixes(state).find((row) => row.task)?.task?.sourceFrom).toBe(
-      content.indexOf("[ ]"),
-    );
+  it("源码语法树保留 Markdown 与数学标记", () => {
     expect(state.doc.toString()).toBe(content);
     expect(syntaxTree(state).toString()).toContain("DisplayMath");
-  });
-  it("当前行显露粗体标记，其他行仍保持格式", () => {
-    const focused = state.update({ selection: { anchor: content.indexOf("world") + 3 } }).state;
-    const decorations = decorate(focused, true, 0, content.length, { ...props, editing: true });
-    const hidden: string[] = [];
-    decorations.between(0, content.length, (from, to, value) => {
-      if (!value.spec.widget && !value.spec.class && from < to)
-        hidden.push(content.slice(from, to));
-    });
-    expect(hidden).not.toContain("**");
-    expect(hidden).toContain("#");
-    expect(focused.selection.main.head).toBe(content.indexOf("world") + 3);
   });
   it("外部局部更新映射光标，普通输入仍可撤销", () => {
     let current = state.update({ selection: { anchor: content.indexOf("world") + 2 } }).state;

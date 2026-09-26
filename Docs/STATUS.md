@@ -1,6 +1,13 @@
 # Hermes Surface Dev：Windows 阶段状态
 
-当前 Windows 源码版本为 **1.7.4**；历史 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
+当前 Windows 源码版本为 **1.7.5**；历史 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
+
+## 1.7.5 Editor 架构纠偏
+
+- 单一常驻 CodeMirror 文档负责源码编辑，MarkdownPreview 负责阅读排版；MarkdownSurface 通过 AST source positions 协调点击定位、选区与滚动锚点。
+- 删除实验性容器前缀、富块替换与伪 WYSIWYG 装饰；阅读任务通过编辑器单字符事务写回既有保存管线。1.7.4 Capsule 实现完整保留。
+- 编辑期间冻结派生阅读快照，保护 undo 与中文 IME；自动验证结果见 [RELEASE_1.7.5](RELEASE_1.7.5.md)。Windows GUI、实际滚动和 macOS 均为 **manual verification required**。
+- 当前架构以 [EDITOR_ARCHITECTURE](EDITOR_ARCHITECTURE.md) 为准；下列旧版前缀/装饰描述仅为历史记录。
 
 ## 1.7.4 胶囊 viewport 与 Markdown 呈现修正
 

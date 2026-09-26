@@ -1,5 +1,22 @@
 # 首轮人工验收
 
+## 1.7.5 Editor only — manual verification required
+
+固定使用 [markdown-presentation-1.7.4.md](fixtures/markdown-presentation-1.7.4.md)。本轮不执行 GUI/E2E；以下均由用户人工验收，构建通过不代表完成。
+
+- [ ] 阅读状态点击最后一节“检查光标”的“光”：进入完整 Markdown source，caret 在对应字符附近，不到行首/文末/顶部。
+- [ ] 在约第 50 行编辑后 blur：对应 rendered paragraph 留在相近屏幕高度；另一段的新点击覆盖旧 caret。测试长文、软换行、缩放，以及文档首尾的滚动边界。
+- [ ] 编辑一行、blur、重新进入、Ctrl+Z：撤销之前输入；通过工具栏或键盘返回时原选区仍在。
+- [ ] 中文 IME 连续输入“中文输入法连续测试”：候选期间不退出、不重复字符、不跳 caret；临时窗口焦点变化不结束组合输入。
+- [ ] 阅读态直接勾选普通/嵌套/引用任务，不进入编辑、不跳动；重复任务只修改点击项。绑定外部文件时继续检查 revision 冲突与重新载入。
+- [ ] 阅读链接/裸 URL 普通点击直接打开，不进入编辑；编辑态普通点击放 caret，Ctrl/Cmd+Click 打开。
+- [ ] 阅读 table、inline/display math、matrix、Mermaid、图片及受阻占位正常；点击普通区域进入对应源范围，复制代码按钮不进入编辑。
+- [ ] fixture 的粗体、斜体、删除线、inline code、完整 HR、有序/无序/嵌套列表、task、quote、fenced code 与 plain text fence 均交给 MarkdownPreview 正常呈现。纯文本 fence 中任务/粗体保持字面文本。
+- [ ] toolbar、标题输入框、图片对话框和菜单内部焦点交接不闪烁；真正离开后回到阅读；锁定状态不允许编辑/勾选。
+- [ ] 阅读正文可拖选、复制；Tab 可到达链接/checkbox/按钮，隐藏编辑层不会进入 Tab 顺序或辅助技术树。
+- [ ] 编辑态完整显示 `- [ ] **text**` 等标记，缩进和列表 Enter 延续正常；两层文字继续使用 surface semantic colors。
+- [ ] 图片/Mermaid 异步完成时锚点合理；用户手动滚动后不会被旧 caret 自动拉回。纯文本模式同样可读写。
+
 ## 1.7.4 胶囊 viewport / Markdown 呈现
 
 状态：以下 GUI 项全部 **未测 / manual verification required**；由用户在 Windows 真机执行。使用 [固定回归文本](fixtures/markdown-presentation-1.7.4.md) 创建测试便签。

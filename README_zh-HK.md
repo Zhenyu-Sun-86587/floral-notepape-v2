@@ -6,7 +6,7 @@
 
 [下載 Windows 1.7.2](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.2) · [回報問題](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [简体中文](README.md)
 
-**平台狀態：**目前提供 Windows x64 NSIS 安裝程式。macOS 正由協作者適配，本 fork 尚無 Mac 安裝包。1.7.2 的常駐 Markdown 編輯器與膠囊互動仍待人工 GUI 驗收；詳見[項目狀態](Docs/STATUS.md)。
+**平台狀態：**目前提供 Windows x64 NSIS 安裝程式。macOS 正由協作者適配，本 fork 尚無 Mac 安裝包。1.7.5 以 AST 位置橋接常駐 CodeMirror 源碼編輯器與 MarkdownPreview 閱讀層，膠囊保留 1.7.4 行為；點擊定位、捲動與 IME 仍待人工 GUI 驗收；詳見[項目狀態](Docs/STATUS.md)。
 
 ## 功能
 

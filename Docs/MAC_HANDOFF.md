@@ -1,5 +1,12 @@
 # macOS 开发交接：还原 Windows 便签体验
 
+## 1.7.5 源码增量（Mac 未编译、未实测）
+
+- 以 [EDITOR_ARCHITECTURE](EDITOR_ARCHITECTURE.md) 替代旧版 CodeMirror 装饰说明。阅读使用 MarkdownPreview，编辑使用同一常驻 SourceEditor；不再迁移旧容器前缀或富块替换。
+- WebKit 重点验证 caretPositionFromPoint / caretRangeFromPoint 回退、AST UTF-16 源偏移、Cmd+Click、非活动层 inert、中文 IME 候选窗口和 source anchor 滚动补偿。
+- 使用 [固定回归文本](fixtures/markdown-presentation-1.7.4.md) 与 [1.7.5 人工清单](MANUAL_ACCEPTANCE.md)，核对 tasks、links、table、math、Mermaid、相对图片与外部冲突处理。GUI 与 macOS 构建仍为 **manual verification required**。
+- Capsule 在 1.7.5 冻结，保留 1.7.4 代码。以下旧版描述是历史背景，不是恢复 pseudo-WYSIWYG 的要求。
+
 ## 1.7.4 源码增量（Mac 未编译、未实测）
 
 - 胶囊 solver 的逻辑尺寸及端点物理投影位于跨平台 Rust 模型与 adapter 边界；macOS 应核对窗口原生尺寸、普通组不可滚动和各 scale 最末成员完整性。

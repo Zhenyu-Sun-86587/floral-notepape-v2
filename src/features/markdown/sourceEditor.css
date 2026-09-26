@@ -1,6 +1,7 @@
 .source-editor {
   min-height: 8rem;
   user-select: text;
+  color: var(--surface-text-primary, inherit);
 }
 .source-editor .cm-editor {
   background: transparent;
@@ -22,113 +23,30 @@
 .source-editor .cm-line {
   padding: 0;
 }
-.source-editor.is-reading .cm-content,
-.source-editor.is-reading .cm-content * {
-  cursor: default;
-}
-.source-editor.is-reading .cm-content {
-  caret-color: transparent;
-}
-.source-editor.is-reading .cm-content ::selection {
-  background: transparent;
-}
-.source-heading {
-  font-weight: 700;
-  line-height: 1.5;
-  padding-block: 0.35em !important;
-}
-.source-h1 {
-  font-size: 1.65em;
-}
-.source-h2 {
-  font-size: 1.4em;
-}
-.source-h3 {
-  font-size: 1.2em;
-}
-.source-h4 {
-  font-size: 1.1em;
-}
-.source-h5 {
-  font-size: 1.03em;
-}
-.source-h6 {
-  font-size: 1em;
-}
-.source-editor .cm-line.source-setext-underline {
-  height: 0;
-  min-height: 0;
-  line-height: 0;
-  font-size: 0;
-  overflow: clip;
-}
-.source-strong {
-  font-weight: 700;
-}
-.source-em {
-  font-style: italic;
-}
-.source-strike {
-  text-decoration: line-through;
-}
-.source-code,
-.source-fence {
-  background: color-mix(in srgb, currentColor 6%, transparent);
-  font-family: monospace;
-}
-.source-link {
-  color: var(--surface-accent, var(--color-accent, #658976));
-  text-decoration: underline;
-}
-.source-editor.is-reading .source-link {
-  cursor: pointer;
-}
-.source-horizontal-rule {
+.markdown-surface {
   position: relative;
+  min-height: 8rem;
+  user-select: text;
+  overflow-anchor: none;
 }
-.source-horizontal-rule-source {
-  color: transparent;
+.markdown-read-layer,
+.markdown-edit-layer {
+  display: flow-root;
 }
-.source-horizontal-rule::after {
-  content: "";
+/* 非活动层保留实例，但不能参与高度、焦点或命中计算。 */
+.markdown-surface .is-inactive {
   position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  border-top: 1px solid var(--surface-text-muted, currentColor);
+  inset: 0 0 auto;
+  visibility: hidden;
   pointer-events: none;
-}
-.source-rich-block {
-  max-width: 100%;
-  overflow: auto;
-}
-.source-rich-inline,
-.source-rich-inline .markdown-selectable,
-.source-rich-inline .markdown-selectable > p {
-  display: inline;
-}
-/* 整个源码前缀映射到一个语义槽；列表和任务共享 marker/body 两列。 */
-.source-editor .cm-line.source-container-line {
-  padding-left: var(--container-indent, 0px);
-  text-indent: calc(-1 * var(--container-indent, 0px));
-}
-.source-prefix-visual {
-  display: inline-flex;
-  box-sizing: border-box;
+  height: 0;
   overflow: hidden;
-  white-space: nowrap;
-  vertical-align: baseline;
-  color: var(--surface-accent, var(--color-accent, #849b7b));
 }
-.source-prefix-cell {
-  display: inline-block;
-  flex: 0 0 1.8em;
-  text-align: left;
-  text-indent: 0;
+.markdown-read-layer [data-source-text-start] {
+  display: inline;
+  font: inherit;
+  color: inherit;
 }
-.source-prefix-quote {
-  flex-basis: 1.5em;
-}
-.source-prefix-task {
-  cursor: pointer;
+.markdown-read-layer hr {
+  background: var(--surface-text-muted, currentColor);
 }

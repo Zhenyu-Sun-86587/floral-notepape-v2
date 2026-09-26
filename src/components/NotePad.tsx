@@ -68,7 +68,6 @@ import {
 import { NotepadOpenPanel } from "./NotepadOpenPanel";
 import { Tile } from "./Tile";
 import type { SourceEditorHandle } from "../features/markdown/SourceEditor";
-import { toggleTaskMarker } from "../features/markdown/taskMarker";
 import { markdownImageDirectory } from "../features/markdown/imageSrc";
 import { continueMarkdownList } from "../features/markdown/listEnter";
 
@@ -816,7 +815,7 @@ export function NotePad({
   );
 
   const finishTileWriting = useCallback(async () => {
-    if (!tileWriting) return;
+    if (!tileWriting || tileContentRef.current?.composing) return;
     try {
       await saveNote();
       await invoke("surface_edit_mode", { editing: false });
@@ -1214,14 +1213,6 @@ export function NotePad({
           imageBaseDir={linkedImageScope?.baseDir ?? imageBaseDir ?? undefined}
           imageRootDir={linkedImageScope?.rootDir}
           allowRemoteImages={allowRemoteImages}
-          onTaskToggle={(offset, checked) => {
-            const next = toggleTaskMarker(contentValueRef.current, offset, checked);
-            if (next == null) return;
-            contentValueRef.current = next;
-            setContent(next);
-            statusRef.current = "dirty";
-            setStatus("dirty");
-          }}
           editing={tileWriting}
           titleEditable={!initialBindingId}
           onTitleChange={(value) => {

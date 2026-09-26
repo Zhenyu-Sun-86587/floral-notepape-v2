@@ -2,26 +2,26 @@
 
 **简体中文** · [繁體中文](README_zh-HK.md) · [English](README_en-US.md)
 
-把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.4**。
+把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.5**。
 
 [下载 Windows 1.7.2](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.2) · [反馈问题](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [Mac 开发交接](Docs/MAC_HANDOFF.md)
 
-> **平台状态**：Windows x64 已提供 NSIS 安装包。macOS 正由协作者适配，当前没有本项目的 Mac 安装包。1.7.4 的小数 DPI 与 Markdown 呈现仍待人工 GUI 验收，详情见 [项目状态](Docs/STATUS.md)。
+> **平台状态**：Windows x64 已提供 NSIS 安装包。macOS 正由协作者适配，当前没有本项目的 Mac 安装包。1.7.5 的 Editor 点击定位、滚动和 IME 仍待人工 GUI 验收，详情见 [项目状态](Docs/STATUS.md)。
 
 ## 能做什么
 
 - **独立便签**：从笔记列表固定内部笔记或已绑定的外部 Markdown 文件。每张便签有自己的内容、位置和显示状态。
 - **原文件写回**：绑定 Markdown 目录后，在应用内编辑外部 `.md` 会保存到该文件；外部编辑器的修改会通知对应便签。导入 Markdown 则创建应用内副本，两种入口各有用途。
-- **同窗读写**：正文使用同一个 Markdown 源编辑器，点击文字定位光标，只显露当前行标记；Esc 或失焦后保存并恢复阅读呈现，保留光标与撤销。显式切换按钮仍在，窗口位置和尺寸不变。阅读支持 Markdown 预览、任务列表、代码、公式、图片与按需加载的 Mermaid。
+- **同窗读写**：阅读使用 MarkdownPreview，点击正文通过 AST 位置桥接进入常驻 CodeMirror，编辑时显示完整 Markdown 源码；Esc 或失焦后保存并恢复阅读呈现，保留光标与撤销。显式切换按钮仍在，窗口位置和尺寸不变。阅读支持 Markdown 预览、任务列表、代码、公式、图片与按需加载的 Mermaid。
 - **桌面窗口**：Windows 提供普通、置顶和桌面附着模式。桌面附着跟随桌面层；锁定后便签可见、主体鼠标穿透，原锁图标位置可解锁。
 - **贴边收纳**：把便签收成左、右或顶部色条，Windows 拖动色条可换边或跨屏。悬停可读/可复制预览，单击直接恢复原窗口；右键可关闭所选胶囊。12 色槽位持久分配；展开后胶囊保留，高亮当前成员。相邻组的前端拖动头可移动整组。
 - **外观与唤起**：主题、字体、背景与透明度可调整；支持托盘、静默启动和应用/单便签快捷键。Windows Acrylic 由系统控制，桌面附着模式不使用 Acrylic。
 
-  1.7.4 修正小数 DPI 下组窗口裁切，并把列表/任务/引用组合成语义视觉前缀；补齐横线、裸 URL、代码高亮、图片占位与文字对比度。范围与待验收项见 [发布说明](Docs/RELEASE_1.7.4.md)。
+  1.7.5 仅纠正 Editor 架构：源码编辑与派生 Markdown 阅读各司其职，保留选区、撤销与任务直接勾选。Capsule 冻结。范围与待验收项见 [发布说明](Docs/RELEASE_1.7.5.md) 和 [编辑器架构](Docs/EDITOR_ARCHITECTURE.md)。
 
 ## 下载安装
 
-1.7.4 本地构建安装包位于 `src-tauri/target/release/bundle/nsis/`；本轮只推送源码，不创建 GitHub Release。下方保留上一版已发布下载。
+1.7.5 本地构建安装包位于 `src-tauri/target/release/bundle/nsis/`；本轮只推送源码，不创建 GitHub Release。下方保留上一版已发布下载。
 
 下载 [v1.7.2 Windows x64 安装包](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/download/v1.7.2/Hermes.Surface.Dev_1.7.2_x64-setup.exe)。同一 [Release 页面](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.2) 提供 `SHA256SUMS.txt`；安装包 SHA-256 为：
 

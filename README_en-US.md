@@ -6,7 +6,7 @@ Keep Markdown notes on your desktop, edit them in place, and tuck them into a sc
 
 [Download Windows 1.7.2](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.2) · [Report an issue](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [中文说明](README.md)
 
-**Platform status:** A Windows x64 NSIS installer is available. macOS is being adapted by a collaborator; this fork has no Mac installer yet. Focus-driven source editing and capsule interactions in 1.7.2 still need manual GUI validation. See [project status](Docs/STATUS.md).
+**Platform status:** A Windows x64 NSIS installer is available. macOS is being adapted by a collaborator; this fork has no Mac installer yet. Version 1.7.5 separates persistent CodeMirror source editing from derived MarkdownPreview reading through AST source positions. Capsules retain 1.7.4 behavior. Click placement, scroll continuity and IME still need manual GUI validation. See [project status](Docs/STATUS.md).
 
 ## Features
 

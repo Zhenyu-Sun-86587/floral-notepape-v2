@@ -17,8 +17,17 @@ import { hideLeadingFrontmatter } from "./frontmatter";
 import remarkTaskOffsets from "./remarkTaskOffsets";
 import { highlightCode } from "./highlightCode";
 import { MermaidBlock } from "./MermaidBlock";
+import { rehypeSourcePosition, sourceAttributes } from "./sourcePosition";
 
-function CodeBlock({ children, language }: { children: React.ReactNode; language?: string }) {
+function CodeBlock({
+  children,
+  language,
+  node,
+}: {
+  children: React.ReactNode;
+  language?: string;
+  node?: { properties?: Record<string, unknown> };
+}) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const source = extractText(children);
@@ -32,10 +41,15 @@ function CodeBlock({ children, language }: { children: React.ReactNode; language
     });
   }, [children]);
 
-  if (language?.toLowerCase() === "mermaid") return <MermaidBlock source={source} />;
+  if (language?.toLowerCase() === "mermaid")
+    return (
+      <div {...sourceAttributes(node)} data-source-opaque>
+        <MermaidBlock source={source} />
+      </div>
+    );
 
   return (
-    <div className="markdown-code-block my-3 relative group">
+    <div {...sourceAttributes(node)} className="markdown-code-block my-3 relative group">
       <pre
         className={`markdown-code-scroll m-0 px-4 rounded bg-paper-warm/80 overflow-x-auto ${
           language ? "pt-8 pb-3" : "py-3"
@@ -83,6 +97,7 @@ interface MarkdownPreviewProps {
   content: string;
   fontSize?: number;
   renderHtml?: boolean;
+  sourceMapping?: boolean;
   imageBaseDir?: string;
   imageRootDir?: string;
   allowRemoteImages?: boolean;
@@ -172,8 +187,12 @@ function Blockquote({
     };
 
     return (
-      <div className={`markdown-alert markdown-alert-${alertType}`} role="note">
-        <p className="markdown-alert-title">
+      <div
+        {...sourceAttributes(node)}
+        className={`markdown-alert markdown-alert-${alertType}`}
+        role="note"
+      >
+        <p {...sourceAttributes(node)} className="markdown-alert-title">
           <AlertIcon type={alertType} />
           {alertTitleMap[alertType] ?? alertType.toUpperCase()}
         </p>
@@ -182,76 +201,131 @@ function Blockquote({
     );
   }
   return (
-    <blockquote className="border-l-2 border-bamboo/40 pl-4 my-3 text-ink-soft italic leading-[1.9]">
+    <blockquote
+      {...sourceAttributes(node)}
+      className="border-l-2 border-bamboo/40 pl-4 my-3 text-ink-soft italic leading-[1.9]"
+    >
       {children}
     </blockquote>
   );
 }
 
 const staticComponents: Components = {
-  h1: ({ children, id }) => (
-    <h1 id={id} className="text-[1.57em] font-display font-bold text-ink mt-6 mb-4 tracking-wide">
+  h1: ({ children, id, node }) => (
+    <h1
+      {...sourceAttributes(node)}
+      id={id}
+      className="text-[1.57em] font-display font-bold text-ink mt-6 mb-4 tracking-wide"
+    >
       {children}
     </h1>
   ),
-  h2: ({ children, id }) => (
-    <h2 id={id} className="text-[1.21em] font-display font-bold text-ink mt-7 mb-3 tracking-wide">
+  h2: ({ children, id, node }) => (
+    <h2
+      {...sourceAttributes(node)}
+      id={id}
+      className="text-[1.21em] font-display font-bold text-ink mt-7 mb-3 tracking-wide"
+    >
       {children}
     </h2>
   ),
-  h3: ({ children, id }) => (
-    <h3 id={id} className="text-[1.07em] font-display font-bold text-ink mt-5 mb-2 tracking-wide">
+  h3: ({ children, id, node }) => (
+    <h3
+      {...sourceAttributes(node)}
+      id={id}
+      className="text-[1.07em] font-display font-bold text-ink mt-5 mb-2 tracking-wide"
+    >
       {children}
     </h3>
   ),
-  h4: ({ children, id }) => (
-    <h4 id={id} className="text-[1em] font-display font-semibold text-ink mt-4 mb-2 tracking-wide">
+  h4: ({ children, id, node }) => (
+    <h4
+      {...sourceAttributes(node)}
+      id={id}
+      className="text-[1em] font-display font-semibold text-ink mt-4 mb-2 tracking-wide"
+    >
       {children}
     </h4>
   ),
-  h5: ({ children, id }) => (
-    <h5 id={id} className="text-[0.96em] font-display font-semibold text-ink mt-3 mb-2">
+  h5: ({ children, id, node }) => (
+    <h5
+      {...sourceAttributes(node)}
+      id={id}
+      className="text-[0.96em] font-display font-semibold text-ink mt-3 mb-2"
+    >
       {children}
     </h5>
   ),
-  h6: ({ children, id }) => (
-    <h6 id={id} className="text-[0.92em] font-display font-semibold text-ink mt-3 mb-2">
+  h6: ({ children, id, node }) => (
+    <h6
+      {...sourceAttributes(node)}
+      id={id}
+      className="text-[0.92em] font-display font-semibold text-ink mt-3 mb-2"
+    >
       {children}
     </h6>
   ),
-  p: ({ children }) => <p className="text-ink-soft leading-[1.9]">{children}</p>,
-  strong: ({ children }) => <strong className="font-semibold text-ink">{children}</strong>,
-  em: ({ children }) => <em className="italic text-bamboo-light">{children}</em>,
+  p: ({ children, node }) => (
+    <p {...sourceAttributes(node)} className="text-ink-soft leading-[1.9]">
+      {children}
+    </p>
+  ),
+  strong: ({ children, node }) => (
+    <strong {...sourceAttributes(node)} className="font-semibold text-ink">
+      {children}
+    </strong>
+  ),
+  em: ({ children, node }) => (
+    <em {...sourceAttributes(node)} className="italic text-bamboo-light">
+      {children}
+    </em>
+  ),
   blockquote: Blockquote,
-  ul: ({ children }) => (
-    <ul className="ml-4 text-ink-soft leading-[1.9] list-disc list-outside marker:text-bamboo/40">
+  ul: ({ children, node }) => (
+    <ul
+      {...sourceAttributes(node)}
+      className="ml-4 text-ink-soft leading-[1.9] list-disc list-outside marker:text-bamboo/40"
+    >
       {children}
     </ul>
   ),
-  ol: ({ children }) => (
-    <ol className="ml-4 text-ink-soft leading-[1.9] list-decimal list-outside marker:text-bamboo/50 marker:font-mono marker:text-[0.85em]">
+  ol: ({ children, node, start }) => (
+    <ol
+      {...sourceAttributes(node)}
+      start={start}
+      className="ml-4 text-ink-soft leading-[1.9] list-decimal list-outside marker:text-bamboo/50 marker:font-mono marker:text-[0.85em]"
+    >
       {children}
     </ol>
   ),
-  hr: () => (
-    <hr className="my-6 border-none h-px bg-gradient-to-r from-transparent via-paper-deep to-transparent" />
+  hr: ({ node }) => (
+    <hr
+      {...sourceAttributes(node)}
+      className="my-6 border-none h-px bg-gradient-to-r from-transparent via-paper-deep to-transparent"
+    />
   ),
-  code: ({ className, children }) => {
+  code: ({ className, children, node }) => {
     const isBlock = className?.startsWith("language-") || String(children).includes("\n");
     if (isBlock) {
       return (
-        <code className="text-[0.85em] font-mono text-ink-soft leading-[1.8] whitespace-pre">
+        <code
+          {...sourceAttributes(node)}
+          className="text-[0.85em] font-mono text-ink-soft leading-[1.8] whitespace-pre"
+        >
           {children}
         </code>
       );
     }
     return (
-      <code className="px-1.5 py-0.5 text-[0.85em] font-mono bg-paper-warm rounded text-bamboo">
+      <code
+        {...sourceAttributes(node)}
+        className="px-1.5 py-0.5 text-[0.85em] font-mono bg-paper-warm rounded text-bamboo"
+      >
         {children}
       </code>
     );
   },
-  pre: ({ children }) => {
+  pre: ({ children, node }) => {
     // Extract language from the <code> element's className
     let language = "";
     if (
@@ -264,10 +338,15 @@ const staticComponents: Components = {
       if (match) language = match[1];
     }
 
-    return <CodeBlock language={language}>{children}</CodeBlock>;
+    return (
+      <CodeBlock language={language} node={node}>
+        {children}
+      </CodeBlock>
+    );
   },
-  a: ({ href, children }) => (
+  a: ({ href, children, node }) => (
     <a
+      {...sourceAttributes(node)}
       href={href}
       onClick={(e) => {
         e.preventDefault();
@@ -284,23 +363,31 @@ const staticComponents: Components = {
       {children}
     </a>
   ),
-  table: ({ children }) => (
-    <div className="my-3 overflow-x-auto">
-      <table className="w-full text-[0.93em] border-collapse border border-paper-deep/50">
+  table: ({ children, node }) => (
+    <div {...sourceAttributes(node)} className="my-3 overflow-x-auto">
+      <table
+        {...sourceAttributes(node)}
+        className="w-full text-[0.93em] border-collapse border border-paper-deep/50"
+      >
         {children}
       </table>
     </div>
   ),
-  th: ({ children, style }) => (
+  th: ({ children, style, node }) => (
     <th
+      {...sourceAttributes(node)}
       style={style}
       className="px-3 py-1.5 border border-paper-deep/40 font-semibold text-ink text-[0.85em] bg-paper-warm/50"
     >
       {children}
     </th>
   ),
-  td: ({ children, style }) => (
-    <td style={style} className="px-3 py-1.5 border border-paper-deep/35 text-ink-soft">
+  td: ({ children, style, node }) => (
+    <td
+      {...sourceAttributes(node)}
+      style={style}
+      className="px-3 py-1.5 border border-paper-deep/35 text-ink-soft"
+    >
       {children}
     </td>
   ),
@@ -332,6 +419,7 @@ export const MarkdownPreview = memo(function MarkdownPreview({
   content,
   fontSize = 14,
   renderHtml = false,
+  sourceMapping = false,
   imageBaseDir,
   imageRootDir,
   allowRemoteImages = false,
@@ -351,12 +439,23 @@ export const MarkdownPreview = memo(function MarkdownPreview({
     () => [remarkGfm, remarkMath, remarkAlerts, [remarkTaskOffsets, previewContent, sourceOffset]],
     [previewContent, sourceOffset],
   ) as Parameters<typeof Markdown>[0]["remarkPlugins"];
+  const rehypePlugins = useMemo(() => {
+    const pipeline = renderHtml ? rehypePluginsWithHtml! : rehypePluginsDefault;
+    if (!sourceMapping) return pipeline;
+    // 在 KaTeX 替换节点前注入位置；HTML 先清洗，防止原文伪造 source 属性。
+    const prefix = renderHtml ? pipeline.slice(0, 2) : [];
+    const suffix = renderHtml ? pipeline.slice(2) : pipeline;
+    return [...prefix, [rehypeSourcePosition, previewContent, sourceOffset], ...suffix];
+  }, [renderHtml, sourceMapping, previewContent, sourceOffset]) as Parameters<
+    typeof Markdown
+  >[0]["rehypePlugins"];
   const components = useMemo<Components>(
     () => ({
       ...staticComponents,
       h1: ({ children, id, node }) => (
         <h1
           id={id}
+          {...sourceAttributes(node)}
           data-source-start={sourceOffset + (node?.position?.start.offset ?? 0)}
           className="text-[1.57em] font-display font-bold text-ink mt-6 mb-4 tracking-wide"
         >
@@ -366,6 +465,7 @@ export const MarkdownPreview = memo(function MarkdownPreview({
       h2: ({ children, id, node }) => (
         <h2
           id={id}
+          {...sourceAttributes(node)}
           data-source-start={sourceOffset + (node?.position?.start.offset ?? 0)}
           className="text-[1.21em] font-display font-bold text-ink mt-7 mb-3 tracking-wide"
         >
@@ -375,6 +475,7 @@ export const MarkdownPreview = memo(function MarkdownPreview({
       h3: ({ children, id, node }) => (
         <h3
           id={id}
+          {...sourceAttributes(node)}
           data-source-start={sourceOffset + (node?.position?.start.offset ?? 0)}
           className="text-[1.07em] font-display font-bold text-ink mt-5 mb-2 tracking-wide"
         >
@@ -383,6 +484,7 @@ export const MarkdownPreview = memo(function MarkdownPreview({
       ),
       p: ({ children, node }) => (
         <p
+          {...sourceAttributes(node)}
           data-source-start={sourceOffset + (node?.position?.start.offset ?? 0)}
           className="text-ink-soft leading-[1.9]"
         >
@@ -400,6 +502,7 @@ export const MarkdownPreview = memo(function MarkdownPreview({
         return (
           <TaskOffsetContext.Provider value={offset}>
             <li
+              {...sourceAttributes(node)}
               data-source-start={sourceOffset + (node?.position?.start.offset ?? 0)}
               className={`text-ink-soft leading-[1.9] ${className?.includes("task-list-item") ? "list-none" : ""}`}
             >
@@ -408,14 +511,14 @@ export const MarkdownPreview = memo(function MarkdownPreview({
           </TaskOffsetContext.Provider>
         );
       },
-      input: ({ checked, ...props }) => (
+      input: ({ checked, node: _node, ...props }) => (
         <TaskInput
           {...props}
           checked={checked}
           onTaskToggle={hasTaskAction ? handleTaskToggle : undefined}
         />
       ),
-      img: ({ src, alt, srcSet: _srcSet, ...props }) => {
+      img: ({ src, alt, srcSet: _srcSet, node, ...props }) => {
         const resolvedSrc = resolveMarkdownImageSrc(
           src,
           imageBaseDir,
@@ -427,6 +530,7 @@ export const MarkdownPreview = memo(function MarkdownPreview({
           return (
             <span
               className="inline-flex max-w-full flex-col rounded border border-paper-deep px-3 py-2 text-ink-soft"
+              {...sourceAttributes(node)}
               role="img"
               aria-label={alt || "图片不可用"}
             >
@@ -440,6 +544,7 @@ export const MarkdownPreview = memo(function MarkdownPreview({
           );
         return (
           <img
+            {...sourceAttributes(node)}
             src={resolvedSrc}
             alt={alt ?? ""}
             loading="lazy"
@@ -456,7 +561,7 @@ export const MarkdownPreview = memo(function MarkdownPreview({
       {previewContent.trim() ? (
         <Markdown
           remarkPlugins={remarkPlugins}
-          rehypePlugins={renderHtml ? rehypePluginsWithHtml : rehypePluginsDefault}
+          rehypePlugins={rehypePlugins}
           components={components}
         >
           {previewContent}
