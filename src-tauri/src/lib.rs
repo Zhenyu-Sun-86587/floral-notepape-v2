@@ -8,6 +8,8 @@ pub mod linked_watcher;
 pub mod locales;
 #[cfg(target_os = "windows")]
 pub mod lock_overlay;
+#[cfg(target_os = "macos")]
+pub mod macos_lock_overlay;
 pub mod services;
 #[cfg(target_os = "windows")]
 mod surface_frame;
@@ -236,7 +238,17 @@ fn surface_unlock_button_bounds(
         viewport_width,
         viewport_height,
     );
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    macos_lock_overlay::set_bounds(
+        &window,
+        x,
+        y,
+        width,
+        height,
+        viewport_width,
+        viewport_height,
+    );
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     let _ = (window, x, y, width, height, viewport_width, viewport_height);
 }
 
@@ -632,7 +644,23 @@ fn set_native_material(
         }
         Ok(enabled)
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::window::{Effect, EffectsBuilder};
+        window.set_shadow(true)?;
+        if enabled {
+            window.set_effects(
+                EffectsBuilder::new()
+                    .effect(Effect::UnderWindowBackground)
+                    .radius(radius.max(0.0))
+                    .build(),
+            )?;
+        } else {
+            window.set_effects(None::<tauri::utils::config::WindowEffectsConfig>)?;
+        }
+        Ok(enabled)
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         let _ = (window, enabled, radius);
         Ok(false)

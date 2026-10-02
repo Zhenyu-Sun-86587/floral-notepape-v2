@@ -830,7 +830,7 @@ export function NotePad({
   finishTileWritingRef.current = finishTileWriting;
 
   const reportLockButtonBounds = useCallback(async () => {
-    if (!navigator.userAgent.includes("Windows")) return;
+    if (!/Windows|Macintosh/.test(navigator.userAgent)) return;
     const rect = lockButtonRef.current?.getBoundingClientRect();
     if (!rect) return;
     await invoke("surface_unlock_button_bounds", {
@@ -844,7 +844,7 @@ export function NotePad({
   }, []);
 
   useLayoutEffect(() => {
-    if (surfaceMode !== "tile" || !navigator.userAgent.includes("Windows")) return;
+    if (surfaceMode !== "tile" || !/Windows|Macintosh/.test(navigator.userAgent)) return;
     const button = lockButtonRef.current;
     if (!button) return;
     const report = () => void reportLockButtonBounds().catch(() => undefined);
@@ -1241,7 +1241,7 @@ export function NotePad({
           onMouseDown={handleDrag}
           onDoubleClick={handleTileDoubleClick}
         >
-          {(!tileLocked || navigator.userAgent.includes("Windows")) && (
+          {(!tileLocked || /Windows|Macintosh/.test(navigator.userAgent)) && (
             <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
               <button
                 type="button"
@@ -1343,7 +1343,9 @@ export function NotePad({
               </button>
             </div>
           )}
-          {(!tileLocked || navigator.userAgent.includes("Windows")) && <SurfaceResizeHandles />}
+          {(!tileLocked || /Windows|Macintosh/.test(navigator.userAgent)) && (
+            <SurfaceResizeHandles />
+          )}
         </Tile>
       ) : (
         <div className={padSurfaceClassName} data-surface-mode={surfaceMode}>

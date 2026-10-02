@@ -42,61 +42,12 @@ export interface TileProps extends Omit<
   onEditorDragOver?: HTMLAttributes<HTMLDivElement>["onDragOver"];
 }
 
-const MARK_SIZE = 8;
-const MARK_OFFSET = 6;
-
 export function textAgainst(background: string, target: string, contrast: number) {
   for (let amount = 0.25; amount <= 1.001; amount += 0.05) {
     const color = chroma.mix(background, target, Math.min(amount, 1)).hex();
     if (chroma.contrast(background, color) >= contrast) return color;
   }
   return target;
-}
-
-const cornerPaths = [
-  {
-    pos: { top: MARK_OFFSET, left: MARK_OFFSET },
-    d: `M0,${MARK_SIZE} L0,0 L${MARK_SIZE},0`,
-  },
-  {
-    pos: { top: MARK_OFFSET, right: MARK_OFFSET },
-    d: `M0,0 L${MARK_SIZE},0 L${MARK_SIZE},${MARK_SIZE}`,
-  },
-  {
-    pos: { bottom: MARK_OFFSET, left: MARK_OFFSET },
-    d: `M0,0 L0,${MARK_SIZE} L${MARK_SIZE},${MARK_SIZE}`,
-  },
-  {
-    pos: { bottom: MARK_OFFSET, right: MARK_OFFSET },
-    d: `M${MARK_SIZE},0 L${MARK_SIZE},${MARK_SIZE} L0,${MARK_SIZE}`,
-  },
-];
-
-function CornerMarks({ color }: { color: string }) {
-  return (
-    <>
-      {cornerPaths.map((mark, index) => (
-        <svg
-          key={index}
-          className="absolute pointer-events-none"
-          data-tile-corner-mark="true"
-          style={mark.pos as CSSProperties}
-          width={MARK_SIZE}
-          height={MARK_SIZE}
-          viewBox={`0 0 ${MARK_SIZE} ${MARK_SIZE}`}
-        >
-          <path
-            d={mark.d}
-            stroke={color}
-            strokeWidth="0.8"
-            fill="none"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      ))}
-    </>
-  );
 }
 
 export function Tile({
@@ -130,20 +81,18 @@ export function Tile({
 }: TileProps) {
   const { t } = useTranslation();
   const tileColor = normalizeTileColor(color);
-  const { borderColor, cornerColor, titleColor, contentColor, emptyColor, accentColor } =
-    useMemo(() => {
-      const isLightBg = chroma(tileColor).luminance() > 0.18;
-      const mixTarget = isLightBg ? "#141816" : "#f7f8f4";
-      const accentTarget = isLightBg ? "#254f3a" : "#a8d2ae";
-      return {
-        borderColor: chroma.mix(tileColor, mixTarget, 0.18).alpha(0.55).css(),
-        cornerColor: chroma.mix(tileColor, mixTarget, 0.3).alpha(0.26).css(),
-        titleColor: textAgainst(tileColor, mixTarget, 7),
-        contentColor: textAgainst(tileColor, mixTarget, 4.5),
-        emptyColor: textAgainst(tileColor, mixTarget, 3),
-        accentColor: textAgainst(tileColor, accentTarget, 4.5),
-      };
-    }, [tileColor]);
+  const { borderColor, titleColor, contentColor, emptyColor, accentColor } = useMemo(() => {
+    const isLightBg = chroma(tileColor).luminance() > 0.18;
+    const mixTarget = isLightBg ? "#141816" : "#f7f8f4";
+    const accentTarget = isLightBg ? "#254f3a" : "#a8d2ae";
+    return {
+      borderColor: chroma.mix(tileColor, mixTarget, 0.18).alpha(0.55).css(),
+      titleColor: textAgainst(tileColor, mixTarget, 7),
+      contentColor: textAgainst(tileColor, mixTarget, 4.5),
+      emptyColor: textAgainst(tileColor, mixTarget, 3),
+      accentColor: textAgainst(tileColor, accentTarget, 4.5),
+    };
+  }, [tileColor]);
   const mergedStyle: CSSProperties & Record<`--${string}`, string> = {
     width,
     backgroundColor: `color-mix(in srgb, ${tileColor} var(--appearance-opacity-percent, 100%), transparent)`,
@@ -253,7 +202,6 @@ export function Tile({
         )}
       </div>
 
-      <CornerMarks color={cornerColor} />
       {children}
     </div>
   );
