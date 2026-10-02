@@ -1199,7 +1199,7 @@ pub async fn toggle_linked_tile_window(
     Ok(true)
 }
 
-fn open_linked_tile_window_now(
+pub(crate) fn open_linked_tile_window_now(
     app: &AppHandle,
     binding_id: &str,
     bounds: Option<WindowBounds>,

@@ -1,6 +1,7 @@
 import type { AppConfig } from "../../features/settings/types";
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { WidgetSettings } from "./WidgetSettings";
 export const productName = "笺影";
 export interface PlatformConfig {
   macos?: {
@@ -54,6 +55,7 @@ export function PlatformSettings({
       <p className="text-[11px] text-ink-faint">
         保存后立即生效。关闭后留在当前所属桌面；开启后，置顶便签和胶囊也显示在其他应用的原生全屏空间。
       </p>
+      <WidgetSettings />
     </section>
   );
 }

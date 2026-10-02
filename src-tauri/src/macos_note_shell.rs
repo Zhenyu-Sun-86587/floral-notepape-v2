@@ -2,9 +2,9 @@
 use objc2::{define_class, msg_send, rc::Retained, sel, DefinedClass, MainThreadOnly};
 use objc2_app_kit::{
     NSAccessibility, NSButton, NSColor, NSEvent, NSFocusRingType, NSFont, NSImage, NSImageScaling,
-    NSTextField, NSView,
+    NSLayoutConstraint, NSTextField, NSView,
 };
-use objc2_foundation::{MainThreadMarker, NSPoint, NSRect, NSSize, NSString};
+use objc2_foundation::{MainThreadMarker, NSArray, NSPoint, NSRect, NSSize, NSString};
 use serde::Deserialize;
 use std::{cell::RefCell, collections::HashMap};
 use tauri::{Emitter, Manager, WebviewWindow};
@@ -53,6 +53,7 @@ define_class!(
 struct Chrome {
     state: NoteState,
     header: Retained<Header>,
+    body_constraints: Vec<Retained<NSLayoutConstraint>>,
 }
 thread_local! { static CHROME: RefCell<HashMap<String,Chrome>> = RefCell::new(HashMap::new()); }
 fn has_webview(view: &NSView) -> bool {
@@ -67,15 +68,37 @@ fn has_webview(view: &NSView) -> bool {
 }
 pub fn layout(window: &WebviewWindow, root: &NSView) {
     CHROME.with(|chrome| {
-        let chrome = chrome.borrow();
-        let Some(entry) = chrome.get(window.label()) else {
+        let mut chrome = chrome.borrow_mut();
+        let Some(entry) = chrome.get_mut(window.label()) else {
             return;
         };
         let size = root.bounds().size;
         let h = HEIGHT.min(size.height);
-        // Preserve the original Wry parent, but leave an AppKit title area.
+        // Wry also changes the WebView frame during live resize. Native
+        // constraints keep the reserved title area authoritative after that
+        // callback, rather than racing it with a second frame assignment.
         for child in root.subviews().iter() {
             if has_webview(&child) {
+                if entry.body_constraints.is_empty() {
+                    child.setTranslatesAutoresizingMaskIntoConstraints(false);
+                    entry.body_constraints = vec![
+                        child
+                            .leadingAnchor()
+                            .constraintEqualToAnchor(&root.leadingAnchor()),
+                        child
+                            .trailingAnchor()
+                            .constraintEqualToAnchor(&root.trailingAnchor()),
+                        child
+                            .topAnchor()
+                            .constraintEqualToAnchor_constant(&root.topAnchor(), HEIGHT),
+                        child
+                            .bottomAnchor()
+                            .constraintEqualToAnchor(&root.bottomAnchor()),
+                    ];
+                    NSLayoutConstraint::activateConstraints(&NSArray::from_retained_slice(
+                        &entry.body_constraints,
+                    ));
+                }
                 child.setFrame(NSRect::new(
                     NSPoint::new(0.0, if root.isFlipped() { h } else { 0.0 }),
                     NSSize::new(size.width, (size.height - h).max(0.0)),
@@ -93,6 +116,8 @@ pub fn layout(window: &WebviewWindow, root: &NSView) {
             ),
             NSSize::new(size.width, h),
         ));
+        root.setNeedsLayout(true);
+        root.layoutSubtreeIfNeeded();
         // Native lock hit target uses full-window coordinates, not DOM bounds.
         if entry.state.tile {
             crate::macos_lock_overlay::set_bounds(
@@ -144,7 +169,7 @@ pub fn update(
             b.setEnabled(!state.locked);b.setAutoresizingMask(objc2_app_kit::NSAutoresizingMaskOptions::ViewMinXMargin);
             unsafe {b.setTarget(Some(&b));b.setAction(Some(sel!(activate:)));}header.addSubview(&b);
         }
-        CHROME.with(|chrome| { let mut chrome=chrome.borrow_mut();if let Some(old)=chrome.remove(w.label()){old.header.removeFromSuperview();}chrome.insert(w.label().into(),Chrome {state,header}); });
+        CHROME.with(|chrome| { let mut chrome=chrome.borrow_mut();let body_constraints=if let Some(old)=chrome.remove(w.label()){old.header.removeFromSuperview();old.body_constraints}else{Vec::new()};chrome.insert(w.label().into(),Chrome {state,header,body_constraints}); });
         let result=crate::macos_material::attach_note_shell(&w).map(|_|true);let _=tx.send(result);
     })?;
     rx.recv().map_err(|e| crate::services::notes::AppError {

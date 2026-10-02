@@ -32,6 +32,30 @@ fn main() {
             .status()
             .expect("Mac Swift compiler");
         assert!(result.success(), "Mac fluid module failed to compile");
+        let result = std::process::Command::new("xcrun")
+            .args([
+                "swiftc",
+                "-swift-version",
+                "5",
+                "-O",
+                "-parse-as-library",
+                "-emit-library",
+                "-static",
+                "-module-name",
+                "FolioWidgetBridge",
+                "-target",
+                &target,
+                "native/widgets/Shared.swift",
+                "native/widgets/Bridge.swift",
+                "-o",
+            ])
+            .arg(out.join("libFolioWidgetBridge.a"))
+            .status()
+            .expect("Mac WidgetKit bridge compiler");
+        assert!(result.success(), "Mac WidgetKit bridge failed to compile");
+        println!("cargo:rerun-if-changed=native/widgets/Shared.swift");
+        println!("cargo:rerun-if-changed=native/widgets/Bridge.swift");
+        println!("cargo:rustc-link-lib=static=FolioWidgetBridge");
         println!("cargo:rerun-if-changed=native/FluidGlass.swift");
         println!("cargo:rustc-link-search=native={}", out.display());
         println!("cargo:rustc-link-lib=static=HermesFluid");
@@ -44,6 +68,7 @@ fn main() {
             "QuartzCore",
             "AppKit",
             "Foundation",
+            "WidgetKit",
         ] {
             println!("cargo:rustc-link-lib=framework={framework}");
         }

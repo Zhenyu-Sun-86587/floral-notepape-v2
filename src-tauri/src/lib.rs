@@ -26,6 +26,8 @@ pub mod macos_note_shell;
 pub mod macos_rail;
 #[cfg(target_os = "macos")]
 pub mod macos_surface;
+#[cfg(target_os = "macos")]
+pub mod macos_widgets;
 pub mod platform;
 pub mod services;
 #[cfg(target_os = "windows")]
@@ -37,6 +39,30 @@ use locales::Locale;
 use services::notes::{default_store, AppConfig, AppError, Note, NoteMetadata, SaveNoteRequest};
 use std::{env, fs, io::Write, path::PathBuf};
 use tauri::{AppHandle, Emitter, Manager};
+
+#[tauri::command]
+async fn macos_widgets_status() -> Result<serde_json::Value, AppError> {
+    #[cfg(target_os = "macos")]
+    {
+        return Ok(serde_json::to_value(macos_widgets::status()?)?);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(serde_json::json!({"available": false, "choices": [], "selected": []}))
+    }
+}
+#[tauri::command]
+async fn macos_widgets_select(keys: Vec<String>) -> Result<serde_json::Value, AppError> {
+    #[cfg(target_os = "macos")]
+    {
+        return Ok(serde_json::to_value(macos_widgets::select(keys)?)?);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = keys;
+        Ok(serde_json::json!({"available": false}))
+    }
+}
 
 #[tauri::command]
 fn linked_bind(path: String) -> Result<linked::LinkedBinding, AppError> {
@@ -1027,6 +1053,8 @@ pub fn run() {
             app.manage(updater_state);
             // Fork 的构建由仓库产物分发，启动时不访问原版更新服务。
             desktop::setup_desktop(app)?;
+            #[cfg(target_os = "macos")]
+            macos_widgets::setup(app.handle());
             if let Err(error) = linked_watcher::start(app.handle().clone()) {
                 eprintln!("linked watcher startup failed: {error}");
             }
@@ -1035,6 +1063,8 @@ pub fn run() {
         .on_window_event(desktop::handle_window_event)
         .invoke_handler(tauri::generate_handler![
             app_name,
+            macos_widgets_status,
+            macos_widgets_select,
             notes_list,
             notes_get,
             notes_create,
