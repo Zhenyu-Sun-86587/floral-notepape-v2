@@ -5,6 +5,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type MouseEvent,
 } from "react";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { SourceEditor, type Props, type SourceEditorHandle } from "./SourceEditor";
@@ -12,6 +13,7 @@ import { renderedAnchorY, sourceOffsetAtPoint } from "./sourcePosition";
 
 type Anchor = { offset: number; y: number };
 interface SurfaceProps extends Props {
+  activationGesture?: "click" | "doubleClick" | "none";
   imageBaseDir?: string;
   imageRootDir?: string;
   allowRemoteImages?: boolean;
@@ -183,6 +185,33 @@ export function MarkdownSurface(props: SurfaceProps) {
     };
   }, [active]);
 
+  const activate = (event: MouseEvent<HTMLDivElement>) => {
+    if (
+      props.locked ||
+      event.button !== 0 ||
+      (event.target as HTMLElement).closest("a,button,input,summary,[role=button]")
+    )
+      return;
+    const selection = window.getSelection();
+    // 双击会产生原生词语选区，不应阻止显式的双击编辑手势。
+    if (
+      props.activationGesture !== "doubleClick" &&
+      selection &&
+      !selection.isCollapsed &&
+      read.current?.contains(selection.anchorNode)
+    )
+      return;
+    const offset = read.current
+      ? sourceOffsetAtPoint(read.current, event.clientX, event.clientY, event.target as HTMLElement)
+      : null;
+    entering.current = { offset: offset ?? editor.current?.selectionStart ?? 0, y: event.clientY };
+    if (props.activationGesture === "doubleClick") {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    props.onActivate?.();
+  };
+
   return (
     <div ref={root} className="markdown-surface" data-tile-selectable="true">
       <div
@@ -190,30 +219,8 @@ export function MarkdownSurface(props: SurfaceProps) {
         className={`markdown-read-layer ${active ? "is-inactive" : ""}`}
         inert={active}
         aria-hidden={active}
-        onClick={(event) => {
-          if (
-            props.locked ||
-            event.button !== 0 ||
-            (event.target as HTMLElement).closest("a,button,input,summary,[role=button]")
-          )
-            return;
-          const selection = window.getSelection();
-          if (selection && !selection.isCollapsed && read.current?.contains(selection.anchorNode))
-            return;
-          const offset = read.current
-            ? sourceOffsetAtPoint(
-                read.current,
-                event.clientX,
-                event.clientY,
-                event.target as HTMLElement,
-              )
-            : null;
-          entering.current = {
-            offset: offset ?? editor.current?.selectionStart ?? 0,
-            y: event.clientY,
-          };
-          props.onActivate?.();
-        }}
+        onClick={(props.activationGesture ?? "click") === "click" ? activate : undefined}
+        onDoubleClick={props.activationGesture === "doubleClick" ? activate : undefined}
       >
         {props.markdown ? (
           <MarkdownPreview

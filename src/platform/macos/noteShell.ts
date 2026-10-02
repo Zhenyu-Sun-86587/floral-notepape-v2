@@ -6,6 +6,7 @@ export const displayTitleSelection = {
   attributes: { "data-note-display-title": "true" },
   className: "select-none",
 };
+export const singleClickToEdit = false;
 export function useNativeNoteShell(props: NoteShellProps) {
   const actions = useRef(props.actions);
   actions.current = props.actions;

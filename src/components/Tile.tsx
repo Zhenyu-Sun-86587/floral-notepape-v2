@@ -1,5 +1,5 @@
 import chroma from "chroma-js";
-import { displayTitleSelection } from "#platform-note-shell";
+import { displayTitleSelection, singleClickToEdit } from "#platform-note-shell";
 import type { CSSProperties, HTMLAttributes, Ref } from "react";
 import { lazy, Suspense, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -35,6 +35,7 @@ export interface TileProps extends Omit<
   onContentChange?: (value: string) => void;
   contentEditorRef?: Ref<SourceEditorHandle>;
   onEditorActivate?: () => void;
+  doubleClickToEdit?: boolean;
   onEditorDeactivate?: () => void;
   locked?: boolean;
   scrollContainerRef?: Ref<HTMLDivElement>;
@@ -69,6 +70,7 @@ export function Tile({
   onContentChange,
   contentEditorRef,
   onEditorActivate,
+  doubleClickToEdit = false,
   onEditorDeactivate,
   locked,
   scrollContainerRef,
@@ -153,6 +155,9 @@ export function Tile({
                 editorRef={contentEditorRef}
                 onChange={onContentChange}
                 onActivate={onEditorActivate}
+                activationGesture={
+                  singleClickToEdit ? "click" : doubleClickToEdit ? "doubleClick" : "none"
+                }
                 onDeactivate={onEditorDeactivate}
                 imageBaseDir={imageBaseDir}
                 imageRootDir={imageRootDir}
