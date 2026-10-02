@@ -4,7 +4,7 @@
 
 把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.9**。
 
-[下载 Windows 1.7.2](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.2) · [反馈问题](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [Mac 开发交接](Docs/MAC_HANDOFF.md)
+[下载 Windows 1.7.9](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.9) · [反馈问题](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [Mac 开发交接](Docs/MAC_HANDOFF.md)
 
 > **平台状态**：Windows x64 已提供 NSIS 安装包。macOS 正由协作者适配，当前没有本项目的 Mac 安装包。1.7.5 的 Editor 点击定位、滚动和 IME 仍待人工 GUI 验收，详情见 [项目状态](Docs/STATUS.md)。
 
@@ -21,12 +21,12 @@
 
 ## 下载安装
 
-1.7.9 本地构建安装包位于 `src-tauri/target/release/bundle/nsis/`。外部文件初始化和同步通知修复见 [1.7.9 发布说明](Docs/RELEASE_1.7.9.md)。下方保留上一版已发布下载。
+外部文件初始化和同步通知修复见 [1.7.9 发布说明](Docs/RELEASE_1.7.9.md)。
 
-下载 [v1.7.2 Windows x64 安装包](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/download/v1.7.2/Hermes.Surface.Dev_1.7.2_x64-setup.exe)。同一 [Release 页面](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.2) 提供 `SHA256SUMS.txt`；安装包 SHA-256 为：
+下载 [v1.7.9 Windows x64 安装包](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/download/v1.7.9/Hermes.Surface.Dev_1.7.9_x64-setup.exe)。同一 [Release 页面](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.9) 提供 `SHA256SUMS.txt`；安装包 SHA-256 为：
 
 ```text
-8F49DDD18D10346F5460DF0B850D45D6A2285BF70D33BDB3FC914A07C528B5D4
+71A6A819DD8067EF9D06D18D6A39257441D5E0627B8BCD464D3C866CD67C4BB1
 ```
 
 安装包未签名，且不内嵌完整 WebView2 Runtime；若电脑尚未安装 Runtime，安装过程需要联网下载。当前没有本 fork 的 Microsoft Store、Mirror 酱、Windows ARM64 或 macOS 产物，请以本仓库的 Release 为准。
