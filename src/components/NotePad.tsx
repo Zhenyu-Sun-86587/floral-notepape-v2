@@ -45,7 +45,7 @@ import {
 } from "../features/settings/tileColor";
 import type { AppearanceConfig, ThemeOption, TileColorMode } from "../features/settings/types";
 import { applyAppearance, resolveAppearance } from "../features/settings/theme";
-import { applyNativeMaterial } from "../features/settings/nativeMaterial";
+import { applyNativeMaterial } from "#platform-material";
 import {
   shouldEnterPadFromTileOnDoubleClick,
   shouldReturnToTileAfterManualSave,

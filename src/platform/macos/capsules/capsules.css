@@ -43,8 +43,8 @@ button {
   padding: 0;
 }
 button:focus-visible {
-  outline: 1px solid rgba(255, 255, 255, 0.8);
-  outline-offset: -3px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.1);
 }
 button:disabled {
   opacity: 0.5;
@@ -56,13 +56,13 @@ button:disabled {
   border-radius: 18px;
   overflow: hidden;
   background: var(--chrome);
-  box-shadow: inset 0 0 0 1px var(--line);
+  box-shadow: none;
   user-select: none;
 }
 :root[data-material="glass"] .mac-rail,
-:root[data-material="vibrancy"] .mac-rail {
+:root[data-material="frosted"] .mac-rail {
   background: rgba(255, 255, 255, 0.015);
-  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.28);
+  box-shadow: none;
 }
 .mac-rail-strip {
   width: 100%;
@@ -162,14 +162,14 @@ button:disabled {
   flex-direction: column;
   overflow: hidden;
   border-radius: 22px;
-  border: 1px solid var(--line);
+  border: 0;
   background: var(--chrome);
 }
 .mac-preview[data-visible="false"] {
   visibility: hidden;
 }
 :root[data-material="glass"] .mac-preview,
-:root[data-material="vibrancy"] .mac-preview {
+:root[data-material="frosted"] .mac-preview {
   background: transparent;
 }
 .mac-preview header {
@@ -223,11 +223,11 @@ button:disabled {
 .preview-body {
   flex: 1;
   min-height: 0;
-  margin: 0 7px;
+  margin: 0;
   padding: 14px 15px;
-  border-radius: 15px;
-  background: var(--surface);
-  border: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  border: 0;
   overflow: auto;
   scrollbar-width: thin;
   cursor: text;
@@ -314,7 +314,7 @@ button:disabled {
 }
 .preview-body td,
 .preview-body th {
-  border: 1px solid var(--line);
+  border: 0;
   padding: 6px;
 }
 .preview-body hr {
@@ -353,4 +353,23 @@ button:disabled {
 :root[data-material="solid"] .mac-note-glyph {
   color: #667279;
   filter: none;
+}
+
+:root:is([data-material="glass"], [data-material="frosted"]) .mac-preview {
+  background: rgba(245, 249, 252, 0.06);
+}
+:root[data-material="frosted"] .mac-rail {
+  background: rgba(245, 249, 252, 0.08);
+}
+:root[data-material="solid"] :is(.mac-rail, .mac-preview) {
+  background: #f5f7f8;
+}
+.mac-rail,
+.mac-rail * {
+  outline: none !important;
+  border: 0;
+}
+.mac-preview .preview-body {
+  box-shadow: none;
+  border: 0;
 }

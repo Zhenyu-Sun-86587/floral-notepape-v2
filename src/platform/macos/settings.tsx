@@ -1,6 +1,11 @@
 import type { AppConfig } from "../../features/settings/types";
 export interface PlatformConfig {
-  macos?: { notesOnAllSpaces: boolean; capsulesOnAllSpaces: boolean };
+  macos?: {
+    notesOnAllSpaces: boolean;
+    capsulesOnAllSpaces: boolean;
+    materialEffect?: "liquidGlass" | "frosted";
+    materialEnabled?: boolean;
+  };
 }
 export function PlatformSettings({
   config,
@@ -46,3 +51,50 @@ export const materialLabel = "macOS 原生磨砂";
 
 export const desktopLayerLabel = "桌面层（macOS）";
 export const supportsDesktopLayer = true;
+
+export function MaterialSettings({
+  config,
+  onChange,
+}: {
+  config: AppConfig;
+  onChange: (config: AppConfig) => void;
+}) {
+  const settings = config.macos ?? { notesOnAllSpaces: true, capsulesOnAllSpaces: true };
+  return (
+    <div className="space-y-2">
+      <label className="flex items-center justify-between text-[12px] text-ink-soft">
+        Mac 原生材质
+        <input
+          type="checkbox"
+          checked={settings.materialEnabled ?? true}
+          onChange={(event) =>
+            onChange({ ...config, macos: { ...settings, materialEnabled: event.target.checked } })
+          }
+        />
+      </label>
+      <label className="flex items-center justify-between text-[12px] text-ink-soft">
+        材质效果
+        <select
+          aria-label="Mac 材质效果"
+          value={settings.materialEffect ?? "liquidGlass"}
+          onChange={(event) =>
+            onChange({
+              ...config,
+              macos: {
+                ...settings,
+                materialEffect: event.target.value as "liquidGlass" | "frosted",
+              },
+            })
+          }
+          className="rounded-lg px-3 py-2 bg-paper-warm"
+        >
+          <option value="liquidGlass">液态玻璃</option>
+          <option value="frosted">磨砂</option>
+        </select>
+      </label>
+      <p className="text-[10px] text-ink-faint">
+        应用于主窗口、便签、胶囊与悬停预览的整块背景。液态玻璃需要 macOS 26；较旧系统自动使用磨砂。
+      </p>
+    </div>
+  );
+}

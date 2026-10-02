@@ -1828,6 +1828,8 @@ fn prewarm_notepad(app: &AppHandle) -> Result<(), AppError> {
     .skip_taskbar(true)
     .visible(false)
     .focused(false);
+    #[cfg(target_os = "macos")]
+    let builder = builder.accept_first_mouse(true);
     let window = builder.build()?;
 
     // 预热窗口在池中等待期间保持低内存档位，激活时恢复 Normal
@@ -2114,6 +2116,8 @@ fn open_or_focus_window(
         builder
     };
 
+    #[cfg(target_os = "macos")]
+    let builder = builder.accept_first_mouse(true);
     let window = builder.build()?;
 
     let restored_bounds = opts.bounds.or_else(|| {
@@ -2768,6 +2772,8 @@ pub fn popup_capsule_menu(window: &tauri::WebviewWindow, key: &str) -> Result<()
 
 pub fn sync_capsule_windows(app: &AppHandle) -> Result<(), AppError> {
     capsule_groups::sync(app)?;
+    #[cfg(target_os = "macos")]
+    prewarm_capsule_preview(app)?;
     if !crate::surface_sessions::list()?
         .iter()
         .any(|s| s.presentation == crate::surface_sessions::Presentation::Stored)

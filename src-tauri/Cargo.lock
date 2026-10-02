@@ -1736,7 +1736,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hermes-surface-dev"
-version = "1.7.18"
+version = "1.7.19"
 dependencies = [
  "block2",
  "chrono",
@@ -1748,6 +1748,7 @@ dependencies = [
  "objc2-app-kit",
  "objc2-core-graphics",
  "objc2-foundation",
+ "objc2-quartz-core",
  "raw-window-handle",
  "reqwest 0.12.28",
  "semver",
@@ -2802,6 +2803,7 @@ dependencies = [
  "bitflags 2.13.1",
  "objc2",
  "objc2-core-foundation",
+ "objc2-core-graphics",
  "objc2-foundation",
 ]
 
