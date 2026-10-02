@@ -423,6 +423,13 @@ export function NotePad({
   useInitialWindowReveal(bootstrapReady, isStandby.current, revealInitialWindow, reportRevealError);
 
   useEffect(() => {
+    const unlisten = listen<string>("surface-native-error", (event) => showToast(event.payload));
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  useEffect(() => {
     const ownKey = initialBindingId
       ? `linked:${initialBindingId}`
       : (editingNoteId ?? initialNoteId)

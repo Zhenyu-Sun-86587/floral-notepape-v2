@@ -419,6 +419,7 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 const MAIN_WINDOW_LABEL: &str = "main";
 const OPEN_ABOUT_PANEL_EVENT: &str = "open-about-panel";
 const MACOS_APP_ABOUT_ID: &str = "macos-about";
+const MACOS_APP_QUIT_ID: &str = "macos-quit";
 const TRAY_ID: &str = "main-tray";
 const TRAY_SHOW_MAIN_ID: &str = "show-main";
 const TRAY_QUICK_NOTE_ID: &str = "quick-note";
@@ -449,6 +450,7 @@ pub enum TrayMenuAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AppMenuAction {
     ShowAboutPanel,
+    Quit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -700,6 +702,7 @@ pub fn tray_menu_action(id: &str) -> Option<TrayMenuAction> {
 fn app_menu_action(id: &str) -> Option<AppMenuAction> {
     match id {
         MACOS_APP_ABOUT_ID => Some(AppMenuAction::ShowAboutPanel),
+        MACOS_APP_QUIT_ID => Some(AppMenuAction::Quit),
         _ => None,
     }
 }
@@ -799,7 +802,13 @@ fn build_app_menu(app: &AppHandle, config: &AppConfig) -> Result<Menu<Wry>, Box<
     let hide = PredefinedMenuItem::hide(app, Some(&locales::macos_menu_hide_app_label(locale)))?;
     let hide_others =
         PredefinedMenuItem::hide_others(app, Some(locales::macos_menu_hide_others_label(locale)))?;
-    let quit = PredefinedMenuItem::quit(app, Some(&locales::macos_menu_quit_app_label(locale)))?;
+    let quit = MenuItem::with_id(
+        app,
+        MACOS_APP_QUIT_ID,
+        locales::macos_menu_quit_app_label(locale),
+        true,
+        Some("CmdOrCtrl+Q"),
+    )?;
     let file_close_window = PredefinedMenuItem::close_window(
         app,
         Some(locales::macos_menu_close_window_label(locale)),
@@ -1273,7 +1282,10 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
         #[cfg(target_os = "windows")]
         crate::lock_overlay::hide_label(window.app_handle(), window.label());
         #[cfg(target_os = "macos")]
-        crate::macos_lock_overlay::hide_label(window.app_handle(), window.label());
+        {
+            crate::macos_lock_overlay::hide_label(window.app_handle(), window.label());
+            crate::macos_surface::forget(window);
+        }
         if let Some(note_id) = closed_tile_id(window.label()) {
             let _ = window
                 .app_handle()
@@ -1523,6 +1535,10 @@ fn handle_app_menu_event(app: &AppHandle, id: &str) -> Result<(), Box<dyn Error>
     }
     match app_menu_action(id) {
         Some(AppMenuAction::ShowAboutPanel) => open_about_panel(app)?,
+        Some(AppMenuAction::Quit) => {
+            mark_app_exiting(app);
+            app.exit(0);
+        }
         None => {}
     }
     Ok(())
@@ -2015,6 +2031,7 @@ fn open_or_focus_window(
         crate::desktop_attachment::detach(&window)?;
         apply_window_bounds(&window, opts.bounds)?;
         window.set_shadow(opts.shadow)?;
+        #[cfg(not(target_os = "macos"))]
         window.set_always_on_top(always_on_top)?;
         if let Some(session) = &surface_session {
             apply_surface_window_mode(&window, session.window_mode, session.locked)?;
@@ -2025,7 +2042,13 @@ fn open_or_focus_window(
             crate::clear_windows_border(&window);
         }
         window.unminimize()?;
-        window.show()?;
+        if surface_session.as_ref().is_some_and(|s| {
+            s.locked || s.window_mode == crate::surface_sessions::WindowMode::DesktopAttached
+        }) {
+            show_silent_surface(&window)?;
+        } else {
+            window.show()?;
+        }
         if opts.focus_on_show
             && !surface_session.as_ref().is_some_and(|session| {
                 session.locked
@@ -3152,7 +3175,16 @@ pub fn show_silent_surface(window: &tauri::WebviewWindow) -> Result<(), AppError
             ShowWindow(hwnd.0, SW_SHOWNOACTIVATE);
         }
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(session) = session_key_from_label(window.label())
+            .and_then(|key| crate::surface_sessions::get(&key).ok())
+        {
+            crate::macos_surface::apply(window, session.window_mode, session.locked)?;
+        }
+        crate::macos_surface::show_without_activation(window)?;
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     window.show()?;
     #[cfg(target_os = "macos")]
     if let Some(key) = session_key_from_label(window.label()) {
@@ -3227,7 +3259,7 @@ pub fn save_surface_session(
     current.window_mode = session.window_mode;
     current.locked = session.locked;
     current.capsule_side = session.capsule_side;
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     if session.window_mode == crate::surface_sessions::WindowMode::DesktopAttached {
         return Err(surface_mode_error("桌面附着目前仅支持 Windows"));
     }
@@ -3320,12 +3352,16 @@ fn apply_surface_window_mode(
     crate::clear_windows_border(window);
     if locked {
         // 锁定保留原层级设置；仅当前窗口临时置顶并允许鼠标穿透。
+        #[cfg(not(target_os = "macos"))]
         window.set_always_on_top(true)?;
         #[cfg(not(target_os = "macos"))]
         window.set_ignore_cursor_events(true)?;
         #[cfg(target_os = "macos")]
-        if let Some(key) = session_key_from_label(window.label()) {
-            crate::macos_lock_overlay::show(window, key);
+        {
+            crate::macos_surface::apply(window, mode, true)?;
+            if let Some(key) = session_key_from_label(window.label()) {
+                crate::macos_lock_overlay::show(window, key);
+            }
         }
         #[cfg(target_os = "windows")]
         if let Some(key) = session_key_from_label(window.label()) {
@@ -3333,7 +3369,10 @@ fn apply_surface_window_mode(
         }
         return Ok(());
     }
+    #[cfg(not(target_os = "macos"))]
     window.set_always_on_top(mode == crate::surface_sessions::WindowMode::AlwaysOnTop)?;
+    #[cfg(target_os = "macos")]
+    crate::macos_surface::apply(window, mode, false)?;
     if mode == crate::surface_sessions::WindowMode::DesktopAttached {
         #[cfg(target_os = "windows")]
         {
@@ -3341,8 +3380,8 @@ fn apply_surface_window_mode(
             crate::clear_windows_border(window);
             return Ok(());
         }
-        #[cfg(not(target_os = "windows"))]
-        return Err(surface_mode_error("桌面附着目前仅支持 Windows"));
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        return Err(surface_mode_error("当前平台不支持桌面层"));
     }
     Ok(())
 }
@@ -3362,7 +3401,10 @@ pub fn set_surface_edit_mode(window: &tauri::WebviewWindow, editing: bool) -> Re
     if editing {
         #[cfg(target_os = "windows")]
         crate::desktop_attachment::detach(window)?;
+        #[cfg(not(target_os = "macos"))]
         window.set_always_on_top(false)?;
+        #[cfg(target_os = "macos")]
+        crate::macos_surface::apply(window, crate::surface_sessions::WindowMode::Normal, false)?;
         window.set_focus()?;
     } else {
         apply_surface_window_mode(window, mode, false)?;
@@ -4410,6 +4452,7 @@ mod tests {
             app_menu_action("macos-about"),
             Some(AppMenuAction::ShowAboutPanel)
         );
+        assert_eq!(app_menu_action("macos-quit"), Some(AppMenuAction::Quit));
         assert_eq!(app_menu_action("unknown"), None);
     }
 

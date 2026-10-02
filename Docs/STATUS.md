@@ -1,6 +1,6 @@
 # Hermes Surface Dev：平台状态
 
-Mac 开发版 **1.7.12 / M1**：用户确认 M0 固定与取消正常；本阶段移除内侧角标、启用 Markdown 默认阅读、接入原生材质并提前补 Mac 原位解锁。基础验证及人工复测见 [MAC_M1](MAC_M1.md)。Windows 发布基线仍为 1.7.9；桌面层、完整自启/驻留、Mac 胶囊拖动和多屏仍待后续阶段，M1 GUI 尚待用户验收。
+Mac 开发版 **1.7.13 / M2**：用户反馈 M1 基本正常；本阶段开放 Mac 桌面层，补无激活静默显示、最后一窗驻留和 Dock 找回。基础检查及人工清单见 [MAC_M2](MAC_M2.md)。Windows 发布基线仍为 1.7.9；登录启动、Spaces/Stage Manager 等实际交互待人工验收，Mac 胶囊拖动、多屏与安全边缘为后续 M3 范围。
 
 当前 Windows 源码版本为 **1.7.9**；历史 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
 
