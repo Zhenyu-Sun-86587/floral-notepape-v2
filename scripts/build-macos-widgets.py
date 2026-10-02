@@ -138,7 +138,8 @@ def main():
                 '-configuration', 'Release', 'build',
                 'CONFIGURATION_BUILD_DIR=' + str(output),
                 'CODE_SIGNING_ALLOWED=NO', 'CODE_SIGNING_REQUIRED=NO',
-                'FOLIO_APP_GROUP=buildcheck.folio.widgets', 'MARKETING_VERSION=' + version)
+                'FOLIO_APP_GROUP=buildcheck.folio.widgets', 'MARKETING_VERSION=' + version,
+                'CURRENT_PROJECT_VERSION=' + version)
         extension = output / 'FolioWidgets.appex'
         info = plistlib.loads((extension / 'Contents/Info.plist').read_bytes())
         assert info['NSExtension']['NSExtensionPointIdentifier'] == 'com.apple.widgetkit-extension'
@@ -178,7 +179,8 @@ def main():
                 '-configuration', 'Release', 'build',
                 'CONFIGURATION_BUILD_DIR=' + str(tmp / 'products'),
                 'CODE_SIGNING_ALLOWED=NO', 'CODE_SIGNING_REQUIRED=NO',
-                'FOLIO_APP_GROUP=' + group, 'MARKETING_VERSION=' + info['CFBundleShortVersionString'])
+                'FOLIO_APP_GROUP=' + group, 'MARKETING_VERSION=' + info['CFBundleShortVersionString'],
+                'CURRENT_PROJECT_VERSION=' + info.get('CFBundleVersion', info['CFBundleShortVersionString']))
             extension = tmp / 'products/FolioWidgets.appex'
         extension_info = validate_extension(extension, info['CFBundleShortVersionString'])
         prepared = tmp / 'prepared/FolioWidgets.appex'

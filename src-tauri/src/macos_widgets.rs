@@ -5,17 +5,12 @@ use crate::{
     services::notes::{default_store, AppError},
 };
 use serde::Serialize;
-use std::{
-    ffi::{CStr, CString},
-    sync::{mpsc, OnceLock},
-    time::Duration,
-};
+use std::{ffi::CString, sync::mpsc, time::Duration};
 use tauri::Listener;
-static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
 unsafe extern "C" {
     fn folio_widgets_available() -> bool;
     fn folio_widgets_publish(json: *const std::ffi::c_char) -> bool;
-    fn folio_widgets_register_urls(callback: extern "C" fn(*const std::ffi::c_char));
+    fn folio_widgets_initialize();
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -141,39 +136,9 @@ fn refresh() -> Result<(), AppError> {
     }
     Ok(())
 }
-fn parse_link(url: &str) -> Option<(&str, &str)> {
-    let (kind, id) = url.strip_prefix("folio://")?.split_once('/')?;
-    if !matches!(kind, "note" | "linked") || uuid::Uuid::parse_str(id).is_err() {
-        return None;
-    }
-    Some((kind, id))
-}
-extern "C" fn open_url(pointer: *const std::ffi::c_char) {
-    if pointer.is_null() {
-        return;
-    }
-    let url = unsafe { CStr::from_ptr(pointer) }.to_string_lossy();
-    let Some((kind, id)) = parse_link(&url) else {
-        return;
-    };
-    let Some(app) = APP.get().cloned() else {
-        return;
-    };
-    let (kind, id) = (kind.to_owned(), id.to_owned());
-    tauri::async_runtime::spawn(async move {
-        if kind == "note" {
-            if default_store().and_then(|s| s.read_note(&id)).is_ok() {
-                let _ = crate::desktop::open_tile_window(app, id, None).await;
-            }
-        } else if crate::linked::read(&id).is_ok() {
-            let _ = crate::desktop::open_linked_tile_window_now(&app, &id, None);
-        }
-    });
-}
 pub fn setup(app: &tauri::AppHandle) {
-    let _ = APP.set(app.clone());
     unsafe {
-        folio_widgets_register_urls(open_url);
+        folio_widgets_initialize();
     }
     let (tx, rx) = mpsc::sync_channel(1);
     for event in [
@@ -196,15 +161,4 @@ pub fn setup(app: &tauri::AppHandle) {
             }
         }
     });
-}
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn widget_urls_cannot_open_paths_or_arbitrary_schemes() {
-        let id = "40a88de0-7176-4be4-b4ea-c9155cae5ce4";
-        assert!(super::parse_link(&format!("folio://note/{id}")).is_some());
-        assert!(super::parse_link("folio://note/../../config.json").is_none());
-        assert!(super::parse_link(&format!("https://note/{id}")).is_none());
-        assert!(super::parse_link(&format!("folio://other/{id}")).is_none());
-    }
 }
