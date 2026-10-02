@@ -69,21 +69,14 @@ fn cells(
             if !keys.contains(&m.key) {
                 continue;
             }
-            let offset = g.grip_css + i as f64 * g.slot_css;
-            let rect = if g.side == crate::surface_sessions::CapsuleSide::Top {
-                NSRect::new(
-                    NSPoint::new(frame.origin.x + offset, frame.origin.y),
-                    NSSize::new(g.slot_css, frame.size.height),
-                )
-            } else {
-                NSRect::new(
-                    NSPoint::new(
-                        frame.origin.x,
-                        frame.origin.y + frame.size.height - offset - g.slot_css,
-                    ),
-                    NSSize::new(frame.size.width, g.slot_css),
-                )
-            };
+            let [x, y, w, h] = crate::macos_droplet::geometry(g.members.len()).cells[i];
+            let rect = NSRect::new(
+                NSPoint::new(
+                    frame.origin.x + x,
+                    frame.origin.y + frame.size.height - y - h,
+                ),
+                NSSize::new(w, h),
+            );
             cells.push((m.key.clone(), rect, native.clone()));
         }
     }
@@ -241,7 +234,8 @@ pub fn transition(
     let mut hidden = Vec::new();
     for (_, _, w) in &after {
         if !hidden.iter().any(|old: &Retained<NSWindow>| old == w) {
-            w.setAlphaValue(0.0);
+            // Keep the real hit surface visible while the decorative bridge
+            // animates. Zero alpha made WindowServer send clicks to Finder.
             hidden.push(w.clone());
         }
     }

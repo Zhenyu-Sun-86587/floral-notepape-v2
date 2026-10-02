@@ -11,6 +11,8 @@ pub mod lock_overlay;
 #[cfg(target_os = "macos")]
 pub mod macos_capsule;
 #[cfg(target_os = "macos")]
+pub mod macos_droplet;
+#[cfg(target_os = "macos")]
 pub mod macos_lock_overlay;
 #[cfg(target_os = "macos")]
 pub mod macos_material;

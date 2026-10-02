@@ -2311,6 +2311,14 @@ pub async fn drag_capsule(
     key: String,
     group: bool,
 ) -> Result<bool, AppError> {
+    drag_capsule_from(window, key, group, None).await
+}
+pub async fn drag_capsule_from(
+    window: capsule_groups::CapsuleWindow,
+    key: String,
+    group: bool,
+    initial: Option<PhysicalPosition<f64>>,
+) -> Result<bool, AppError> {
     #[cfg(any(target_os = "windows", target_os = "macos"))]
     {
         if CAPSULE_DRAGGING.swap(true, Ordering::SeqCst) {
@@ -2357,7 +2365,7 @@ pub async fn drag_capsule(
                 } else {
                     vec![drag_key.clone()]
                 };
-                let start = capsule_cursor(&rail)?;
+                let start = initial.map(Ok).unwrap_or_else(|| capsule_cursor(&rail))?;
                 let mut moving = rail.clone();
                 let mut origin = moving.outer_position()?.cast::<f64>();
                 #[cfg(target_os = "macos")]
