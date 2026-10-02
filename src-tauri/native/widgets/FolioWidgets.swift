@@ -19,10 +19,17 @@ struct NoteQuery: EntityQuery {
     }
     func defaultResult() async -> NoteEntity? { try? await suggestedEntities().first }
 }
+enum NoteTextSize: String, AppEnum {
+    case compact, standard, large
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "字号"
+    static var caseDisplayRepresentations: [Self: DisplayRepresentation] = [.compact: "紧凑", .standard: "标准", .large: "大字"]
+    var points: CGFloat { switch self { case .compact: return 12; case .standard: return 13; case .large: return 15 } }
+}
 struct SelectNote: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "选择便签"
     static var description = IntentDescription("选择在笺影设置中允许显示的小组件便签。")
     @Parameter(title: "便签") var note: NoteEntity?
+    @Parameter(title: "字号", default: .standard) var textSize: NoteTextSize
 }
 struct NoteEntry: TimelineEntry {
     let date: Date
@@ -67,6 +74,19 @@ struct KeepWidgetVisible: AppIntent {
     static var openAppWhenRun: Bool = false
     func perform() async throws -> some IntentResult { .result() }
 }
+struct CopySharedNote: AppIntent {
+    static var title: LocalizedStringResource = "复制便签 Markdown"
+    static var openAppWhenRun: Bool = false
+    @Parameter(title: "便签") var noteKey: String
+    init() {}
+    init(noteKey: String) { self.noteKey = noteKey }
+    @MainActor func perform() async throws -> some IntentResult {
+        guard let note = FolioWidgetStore.read().notes.first(where: { $0.key == noteKey }) else { return .result() }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(note.content, forType: .string)
+        return .result()
+    }
+}
 struct NoteProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> NoteEntry {
         NoteEntry(date: .now, note: FolioWidgetNote(key: "", title: "笺影", content: "记录此刻，留待回望。"))
@@ -82,8 +102,8 @@ struct NoteProvider: AppIntentTimelineProvider {
         guard let note else { return NoteEntry(date: .now, note: nil) }
         let spread = context.family == .systemExtraLarge
         let width = spread ? (context.displaySize.width - 48) / 2 : context.displaySize.width - 32
-        let pages = WidgetMarkdown.pages(note.content, width: width, height: context.displaySize.height - 82)
-        let key = note.key + "." + String(context.family.rawValue)
+        let pages = WidgetMarkdown.pages(note.content, width: width, height: context.displaySize.height - 82, bodySize: configuration.textSize.points)
+        let key = note.key + "." + String(context.family.rawValue) + "." + configuration.textSize.rawValue
         let step = spread ? 2 : 1
         let page = min(FolioWidgetStore.page(for: key), pages.count - 1) / step * step
         return NoteEntry(date: .now, note: note, lines: pages[page], rightLines: spread && page + 1 < pages.count ? pages[page + 1] : [], spread: spread, page: page, pageCount: pages.count, pageKey: key)
@@ -114,16 +134,22 @@ struct NoteWidgetView: View {
                             .foregroundStyle(line.quote ? .secondary : .primary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                       }.frame(height: line.height, alignment: .top)
-                       .contentShape(Rectangle()).allowsHitTesting(false)
-                    }.buttonStyle(.plain).accessibilityLabel("复制这一段文字")
+                       .contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityLabel("复制这一段文字").help("复制这一段文字")
                 }
             }
         }.frame(maxWidth: .infinity, alignment: .topLeading)
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(entry.note?.title ?? "选择一张便签")
-                .font(.headline).lineLimit(1).widgetAccentable()
+            if let note = entry.note {
+                Button(intent: CopyNoteText(noteKey: note.key, text: note.title)) {
+                    Text(note.title).font(.headline).lineLimit(1).widgetAccentable()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }.buttonStyle(.plain).accessibilityLabel("复制便签标题").help("复制标题")
+            } else {
+                Text("选择一张便签").font(.headline).lineLimit(1)
+            }
             if entry.note != nil {
                 HStack(alignment: .top, spacing: 16) {
                     page(entry.lines)
@@ -135,18 +161,24 @@ struct NoteWidgetView: View {
             }
             Spacer(minLength: 0)
             if entry.note != nil {
-                HStack {
+                HStack(spacing: 6) {
+                  if entry.page > 0 {
+                    Button(intent: TurnNotePage(key: entry.pageKey, page: 0)) { Image(systemName: "backward.end") }
+                        .accessibilityLabel("回到第一页").help("回到第一页")
+                  }
                   if entry.pageCount > 1 {
                     Button(intent: TurnNotePage(key: entry.pageKey, page: entry.page - step)) { Image(systemName: "chevron.left") }
                         .disabled(entry.page == 0).accessibilityLabel("上一页")
                     Spacer()
-                    Text(pageLabel).font(.caption).foregroundStyle(.secondary)
+                    Text(pageLabel).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
                     Spacer()
                     Button(intent: TurnNotePage(key: entry.pageKey, page: entry.page + step)) { Image(systemName: "chevron.right") }
                         .disabled(entry.page + step >= entry.pageCount).accessibilityLabel("下一页")
                   } else { Spacer() }
                   Button(intent: CopyNoteText(noteKey: entry.note?.key ?? "", text: visibleText)) { Image(systemName: "doc.on.doc") }
-                    .disabled(visibleText.isEmpty).accessibilityLabel("复制当前页文字")
+                    .disabled(visibleText.isEmpty).accessibilityLabel("复制当前页文字").help("复制当前页纯文本")
+                  Button(intent: CopySharedNote(noteKey: entry.note?.key ?? "")) { Image(systemName: "doc.text") }
+                    .accessibilityLabel("复制便签 Markdown 正文（共享内容最多四千字）").help("复制 Markdown 正文（共享内容最多4000字符）")
                 }.buttonStyle(.plain)
             }
         }

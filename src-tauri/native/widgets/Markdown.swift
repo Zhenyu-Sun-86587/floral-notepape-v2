@@ -14,7 +14,7 @@ struct WidgetMarkdownLine: Identifiable {
 }
 
 enum WidgetMarkdown {
-    static func pages(_ content: String, width: CGFloat, height: CGFloat) -> [[WidgetMarkdownLine]] {
+    static func pages(_ content: String, width: CGFloat, height: CGFloat, bodySize: CGFloat = 13) -> [[WidgetMarkdownLine]] {
         let width = max(60, width)
         let height = max(24, height)
         var pages: [[WidgetMarkdownLine]] = [[]]
@@ -35,7 +35,7 @@ enum WidgetMarkdown {
                     if line.hasPrefix(prefix) { line = marker + line.dropFirst(prefix.count); break }
                 }
             }
-            let size: CGFloat = heading ? 15 : 13
+            let size: CGFloat = heading ? bodySize + 2 : bodySize
             let font: NSFont = fenced ? .monospacedSystemFont(ofSize: size, weight: .regular) : .systemFont(ofSize: size, weight: heading ? .semibold : .regular)
             let attributed = fenced ? AttributedString(line) : ((try? AttributedString(markdown: line, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(line))
             // Split at rendered character boundaries so a single long paragraph
