@@ -1,10 +1,12 @@
-当前修复：Mac 跨桌面开关、全屏置顶层级与平台编译隔离，详见 [Mac 1.7.16](Docs/MAC_SETTINGS_1.7.16.md)。
+当前修复：[Mac 1.7.17 快捷键录制死锁](Docs/MAC_SHORTCUT_1.7.17.md)。基础检查与人工复测见文档。
+
+上一轮修复：Mac 跨桌面开关、全屏置顶层级与平台编译隔离，详见 [Mac 1.7.16](Docs/MAC_SETTINGS_1.7.16.md)。
 
 # Hermes Surface Dev
 
 **简体中文** · [繁體中文](README_zh-HK.md) · [English](README_en-US.md)
 
-把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.16（Mac Spaces 修复）**，Windows 发布版本为 **1.7.9**。
+把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.17（Mac 快捷键录制修复）**，Windows 发布版本为 **1.7.9**。
 
 [下载 Windows 1.7.9](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.9) · [反馈问题](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [Mac 开发交接](Docs/MAC_HANDOFF.md)
 

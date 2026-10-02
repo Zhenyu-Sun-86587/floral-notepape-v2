@@ -2241,6 +2241,8 @@ pub struct CapsuleEntry {
 // WebView2 建窗不能运行在同步 IPC / UI 事件回调中。所有收纳变更串行排到工作线程，
 // 锁只由工作线程持有，UI 线程始终能处理窗口消息和托盘退出。
 static CAPSULE_OPERATIONS: Mutex<()> = Mutex::new(());
+#[cfg(desktop)]
+static SHORTCUT_OPERATIONS: Mutex<()> = Mutex::new(());
 static CAPSULE_DRAGGING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static SHORTCUT_ACTIVE_SURFACE: Mutex<Option<(String, usize)>> = Mutex::new(None);
 static PENDING_SURFACE_EDIT: Mutex<Vec<String>> = Mutex::new(Vec::new());
@@ -3562,13 +3564,16 @@ pub fn remove_surface_session(app: &AppHandle, key: &str) {
     }
     queue_capsule_sync(app);
     #[cfg(desktop)]
-    if let Ok(config) = load_config() {
-        if let Err(error) = install_global_shortcut_bindings(app, &config, true, None) {
-            eprintln!("failed to remove shortcut for {key}: {error}");
-        }
+    {
+        let app = app.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            if let Ok(config) = load_config() {
+                if let Err(error) = install_global_shortcut_bindings(&app, &config, true, None) {
+                    eprintln!("failed to refresh shortcuts after removing surface: {error}");
+                }
+            }
+        });
     }
-    #[cfg(not(desktop))]
-    let _ = app;
 }
 
 fn restore_silent_sessions(app: &AppHandle) {
@@ -3911,6 +3916,9 @@ pub fn check_global_shortcut(
     app: &AppHandle,
     shortcut_config: &str,
 ) -> Result<ShortcutCheckResult, AppError> {
+    let _operation = SHORTCUT_OPERATIONS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let Some(shortcut) = shortcut_from_config(shortcut_config).and_then(to_tauri_shortcut) else {
         return Ok(shortcut_check_result(
             false,
@@ -4130,12 +4138,34 @@ fn shortcut_bindings_from_config(
 }
 
 #[cfg(desktop)]
+fn unregister_shortcut_bindings(
+    app: &AppHandle,
+    bindings: &ShortcutBindings,
+) -> Result<(), Box<dyn Error>> {
+    // unregister_all holds the plugin store lock while waiting for AppKit. Carbon callbacks
+    // also read that store on the main thread. unregister_multiple releases it before dispatch.
+    let shortcuts: Vec<_> = bindings
+        .open_notepad
+        .iter()
+        .chain(bindings.toggle_visibility.iter())
+        .chain(bindings.open_main.iter())
+        .chain(bindings.surfaces.iter().map(|(shortcut, _)| shortcut))
+        .copied()
+        .filter(|shortcut| app.global_shortcut().is_registered(*shortcut))
+        .collect();
+    app.global_shortcut().unregister_multiple(shortcuts)?;
+    Ok(())
+}
+#[cfg(desktop)]
 fn install_global_shortcut_bindings(
     app: &AppHandle,
     config: &AppConfig,
     replace_existing: bool,
     override_session: Option<&crate::surface_sessions::SurfaceSession>,
 ) -> Result<(), Box<dyn Error>> {
+    let _operation = SHORTCUT_OPERATIONS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let bindings =
         shortcut_bindings_from_config(config, crate::surface_sessions::list()?, override_session)?;
     let old = app
@@ -4150,7 +4180,7 @@ fn install_global_shortcut_bindings(
         .unwrap_or_default();
 
     if replace_existing {
-        app.global_shortcut().unregister_all()?;
+        unregister_shortcut_bindings(app, &old)?;
     }
 
     let register = |bindings: &ShortcutBindings| -> Result<(), Box<dyn Error>> {
@@ -4166,7 +4196,7 @@ fn install_global_shortcut_bindings(
         Ok(())
     };
     if let Err(error) = register(&bindings) {
-        let _ = app.global_shortcut().unregister_all();
+        let _ = unregister_shortcut_bindings(app, &bindings);
         let _ = register(&old);
         return Err(error);
     }
@@ -4377,7 +4407,20 @@ fn apply_autostart(_app: &AppHandle, _enabled: bool) -> Result<(), Box<dyn Error
 
 #[cfg(desktop)]
 pub fn start_shortcut_recording(app: &AppHandle) -> Result<(), Box<dyn Error>> {
-    app.global_shortcut().unregister_all()?;
+    let _operation = SHORTCUT_OPERATIONS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let bindings = app
+        .try_state::<RuntimeState>()
+        .map(|state| {
+            state
+                .shortcut_bindings
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone()
+        })
+        .unwrap_or_default();
+    unregister_shortcut_bindings(app, &bindings)?;
 
     #[cfg(target_os = "windows")]
     keyboard_hook::start(app.clone());

@@ -588,7 +588,10 @@ fn copy_background_image(_app: AppHandle, source_path: String) -> Result<String,
 }
 
 #[tauri::command]
-fn config_save(app: AppHandle, config: AppConfig) -> Result<AppConfig, AppError> {
+async fn config_save(app: AppHandle, config: AppConfig) -> Result<AppConfig, AppError> {
+    run_settings_task(move || config_save_blocking(app, config)).await
+}
+fn config_save_blocking(app: AppHandle, config: AppConfig) -> Result<AppConfig, AppError> {
     let store = default_store()?;
     let previous = store.load_config()?;
     desktop::apply_runtime_config(&app, &previous, &config).map_err(|error| {
@@ -774,30 +777,46 @@ fn config_migrate_data_dir(app: AppHandle, new_data_dir: String) -> Result<AppCo
     Ok(config)
 }
 
+// Native shortcut operations wait for AppKit work; never run them on the IPC/UI thread.
+async fn run_settings_task<T: Send + 'static>(
+    task: impl FnOnce() -> Result<T, AppError> + Send + 'static,
+) -> Result<T, AppError> {
+    tauri::async_runtime::spawn_blocking(task)
+        .await
+        .map_err(|error| AppError {
+            code: "settingsTask".into(),
+            message: error.to_string(),
+            details: Default::default(),
+        })?
+}
 #[tauri::command]
-fn global_shortcut_check(
+async fn global_shortcut_check(
     app: AppHandle,
     shortcut: String,
 ) -> Result<desktop::ShortcutCheckResult, AppError> {
-    desktop::check_global_shortcut(&app, &shortcut)
+    run_settings_task(move || desktop::check_global_shortcut(&app, &shortcut)).await
 }
-
 #[tauri::command]
-fn start_shortcut_recording(app: AppHandle) -> Result<(), AppError> {
-    desktop::start_shortcut_recording(&app).map_err(|error| AppError {
-        code: "shortcutRecording".into(),
-        message: error.to_string(),
-        details: Default::default(),
+async fn start_shortcut_recording(app: AppHandle) -> Result<(), AppError> {
+    run_settings_task(move || {
+        desktop::start_shortcut_recording(&app).map_err(|error| AppError {
+            code: "shortcutRecording".into(),
+            message: error.to_string(),
+            details: Default::default(),
+        })
     })
+    .await
 }
-
 #[tauri::command]
-fn stop_shortcut_recording(app: AppHandle) -> Result<(), AppError> {
-    desktop::stop_shortcut_recording(&app).map_err(|error| AppError {
-        code: "shortcutRecording".into(),
-        message: error.to_string(),
-        details: Default::default(),
+async fn stop_shortcut_recording(app: AppHandle) -> Result<(), AppError> {
+    run_settings_task(move || {
+        desktop::stop_shortcut_recording(&app).map_err(|error| AppError {
+            code: "shortcutRecording".into(),
+            message: error.to_string(),
+            details: Default::default(),
+        })
     })
+    .await
 }
 
 #[tauri::command]
