@@ -1,6 +1,6 @@
 [package]
 name = "hermes-surface-dev"
-version = "1.7.12"
+version = "1.7.13"
 description = "A lightweight cross-platform desktop note app"
 authors = ["Achilng"]
 edition = "2021"
@@ -67,5 +67,6 @@ windows-sys = { version = "0.59", features = [
 block2 = "0.6"
 objc2 = "0.6"
 objc2-app-kit = "0.3"
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGWindowLevel"] }
 objc2-foundation = "0.3"
 raw-window-handle = "0.6"

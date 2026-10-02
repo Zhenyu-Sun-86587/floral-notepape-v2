@@ -2,11 +2,11 @@
 
 **简体中文** · [繁體中文](README_zh-HK.md) · [English](README_en-US.md)
 
-把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.12（Mac M1）**，Windows 发布版本为 **1.7.9**。
+把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.13（Mac M2）**，Windows 发布版本为 **1.7.9**。
 
 [下载 Windows 1.7.9](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.9) · [反馈问题](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [Mac 开发交接](Docs/MAC_HANDOFF.md)
 
-> **平台状态**：Windows x64 已提供 NSIS 安装包。macOS 正由协作者适配，Mac 当前构建与人工验收见 [M1 阶段记录](Docs/MAC_M1.md)。1.7.5 的 Editor 点击定位、滚动和 IME 仍待人工 GUI 验收，详情见 [项目状态](Docs/STATUS.md)。
+> **平台状态**：Windows x64 已提供 NSIS 安装包。macOS 正由协作者适配，Mac 当前构建与人工验收见 [M2 阶段记录](Docs/MAC_M2.md)。1.7.5 的 Editor 点击定位、滚动和 IME 仍待人工 GUI 验收，详情见 [项目状态](Docs/STATUS.md)。
 
 ## 能做什么
 

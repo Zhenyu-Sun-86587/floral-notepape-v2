@@ -143,11 +143,11 @@ export function AppearanceSection({ config, noteId, onChange }: Props) {
             })
           }
         />
-        Windows Acrylic 原生磨砂
+        {navigator.userAgent.includes("Macintosh") ? "macOS 原生磨砂" : "Windows Acrylic 原生磨砂"}
       </label>
       <p className="text-[10px] text-ink-ghost">
         {materialStatus === "active"
-          ? "系统已接受 Acrylic 请求；实际磨砂效果以桌面观察为准"
+          ? "系统已接受原生材质请求；实际磨砂效果以桌面观察为准"
           : materialStatus === "unavailable"
             ? "当前环境不可用，已降级为半透明背景"
             : "原生材质未启用"}
