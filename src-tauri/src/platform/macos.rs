@@ -8,6 +8,14 @@ pub enum MaterialEffect {
     Frosted,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum CapsuleDynamics {
+    #[default]
+    Lightweight,
+    Elastic,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct MaterialOpacity {
@@ -37,6 +45,7 @@ pub struct MacosConfig {
     pub note_opacity: MaterialOpacity,
     pub capsule_opacity: MaterialOpacity,
     pub capsule_liquid_motion: bool,
+    pub capsule_dynamics: CapsuleDynamics,
     pub notes_on_all_spaces: bool,
     pub capsules_on_all_spaces: bool,
 }
@@ -52,6 +61,7 @@ impl Default for MacosConfig {
                 frosted: 60,
             },
             capsule_liquid_motion: true,
+            capsule_dynamics: CapsuleDynamics::Lightweight,
             notes_on_all_spaces: true,
             capsules_on_all_spaces: true,
         }
@@ -88,11 +98,13 @@ mod tests {
     fn old_configs_default_to_cross_spaces_and_switches_round_trip() {
         let defaults: MacosConfig = serde_json::from_str("{}").unwrap();
         assert_eq!(defaults, MacosConfig::default());
+        assert_eq!(defaults.capsule_dynamics, CapsuleDynamics::Lightweight);
         let config = MacosConfig {
             notes_on_all_spaces: false,
             capsules_on_all_spaces: true,
             material_effect: MaterialEffect::Frosted,
             material_enabled: false,
+            capsule_dynamics: CapsuleDynamics::Elastic,
             ..Default::default()
         };
         assert_eq!(

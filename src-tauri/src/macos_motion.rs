@@ -21,7 +21,7 @@ use tauri::Manager;
 struct Bridge {
     id: u64,
     panel: Retained<NSPanel>,
-    hidden: Vec<Retained<NSWindow>>,
+    suspended: Vec<String>,
 }
 thread_local! { static BRIDGE:RefCell<Option<Bridge>>=const {RefCell::new(None)}; static SERIAL:RefCell<u64>=const {RefCell::new(0)}; }
 fn changed_keys(previous: &[Vec<String>], next: &[Vec<String>]) -> BTreeSet<String> {
@@ -86,9 +86,7 @@ fn stop() {
     BRIDGE.with(|bridge| {
         if let Some(old) = bridge.borrow_mut().take() {
             old.panel.orderOut(None);
-            for w in old.hidden {
-                w.setAlphaValue(1.0);
-            }
+            crate::macos_rail::material_visible(&old.suspended, true);
         }
     });
 }
@@ -101,6 +99,82 @@ pub fn capture(app: &tauri::AppHandle, groups: &[GroupSurface]) -> BTreeMap<Stri
         .into_iter()
         .map(|(key, rect, _)| (key, rect))
         .collect()
+}
+fn bubble_frame(rect: NSRect, single: bool) -> NSRect {
+    let pad = if single { 8.0 } else { 10.0 };
+    NSRect::new(
+        NSPoint::new(rect.origin.x - pad, rect.origin.y - pad),
+        NSSize::new(rect.size.width + pad * 2.0, rect.size.height + pad * 2.0),
+    )
+}
+#[derive(Clone)]
+struct Motion {
+    view: Retained<NSView>,
+    start: NSRect,
+    end: NSRect,
+}
+fn spring_frame(start: NSRect, end: NSRect, phase: usize) -> NSRect {
+    if phase >= 2 {
+        return end;
+    }
+    let dx = end.origin.x - start.origin.x;
+    let dy = end.origin.y - start.origin.y;
+    let horizontal = dx.abs() >= dy.abs();
+    let amount = if phase == 0 { 0.08 } else { -0.025 };
+    let sx = if horizontal {
+        1.0 + amount
+    } else {
+        1.0 - amount * 0.6
+    };
+    let sy = if horizontal {
+        1.0 - amount * 0.6
+    } else {
+        1.0 + amount
+    };
+    let size = NSSize::new(end.size.width * sx, end.size.height * sy);
+    let overshoot = if phase == 0 { 0.06 } else { -0.018 };
+    NSRect::new(
+        NSPoint::new(
+            end.origin.x + (dx * overshoot).clamp(-3.0, 3.0) + (end.size.width - size.width) / 2.0,
+            end.origin.y
+                + (dy * overshoot).clamp(-3.0, 3.0)
+                + (end.size.height - size.height) / 2.0,
+        ),
+        size,
+    )
+}
+fn spring(id: u64, motions: Vec<Motion>, phase: usize) {
+    if !BRIDGE.with(|b| b.borrow().as_ref().is_some_and(|b| b.id == id)) {
+        return;
+    }
+    let changes = block2::RcBlock::new({
+        let motions = motions.clone();
+        move |context: NonNull<NSAnimationContext>| {
+            let context = unsafe { context.as_ref() };
+            context.setDuration([0.24, 0.10, 0.14][phase]);
+            context.setAllowsImplicitAnimation(true);
+            for motion in &motions {
+                let frame = spring_frame(motion.start, motion.end, phase);
+                unsafe {
+                    let animator: *mut objc2::runtime::AnyObject =
+                        msg_send![&*motion.view, animator];
+                    let _: () = msg_send![animator,setFrame:frame];
+                    let _: () = msg_send![animator,setCornerRadius:frame.size.width.min(frame.size.height)/2.0];
+                }
+            }
+        }
+    });
+    let complete = block2::RcBlock::new(move || {
+        if !BRIDGE.with(|b| b.borrow().as_ref().is_some_and(|b| b.id == id)) {
+            return;
+        }
+        if phase < 2 {
+            spring(id, motions.clone(), phase + 1);
+        } else {
+            stop();
+        }
+    });
+    NSAnimationContext::runAnimationGroup_completionHandler(&changes, Some(&complete));
 }
 pub fn transition(
     app: &tauri::AppHandle,
@@ -136,7 +210,19 @@ pub fn transition(
             *rect = *start;
         }
     }
-    let after = cells(app, next, &keys);
+    let mut after = cells(app, next, &keys);
+    let elastic = macos_material::elastic_capsules();
+    if elastic {
+        for (entries, groups) in [(&mut before, previous), (&mut after, next)] {
+            for (key, rect, _) in entries.iter_mut() {
+                let single = groups
+                    .iter()
+                    .find(|g| g.members.iter().any(|m| &m.key == key))
+                    .is_some_and(|g| g.members.len() == 1);
+                *rect = bubble_frame(*rect, single);
+            }
+        }
+    }
     if before.len() != after.len() || before.len() != keys.len() {
         return;
     }
@@ -178,7 +264,7 @@ pub fn transition(
     let stage = NSView::initWithFrame(NSView::alloc(mtm), bounds);
     let container = view(class, bounds);
     unsafe {
-        let _: () = msg_send![&*container,setSpacing:18.0_f64];
+        let _: () = msg_send![&*container,setSpacing:if elastic { 24.0_f64 } else { 18.0_f64 }];
         let _: () = msg_send![&*container,setContentView:&*stage];
     }
     panel.setContentView(Some(&container));
@@ -222,38 +308,69 @@ pub fn transition(
         ) {
             icon.setImage(Some(&image));
         }
-        content.addSubview(&icon);
+        // Elastic transitions animate material only. The live windows retain
+        // their icons and hit targets above the bridge, avoiding duplicate ink.
+        if !elastic {
+            content.addSubview(&icon);
+        }
         unsafe {
             let _: () = msg_send![&*glass,setStyle:1_isize];
-            let _: () = msg_send![&*glass,setCornerRadius:18.0_f64];
+            let _: () = msg_send![&*glass,setCornerRadius:if elastic { start.size.height/2.0 } else { 18.0_f64 }];
+            if elastic {
+                let tint = NSColor::colorWithWhite_alpha(
+                    1.0,
+                    macos_material::capsule_tint(macos_material::opacity("capsule-motion", true)),
+                );
+                let _: () = msg_send![&*glass,setTintColor:&*tint];
+            }
             let _: () = msg_send![&*glass,setContentView:&*content];
         }
         stage.addSubview(&glass);
-        motions.push((glass, local(end)));
+        motions.push(Motion {
+            view: glass,
+            start: local(start),
+            end: local(end),
+        });
     }
-    let mut hidden = Vec::new();
-    for (_, _, w) in &after {
-        if !hidden.iter().any(|old: &Retained<NSWindow>| old == w) {
-            // Keep the real hit surface visible while the decorative bridge
-            // animates. Zero alpha made WindowServer send clicks to Finder.
-            hidden.push(w.clone());
-        }
+    let suspended = if elastic {
+        next.iter()
+            .filter(|g| g.members.iter().any(|m| keys.contains(&m.key)))
+            .map(|g| g.native_label().to_owned())
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    crate::macos_rail::material_visible(&suspended, false);
+    if elastic {
+        // Keep decorative glass below real controls, never above their icons.
+        panel.orderBack(None);
+    } else {
+        panel.orderFrontRegardless();
     }
-    panel.orderFrontRegardless();
     let id = SERIAL.with(|s| {
         let mut s = s.borrow_mut();
         *s += 1;
         *s
     });
-    BRIDGE.with(|b| *b.borrow_mut() = Some(Bridge { id, panel, hidden }));
+    BRIDGE.with(|b| {
+        *b.borrow_mut() = Some(Bridge {
+            id,
+            panel,
+            suspended,
+        })
+    });
+    if elastic {
+        spring(id, motions, 0);
+        return;
+    }
     let changes = block2::RcBlock::new(move |context: NonNull<NSAnimationContext>| {
         let context = unsafe { context.as_ref() };
         context.setDuration(0.22);
         context.setAllowsImplicitAnimation(true);
-        for (view, frame) in &motions {
+        for motion in &motions {
             unsafe {
-                let animator: *mut objc2::runtime::AnyObject = msg_send![&**view, animator];
-                let _: () = msg_send![animator,setFrame:*frame];
+                let animator: *mut objc2::runtime::AnyObject = msg_send![&*motion.view, animator];
+                let _: () = msg_send![animator,setFrame:motion.end];
             }
         }
     });
@@ -268,6 +385,25 @@ pub fn transition(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn elastic_frames_are_bounded_and_settle_exactly() {
+        let start = NSRect::new(NSPoint::new(-300.0, 40.0), NSSize::new(40.0, 40.0));
+        let end = NSRect::new(NSPoint::new(20.0, 40.0), NSSize::new(44.0, 44.0));
+        for phase in 0..2 {
+            let frame = spring_frame(start, end, phase);
+            assert!((frame.origin.x - end.origin.x).abs() < 5.0);
+            assert!(frame.size.width > 40.0 && frame.size.width < 48.0);
+        }
+        assert_eq!(spring_frame(start, end, 2), end);
+        assert_eq!(
+            bubble_frame(
+                NSRect::new(NSPoint::new(8.0, 8.0), NSSize::new(24.0, 24.0)),
+                true
+            )
+            .size,
+            NSSize::new(40.0, 40.0)
+        );
+    }
     #[test]
     fn membership_changes_animate_both_merge_and_split() {
         let separate = vec![vec!["a".into()], vec!["b".into()]];

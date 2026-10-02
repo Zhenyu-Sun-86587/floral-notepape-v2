@@ -9,6 +9,7 @@ export interface PlatformConfig {
     noteOpacity?: { glass: number; frosted: number };
     capsuleOpacity?: { glass: number; frosted: number };
     capsuleLiquidMotion?: boolean;
+    capsuleDynamics?: "lightweight" | "elastic";
   };
 }
 export function PlatformSettings({
@@ -145,6 +146,29 @@ export function MaterialSettings({
           }
         />
       </label>
+      <label className="flex justify-between items-center text-[11px] text-ink-soft">
+        胶囊动态效果
+        <select
+          aria-label="胶囊动态效果"
+          value={settings.capsuleDynamics ?? "lightweight"}
+          className="rounded-lg px-3 py-2 bg-paper-warm"
+          onChange={(event) =>
+            onChange({
+              ...config,
+              macos: {
+                ...settings,
+                capsuleDynamics: event.target.value as "lightweight" | "elastic",
+              },
+            })
+          }
+        >
+          <option value="lightweight">轻量（当前效果）</option>
+          <option value="elastic">弹性玻璃</option>
+        </select>
+      </label>
+      <p className="text-[10px] text-ink-faint">
+        弹性档减少白色染色，融合时形变回弹；动画更长，交互时合成开销更高，空闲时不运行模拟。关闭融合动画或开启系统“减少动态效果”可减少动态开销。
+      </p>
       <p className="text-[10px] text-ink-faint">
         数值越低越通透，文字不随背景变淡。玻璃保留系统折射；系统“减少动态效果”时关闭融合动画。
       </p>
