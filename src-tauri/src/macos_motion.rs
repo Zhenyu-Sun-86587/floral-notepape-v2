@@ -86,6 +86,7 @@ fn stop() {
     BRIDGE.with(|bridge| {
         if let Some(old) = bridge.borrow_mut().take() {
             old.panel.orderOut(None);
+            crate::macos_fluid::remove("capsule-motion");
             crate::macos_rail::material_visible(&old.suspended, true);
         }
     });
@@ -267,7 +268,9 @@ pub fn transition(
         let _: () = msg_send![&*container,setSpacing:if elastic { 24.0_f64 } else { 18.0_f64 }];
         let _: () = msg_send![&*container,setContentView:&*stage];
     }
-    panel.setContentView(Some(&container));
+    let host = NSView::initWithFrame(NSView::alloc(mtm), bounds);
+    host.addSubview(&container);
+    panel.setContentView(Some(&host));
     let mut motions = Vec::new();
     for (key, start, _) in &before {
         let Some((_, end, _)) = after.iter().find(|(k, _, _)| k == key) else {
@@ -346,6 +349,26 @@ pub fn transition(
         panel.orderBack(None);
     } else {
         panel.orderFrontRegardless();
+    }
+    if macos_material::fluid_capsules() {
+        let rect = |r: NSRect| {
+            [
+                r.origin.x,
+                frame.size.height - r.origin.y - r.size.height,
+                r.size.width,
+                r.size.height,
+            ]
+        };
+        let start = motions.iter().map(|m| rect(m.start)).collect::<Vec<_>>();
+        let end = motions.iter().map(|m| rect(m.end)).collect::<Vec<_>>();
+        crate::macos_fluid::install(
+            &panel,
+            &container,
+            "capsule-motion",
+            &start,
+            macos_material::opacity("capsule-motion", true),
+        );
+        crate::macos_fluid::morph("capsule-motion", &start, &end);
     }
     let id = SERIAL.with(|s| {
         let mut s = s.borrow_mut();

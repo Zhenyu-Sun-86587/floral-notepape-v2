@@ -510,6 +510,8 @@ fn present(app: &AppHandle, mut next: Vec<GroupSurface>) -> Result<(), AppError>
             if !previous.iter().any(|g| g.label == group.label) {
                 if let Some(window) = window(app, &group.label) {
                     let _ = window.hide();
+                    #[cfg(target_os = "macos")]
+                    crate::macos_surface::forget(&window);
                 }
                 registry.pool.push(group.label.clone());
             }

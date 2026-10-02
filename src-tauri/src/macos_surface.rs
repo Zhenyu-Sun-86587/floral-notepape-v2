@@ -450,6 +450,14 @@ pub fn present_capsules(
                     native.orderOut(None);
                 }
             }
+            for group in &previous {
+                if !next
+                    .iter()
+                    .any(|g| g.native_label() == group.native_label())
+                {
+                    crate::macos_rail::forget(group.native_label());
+                }
+            }
             Ok(())
         })();
         let _ = sender.send(result);

@@ -1,4 +1,6 @@
 import type { AppConfig } from "../../features/settings/types";
+import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 export interface PlatformConfig {
   macos?: {
     notesOnAllSpaces: boolean;
@@ -9,7 +11,7 @@ export interface PlatformConfig {
     noteOpacity?: { glass: number; frosted: number };
     capsuleOpacity?: { glass: number; frosted: number };
     capsuleLiquidMotion?: boolean;
-    capsuleDynamics?: "lightweight" | "elastic";
+    capsuleDynamics?: "lightweight" | "elastic" | "fluid";
   };
 }
 export function PlatformSettings({
@@ -65,6 +67,26 @@ export function MaterialSettings({
   onChange: (config: AppConfig) => void;
 }) {
   const settings = config.macos ?? { notesOnAllSpaces: true, capsulesOnAllSpaces: true };
+  const [fluidStatus, setFluidStatus] = useState("");
+  useEffect(() => {
+    if (settings.capsuleDynamics !== "fluid") return;
+    let active = true;
+    const refresh = () =>
+      void invoke<string>("macos_fluid_status").then(
+        (text) => {
+          if (active) setFluidStatus(text);
+        },
+        () => {
+          if (active) setFluidStatus("流体模块状态不可用，保留原生效果");
+        },
+      );
+    refresh();
+    const timer = window.setInterval(refresh, 2000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [settings.capsuleDynamics]);
   return (
     <div className="space-y-2">
       <label className="flex items-center justify-between text-[12px] text-ink-soft">
@@ -157,15 +179,39 @@ export function MaterialSettings({
               ...config,
               macos: {
                 ...settings,
-                capsuleDynamics: event.target.value as "lightweight" | "elastic",
+                capsuleDynamics: event.target.value as "lightweight" | "elastic" | "fluid",
               },
             })
           }
         >
           <option value="lightweight">轻量（当前效果）</option>
           <option value="elastic">弹性玻璃</option>
+          <option value="fluid">流体玻璃（最高 · 实验）</option>
         </select>
       </label>
+      {settings.capsuleDynamics === "fluid" && (
+        <div className="space-y-2 text-[11px] text-ink-soft">
+          <p>
+            最高档采样真实桌面并用 GPU
+            折射。需要屏幕录制权限，开销明显更高；画面仅在本机内存中处理，不保存、不上传，不采集音频。胶囊超过
+            12 个时使用原生玻璃。
+          </p>
+          <p role="status">{fluidStatus || "保存后启用；未授权时回退到弹性玻璃"}</p>
+          <button
+            type="button"
+            className="rounded-lg px-3 py-2 bg-paper-warm"
+            onClick={() =>
+              void invoke<string>("macos_fluid_status", { request: true }).then(
+                setFluidStatus,
+                () => setFluidStatus("请在系统设置中检查屏幕录制权限"),
+              )
+            }
+          >
+            授权 / 重试背景采样
+          </button>
+          <p>如系统要求，授权后重启应用。切回轻量或弹性档会停止采样。</p>
+        </div>
+      )}
       <p className="text-[10px] text-ink-faint">
         弹性档减少白色染色，融合时形变回弹；动画更长，交互时合成开销更高，空闲时不运行模拟。关闭融合动画或开启系统“减少动态效果”可减少动态开销。
       </p>
