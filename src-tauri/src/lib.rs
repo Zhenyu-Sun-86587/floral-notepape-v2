@@ -13,6 +13,8 @@ pub mod macos_capsule;
 #[cfg(target_os = "macos")]
 pub mod macos_droplet;
 #[cfg(target_os = "macos")]
+pub mod macos_fluid;
+#[cfg(target_os = "macos")]
 pub mod macos_lock_overlay;
 #[cfg(target_os = "macos")]
 pub mod macos_material;
@@ -208,6 +210,20 @@ async fn surface_capsule_material(
     window: tauri::WebviewWindow,
 ) -> Result<macos_material::MaterialState, AppError> {
     run_settings_task(move || crate::macos_capsule::initialize(&window)).await
+}
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+async fn macos_fluid_status(app: AppHandle, request: Option<bool>) -> Result<String, AppError> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.run_on_main_thread(move || {
+        let _ = tx.send(crate::macos_fluid::status(request.unwrap_or(false)));
+    })?;
+    rx.await.map_err(|e| AppError {
+        code: "fluidStatus".into(),
+        message: e.to_string(),
+        details: Default::default(),
+    })
 }
 
 #[tauri::command]
@@ -1045,6 +1061,7 @@ pub fn run() {
             surface_capsule_preview_state,
             #[cfg(target_os = "macos")]
             surface_capsule_material,
+            macos_fluid_status,
             surface_capsule_present,
             surface_capsule_hide,
             surface_capsule_drag,

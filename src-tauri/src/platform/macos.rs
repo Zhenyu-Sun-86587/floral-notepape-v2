@@ -14,6 +14,7 @@ pub enum CapsuleDynamics {
     #[default]
     Lightweight,
     Elastic,
+    Fluid,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -104,7 +105,7 @@ mod tests {
             capsules_on_all_spaces: true,
             material_effect: MaterialEffect::Frosted,
             material_enabled: false,
-            capsule_dynamics: CapsuleDynamics::Elastic,
+            capsule_dynamics: CapsuleDynamics::Fluid,
             ..Default::default()
         };
         assert_eq!(

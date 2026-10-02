@@ -10,7 +10,7 @@ use crate::{
 use objc2::{
     define_class, msg_send,
     rc::{Allocated, Retained},
-    runtime::AnyClass,
+    runtime::{AnyClass, AnyObject},
     sel, AnyThread, DefinedClass, MainThreadOnly,
 };
 use objc2_app_kit::{
@@ -18,7 +18,7 @@ use objc2_app_kit::{
     NSFocusRingType, NSImage, NSImageScaling, NSScrollView, NSTrackingArea, NSTrackingAreaOptions,
     NSView, NSWindow,
 };
-use objc2_foundation::{MainThreadMarker, NSPoint, NSRect, NSSize, NSString};
+use objc2_foundation::{MainThreadMarker, NSNumber, NSPoint, NSRect, NSSize, NSString};
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
@@ -53,6 +53,7 @@ define_class!(
             let s = self.ivars(); s.epoch.fetch_add(1, Ordering::SeqCst);
             s.pressed.set(true); s.dragged.set(false);
             s.start.set(crate::macos_surface::event_cursor(event));
+            press_feedback(&s.label, true);
         }
         #[unsafe(method(needsPanelToBecomeKey))]
         fn needs_key(&self) -> bool { false }
@@ -64,6 +65,7 @@ define_class!(
             let Some(point) = crate::macos_surface::event_cursor(event) else { return; };
             if (point.x-start.x).hypot(point.y-start.y) < 4.0 { return; }
             s.dragged.set(true);
+            press_feedback(&s.label, false);
             let Some(window) = s.app.get_window(&s.label) else { return; };
             let key = s.key.clone(); let group = s.group;
             tauri::async_runtime::spawn(async move {
@@ -73,6 +75,7 @@ define_class!(
         #[unsafe(method(mouseUp:))]
         fn mouse_up(&self, event: &NSEvent) {
             let s = self.ivars();
+            press_feedback(&s.label, false);
             if !s.pressed.replace(false) || s.dragged.get() || s.group { return; }
             let point = self.convertPoint_fromView(event.locationInWindow(), None);
             let size = self.bounds().size;
@@ -123,6 +126,58 @@ struct Rail {
     material: Option<Retained<NSView>>,
 }
 thread_local! { static RAILS: RefCell<HashMap<String, Rail>> = RefCell::new(HashMap::new()); }
+fn press_feedback(label: &str, pressed: bool) {
+    if !macos_material::elastic_capsules() || !macos_material::glass_motion_enabled() {
+        return;
+    }
+    let reduce: bool = unsafe {
+        let workspace: *mut AnyObject =
+            msg_send![AnyClass::get(c"NSWorkspace").unwrap(), sharedWorkspace];
+        msg_send![workspace, accessibilityDisplayShouldReduceMotion]
+    };
+    if reduce {
+        return;
+    }
+    crate::macos_fluid::press(label, pressed);
+    RAILS.with(|rails| {
+        let rails = rails.borrow();
+        let Some(material) = rails.get(label).and_then(|r| r.material.as_ref()) else {
+            return;
+        };
+        let Some(layer) = material.layer() else {
+            return;
+        };
+        let Some(class) = AnyClass::get(c"CASpringAnimation") else {
+            return;
+        };
+        let scale = if pressed { 0.96 } else { 1.0 };
+        let size = material.bounds().size;
+        for (path, target) in [
+            ("transform.scale", scale),
+            ("transform.translation.x", size.width * (1.0 - scale) / 2.0),
+            ("transform.translation.y", size.height * (1.0 - scale) / 2.0),
+        ] {
+            let key = NSString::from_str(path);
+            let value = NSNumber::new_f64(target);
+            unsafe {
+                let presentation = layer.presentationLayer();
+                let source = presentation.as_ref().unwrap_or(&layer);
+                let from: Option<Retained<AnyObject>> = msg_send![&**source,valueForKeyPath:&*key];
+                let animation: Retained<AnyObject> = msg_send![class,animationWithKeyPath:&*key];
+                let _: () = msg_send![&*animation,setFromValue:from.as_deref()];
+                let _: () = msg_send![&*animation,setToValue:&*value];
+                let _: () = msg_send![&*animation,setMass:0.7_f64];
+                let _: () = msg_send![&*animation,setStiffness:260.0_f64];
+                let _: () =
+                    msg_send![&*animation,setDamping:if pressed { 25.0_f64 } else { 18.0_f64 }];
+                let duration: f64 = msg_send![&*animation, settlingDuration];
+                let _: () = msg_send![&*animation,setDuration:duration.min(0.65)];
+                let _: () = msg_send![&*layer,setValue:&*value,forKeyPath:&*key];
+                let _: () = msg_send![&*layer,addAnimation:&*animation,forKey:&*key];
+            }
+        }
+    });
+}
 fn view(class: &AnyClass, frame: NSRect) -> Retained<NSView> {
     unsafe {
         let a: Allocated<NSView> = msg_send![class, alloc];
@@ -195,6 +250,9 @@ fn button(
 fn render(window: &Window, group: GroupSurface) -> Result<(), crate::services::notes::AppError> {
     let mtm = MainThreadMarker::new().expect("Mac rail on main thread");
     let native = unsafe { &*window.ns_window()?.cast::<NSWindow>() };
+    if !macos_material::fluid_capsules() {
+        crate::macos_fluid::remove(window.label());
+    }
     let geometry = crate::macos_droplet::geometry(group.members.len());
     let size = NSSize::new(geometry.edge, geometry.height);
     let radius = 22.0_f64.min(size.height / 2.0);
@@ -343,6 +401,17 @@ fn render(window: &Window, group: GroupSurface) -> Result<(), crate::services::n
     native.setIgnoresMouseEvents(false);
     native.setMovableByWindowBackground(false);
     native.setContentView(Some(&root));
+    if glass && macos_material::fluid_capsules() {
+        if let Some(backing) = material.as_ref() {
+            crate::macos_fluid::install(
+                native,
+                backing,
+                window.label(),
+                &geometry.cells,
+                state.opacity,
+            );
+        }
+    }
     document.scrollPoint(NSPoint::new(0.0, document_size.height - size.height));
     RAILS.with(|rails| {
         let mut rails = rails.borrow_mut();
@@ -365,6 +434,7 @@ pub fn material_visible(labels: &[String], visible: bool) {
     RAILS.with(|rails| {
         let rails = rails.borrow();
         for label in labels {
+            crate::macos_fluid::visible(label, visible);
             if let Some(view) = rails.get(label).and_then(|r| r.material.as_ref()) {
                 view.setAlphaValue(if visible { 1.0 } else { 0.0 });
             }
@@ -401,6 +471,7 @@ pub fn refresh(app: &tauri::AppHandle) {
     }
 }
 pub fn forget(label: &str) {
+    crate::macos_fluid::remove(label);
     RAILS.with(|rails| {
         if let Some(old) = rails.borrow_mut().remove(label) {
             old.epoch.fetch_add(1, Ordering::SeqCst);

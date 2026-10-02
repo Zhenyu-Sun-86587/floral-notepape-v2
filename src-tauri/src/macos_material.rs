@@ -46,7 +46,18 @@ pub fn elastic_capsules() -> bool {
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .as_ref()
-        .is_some_and(|c| c.capsule_dynamics == CapsuleDynamics::Elastic)
+        .is_some_and(|c| c.capsule_dynamics != CapsuleDynamics::Lightweight)
+}
+pub fn fluid_capsules() -> bool {
+    CONFIG
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .is_some_and(|c| {
+            c.material_enabled
+                && c.material_effect == MaterialEffect::LiquidGlass
+                && c.capsule_dynamics == CapsuleDynamics::Fluid
+        })
 }
 pub fn capsule_tint(opacity: f64) -> f64 {
     opacity * if elastic_capsules() { 0.025 } else { 0.12 }

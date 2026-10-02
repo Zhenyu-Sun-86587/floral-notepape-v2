@@ -1,4 +1,4 @@
-当前阶段：[Mac 1.7.22 可选弹性玻璃](MAC_ELASTIC_1.7.22.md)。保留轻量档，新增原生容器融合、短时形变回弹和低染色；焦点链路暂不扩大修改，Windows 编译隔离。
+当前阶段：[Mac 1.7.23 三档玻璃与真实背景折射](MAC_FLUID_1.7.23.md)。最高档使用 Mac 专属 Swift/Metal/ScreenCaptureKit；焦点链路暂不扩大修改，Windows 编译隔离。
 
 上一阶段：[Mac 1.7.18 胶囊重构与原生玻璃](MAC_CAPSULES_1.7.18.md)。Windows 胶囊保持原实现，基础检查与人工验收见文档。
 
