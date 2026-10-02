@@ -8,7 +8,7 @@
 
 **公开的普通1.8.3安装包尚未包含可加载的小组件扩展。** 另有本机个人开发签名测试版：扩展由 GitHub Actions 编译，本机免费 Apple Development 身份签名，已确认 App Group 读写、系统添加及桌面占位内容渲染；选择笔记、刷新和点击打开仍待人工检查。配置文件绑定本机且只有7天有效期，不作为通用分发包。具体流程见 [免费签名实验](MAC_WIDGETS_FREE_SIGNING.md)。
 
-2026-10-03 已实际运行 [GitHub Actions 构建检查](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/37037576845)：macOS runner使用Xcode26.6，56秒完成构建，生成包含arm64/x86_64的`FolioWidgets.appex`，`Metadata.appintents/extract.actionsdata`中存在SelectNote配置元数据。产物已下载并核对扩展点`com.apple.widgetkit-extension`。二进制只有linker临时签名，TeamIdentifier未设置，Info.plist未绑定；本机与runner均有0个有效签名身份。这证明完整Xcode无需安装在本机，但不能证明免费Personal Team签名、App Group访问或小组件系统加载成功。
+2026-10-03 已实际运行 [GitHub Actions 构建检查](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/37037576845)：macOS runner使用Xcode26.6，56秒完成构建，生成包含arm64/x86_64的`FolioWidgets.appex`，`Metadata.appintents/extract.actionsdata`中存在SelectNote配置元数据。产物已下载并核对扩展点`com.apple.widgetkit-extension`。云端二进制只有linker临时签名，不能直接安装；随后取得本机免费开发身份、配置文件，完成本机签名及系统添加测试，详见免费签名实验文档。
 
 工作流位于`.github/workflows/macos-widget-check.yml`，只读仓库权限，不使用签名Secrets。运行`python3 scripts/build-macos-widgets.py --compile-only`可生成构建检查产物和`BUILD_REPORT.json`；该产物本身不作为可安装包发布。测试版通过 `--prebuilt-extension` 使用匹配版本的云端扩展，再在本机嵌入配置文件并签名，无需在本机安装完整 Xcode。
 
