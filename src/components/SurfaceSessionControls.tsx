@@ -1,3 +1,4 @@
+import { desktopLayerHint, desktopLayerLabel, supportsDesktopLayer } from "#platform-settings";
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
@@ -109,13 +110,8 @@ export function SurfaceSessionControls({ sessionKey }: { sessionKey: string }) {
           >
             <option value="alwaysOnTop">置顶</option>
             <option value="normal">普通窗口</option>
-            <option
-              value="desktopAttached"
-              disabled={!/Windows|Macintosh/.test(navigator.userAgent)}
-            >
-              {navigator.userAgent.includes("Macintosh")
-                ? "桌面层（macOS）"
-                : "附着桌面（Windows）"}
+            <option value="desktopAttached" disabled={!supportsDesktopLayer}>
+              {desktopLayerLabel}
             </option>
           </select>
           <label className="block mb-1 text-ink-faint">边缘收纳位置</label>
@@ -145,15 +141,11 @@ export function SurfaceSessionControls({ sessionKey }: { sessionKey: string }) {
               恢复收纳便签
             </button>
           )}
-          {!/Windows|Macintosh/.test(navigator.userAgent) && (
+          {!supportsDesktopLayer && (
             <p className="mb-2 text-xs text-ink-faint">当前平台尚未支持桌面层。</p>
           )}
           {session?.windowMode === "desktopAttached" && (
-            <p className="mb-2 text-xs text-ink-faint">
-              {navigator.userAgent.includes("Macintosh")
-                ? "桌面层随各桌面显示，位于普通应用下方；编辑时临时回到普通层。需要在其他应用或全屏空间上悬浮时，请选择置顶模式。"
-                : "桌面附着时会停用原生 Acrylic 和窗口阴影，避免黑边；便签颜色与圆角仍保留。"}
-            </p>
+            <p className="mb-2 text-xs text-ink-faint">{desktopLayerHint}</p>
           )}
           <button
             type="button"

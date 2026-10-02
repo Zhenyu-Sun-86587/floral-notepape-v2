@@ -1,3 +1,4 @@
+import type { PlatformConfig } from "#platform-settings";
 export type ViewMode = "edit" | "split" | "preview";
 
 export type ThemeOption = "light" | "dark" | "system" | "tokyo-night" | "everforest";
@@ -33,7 +34,7 @@ export interface AppearanceConfig {
 export type TileColorMode = "system" | "custom";
 export type BackgroundFit = "cover" | "contain" | "repeat";
 
-export interface AppConfig {
+export interface AppConfig extends PlatformConfig {
   locale: string;
   dataDir: string;
   globalShortcut: string;

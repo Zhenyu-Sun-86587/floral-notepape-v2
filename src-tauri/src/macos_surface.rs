@@ -3,13 +3,25 @@ use crate::surface_sessions::WindowMode;
 use objc2::rc::Retained;
 use objc2_app_kit::{NSWindow, NSWindowCollectionBehavior as Behavior};
 use objc2_core_graphics::{CGWindowLevelForKey, CGWindowLevelKey};
-use std::{cell::RefCell, collections::HashMap};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    sync::atomic::{AtomicBool, Ordering},
+};
+static NOTES_ALL_SPACES: AtomicBool = AtomicBool::new(true);
+static CAPSULES_ALL_SPACES: AtomicBool = AtomicBool::new(true);
+thread_local! { static NOTE_MODES: RefCell<HashMap<String, (WindowMode, bool)>> = RefCell::new(HashMap::new()); }
+pub fn configure(config: &crate::platform::macos::MacosConfig) {
+    NOTES_ALL_SPACES.store(config.notes_on_all_spaces, Ordering::Relaxed);
+    CAPSULES_ALL_SPACES.store(config.capsules_on_all_spaces, Ordering::Relaxed);
+}
 use tauri::{Emitter, Manager, WebviewWindow};
 thread_local! { static BASE_BEHAVIOR: RefCell<HashMap<String, Behavior>> = RefCell::new(HashMap::new()); }
 
-fn collection(base: Behavior, floating: bool, modern: bool) -> Behavior {
+fn collection(base: Behavior, floating: bool, modern: bool, all_spaces: bool) -> Behavior {
     // Spaces、Mission Control、窗口循环、全屏/Stage Manager 分组分别有互斥位。
-    let conflicting = Behavior::MoveToActiveSpace
+    let conflicting = Behavior::CanJoinAllSpaces
+        | Behavior::MoveToActiveSpace
         | Behavior::Managed
         | Behavior::Transient
         | Behavior::Stationary
@@ -21,8 +33,11 @@ fn collection(base: Behavior, floating: bool, modern: bool) -> Behavior {
         | Behavior::Primary
         | Behavior::Auxiliary
         | Behavior::CanJoinAllApplications;
-    let mut flags = (base & !conflicting) | Behavior::CanJoinAllSpaces;
-    if floating {
+    let mut flags = base & !conflicting;
+    if all_spaces {
+        flags |= Behavior::CanJoinAllSpaces;
+    }
+    if floating && all_spaces {
         flags |= Behavior::FullScreenAuxiliary;
         if modern {
             flags |= Behavior::CanJoinAllApplications;
@@ -30,11 +45,13 @@ fn collection(base: Behavior, floating: bool, modern: bool) -> Behavior {
     }
     flags
 }
-fn note_collection(base: Behavior, floating: bool, modern: bool) -> Behavior {
-    collection(base, floating, modern) | Behavior::Managed | Behavior::ParticipatesInCycle
+fn note_collection(base: Behavior, floating: bool, modern: bool, all_spaces: bool) -> Behavior {
+    collection(base, floating, modern, all_spaces)
+        | Behavior::Managed
+        | Behavior::ParticipatesInCycle
 }
-fn capsule_collection(base: Behavior, modern: bool) -> Behavior {
-    collection(base, true, modern) | Behavior::Stationary | Behavior::IgnoresCycle
+fn capsule_collection(base: Behavior, modern: bool, all_spaces: bool) -> Behavior {
+    collection(base, true, modern, all_spaces) | Behavior::Stationary | Behavior::IgnoresCycle
 }
 pub fn unlock_collection(base: Behavior) -> Behavior {
     (base & !(Behavior::Managed | Behavior::Transient | Behavior::ParticipatesInCycle))
@@ -50,7 +67,7 @@ fn modern_collections() -> bool {
 
 fn level(mode: WindowMode, locked: bool) -> isize {
     let key = if locked || mode == WindowMode::AlwaysOnTop {
-        CGWindowLevelKey::FloatingWindowLevelKey
+        CGWindowLevelKey::StatusWindowLevelKey
     } else if mode == WindowMode::DesktopAttached {
         CGWindowLevelKey::DesktopIconWindowLevelKey
     } else {
@@ -84,9 +101,29 @@ fn dispatch(
         }
     })
 }
+pub fn apply_mode(
+    window: &WebviewWindow,
+    mode: WindowMode,
+    locked: bool,
+) -> Result<(), crate::services::notes::AppError> {
+    if !locked {
+        crate::macos_lock_overlay::hide(window);
+    }
+    window.set_ignore_cursor_events(false)?;
+    apply(window, mode, locked)?;
+    if locked {
+        if let Ok(key) = crate::desktop::surface_key_for_window(window) {
+            crate::macos_lock_overlay::show(window, key);
+        }
+    }
+    Ok(())
+}
 pub fn apply(window: &WebviewWindow, mode: WindowMode, locked: bool) -> tauri::Result<()> {
     let label = window.label().to_owned();
     dispatch(window, move |native| {
+        NOTE_MODES.with(|map| {
+            map.borrow_mut().insert(label.clone(), (mode, locked));
+        });
         let base = BASE_BEHAVIOR.with(|map| {
             *map.borrow_mut()
                 .entry(label)
@@ -96,6 +133,7 @@ pub fn apply(window: &WebviewWindow, mode: WindowMode, locked: bool) -> tauri::R
             base,
             locked || mode == WindowMode::AlwaysOnTop,
             modern_collections(),
+            NOTES_ALL_SPACES.load(Ordering::Relaxed),
         ));
         native.setLevel(level(mode, locked));
         native.setHidesOnDeactivate(false);
@@ -108,10 +146,44 @@ pub fn show_without_activation(window: &WebviewWindow) -> tauri::Result<()> {
             native.setCollectionBehavior(capsule_collection(
                 native.collectionBehavior(),
                 modern_collections(),
+                CAPSULES_ALL_SPACES.load(Ordering::Relaxed),
             ));
+            native.setLevel(CGWindowLevelForKey(CGWindowLevelKey::StatusWindowLevelKey) as isize);
             native.setHidesOnDeactivate(false);
         }
         native.orderFrontRegardless();
+    })
+}
+pub fn refresh_config(
+    app: &tauri::AppHandle,
+    config: &crate::platform::macos::MacosConfig,
+) -> tauri::Result<()> {
+    configure(config);
+    let app = app.clone();
+    let handle = app.clone();
+    handle.run_on_main_thread(move || {
+        for (label, window) in app.webview_windows() {
+            if label.starts_with("capsule-") {
+                let all = CAPSULES_ALL_SPACES.load(Ordering::Relaxed);
+                let _ = dispatch(&window, move |native| {
+                    native.setCollectionBehavior(capsule_collection(
+                        native.collectionBehavior(),
+                        modern_collections(),
+                        all,
+                    ));
+                });
+            } else {
+                let mode = NOTE_MODES.with(|map| map.borrow().get(&label).copied());
+                if let Some((mode, locked)) = mode {
+                    let _ = apply(&window, mode, locked);
+                    if locked {
+                        if let Ok(key) = crate::desktop::surface_key_for_window(&window) {
+                            crate::macos_lock_overlay::show(&window, key);
+                        }
+                    }
+                }
+            }
+        }
     })
 }
 pub fn forget(window: &tauri::Window) {
@@ -119,6 +191,9 @@ pub fn forget(window: &tauri::Window) {
     let _ = window.app_handle().run_on_main_thread(move || {
         BASE_BEHAVIOR.with(|map| {
             map.borrow_mut().remove(&label);
+            NOTE_MODES.with(|map| {
+                map.borrow_mut().remove(&label);
+            });
         });
     });
 }
@@ -141,7 +216,7 @@ mod tests {
             | Behavior::IgnoresCycle
             | Behavior::FullScreenPrimary
             | Behavior::Primary;
-        let note = note_collection(base, true, true);
+        let note = note_collection(base, true, true, true);
         assert!(note.contains(
             Behavior::CanJoinAllSpaces
                 | Behavior::Managed
@@ -158,7 +233,7 @@ mod tests {
                 | Behavior::Primary
                 | Behavior::Auxiliary
         ));
-        let desktop = note_collection(base, false, true);
+        let desktop = note_collection(base, false, true, true);
         assert!(desktop.contains(Behavior::CanJoinAllSpaces | Behavior::Managed));
         assert!(
             !desktop.intersects(Behavior::FullScreenAuxiliary | Behavior::CanJoinAllApplications)
@@ -166,7 +241,11 @@ mod tests {
     }
     #[test]
     fn capsule_follows_spaces_without_becoming_a_mission_control_card() {
-        let capsule = capsule_collection(Behavior::Managed | Behavior::ParticipatesInCycle, true);
+        let capsule = capsule_collection(
+            Behavior::Managed | Behavior::ParticipatesInCycle,
+            true,
+            true,
+        );
         assert!(capsule.contains(
             Behavior::CanJoinAllSpaces
                 | Behavior::Stationary
@@ -176,13 +255,29 @@ mod tests {
         ));
         assert!(!capsule
             .intersects(Behavior::Managed | Behavior::Transient | Behavior::ParticipatesInCycle));
-        assert!(!capsule_collection(Behavior::Primary, false)
+        assert!(!capsule_collection(Behavior::Primary, false, true)
             .contains(Behavior::CanJoinAllApplications));
-        let unlock = unlock_collection(note_collection(Behavior::empty(), true, true));
+        let unlock = unlock_collection(note_collection(Behavior::empty(), true, true, true));
         assert!(unlock.contains(
             Behavior::CanJoinAllSpaces | Behavior::FullScreenAuxiliary | Behavior::Stationary
         ));
         assert!(!unlock.contains(Behavior::Managed | Behavior::ParticipatesInCycle));
+    }
+    #[test]
+    fn disabling_spaces_removes_fullscreen_and_old_cross_space_flags() {
+        let base = Behavior::CanJoinAllSpaces
+            | Behavior::FullScreenAuxiliary
+            | Behavior::CanJoinAllApplications;
+        for flags in [
+            note_collection(base, true, true, false),
+            capsule_collection(base, true, false),
+        ] {
+            assert!(!flags.intersects(base));
+        }
+        assert!(
+            level(WindowMode::AlwaysOnTop, false)
+                > CGWindowLevelForKey(CGWindowLevelKey::FloatingWindowLevelKey) as isize
+        );
     }
     #[test]
     fn capsule_frame_projects_target_scale_and_negative_screen_origin() {
@@ -285,7 +380,11 @@ pub fn present_capsules(
                     native.setCollectionBehavior(capsule_collection(
                         native.collectionBehavior(),
                         modern_collections(),
+                        CAPSULES_ALL_SPACES.load(Ordering::Relaxed),
                     ));
+                    native.setLevel(
+                        CGWindowLevelForKey(CGWindowLevelKey::StatusWindowLevelKey) as isize
+                    );
                     native.setHidesOnDeactivate(false);
                     native.setFrame_display(capsule_frame(*bounds, *scale, top), true);
                     native.orderFrontRegardless();

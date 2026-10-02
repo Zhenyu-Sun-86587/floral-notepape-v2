@@ -1,3 +1,4 @@
+import { PlatformSettings } from "#platform-settings";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -147,6 +148,7 @@ export function SettingsPanel({
         </section>
 
         <AppearanceSection config={config} noteId={selectedNoteId} onChange={onChange} />
+        <PlatformSettings config={config} onChange={onChange} />
 
         <section className="space-y-2">
           <label className="block text-[11px] font-body text-ink-faint">

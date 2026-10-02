@@ -1,3 +1,4 @@
+import { materialLabel } from "#platform-settings";
 import { useEffect, useState } from "react";
 import type { AppConfig, AppearanceTokens } from "../features/settings/types";
 import { resolveAppearance } from "../features/settings/theme";
@@ -143,7 +144,7 @@ export function AppearanceSection({ config, noteId, onChange }: Props) {
             })
           }
         />
-        {navigator.userAgent.includes("Macintosh") ? "macOS 原生磨砂" : "Windows Acrylic 原生磨砂"}
+        {materialLabel}
       </label>
       <p className="text-[10px] text-ink-ghost">
         {materialStatus === "active"

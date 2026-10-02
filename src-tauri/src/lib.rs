@@ -12,6 +12,7 @@ pub mod lock_overlay;
 pub mod macos_lock_overlay;
 #[cfg(target_os = "macos")]
 pub mod macos_surface;
+pub mod platform;
 pub mod services;
 #[cfg(target_os = "windows")]
 mod surface_frame;
@@ -601,6 +602,8 @@ fn config_save(app: AppHandle, config: AppConfig) -> Result<AppConfig, AppError>
         }
     })?;
     let saved = store.save_config(config)?;
+    #[cfg(target_os = "macos")]
+    crate::macos_surface::refresh_config(&app, &saved.macos)?;
     if let Err(error) = desktop::refresh_shell_state(&app, &saved) {
         eprintln!("failed to refresh desktop shell state: {error}");
     }
