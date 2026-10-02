@@ -27,7 +27,7 @@ async function mount() {
   mocks.invoke.mockImplementation((command: string) =>
     Promise.resolve(
       command === "surface_capsule_material"
-        ? "glass"
+        ? { kind: "glass", opacity: 0.25 }
         : command === "surface_capsule_preview_state"
           ? preview(1)
           : undefined,

@@ -1,4 +1,5 @@
 import chroma from "chroma-js";
+import { displayTitleSelection } from "#platform-note-shell";
 import type { CSSProperties, HTMLAttributes, Ref } from "react";
 import { lazy, Suspense, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -133,8 +134,8 @@ export function Tile({
           />
         ) : title ? (
           <div
-            data-tile-selectable="true"
-            className="font-display tracking-wide mb-3 leading-snug pr-24 select-text"
+            {...displayTitleSelection.attributes}
+            className={`font-display tracking-wide mb-3 leading-snug pr-24 ${displayTitleSelection.className}`}
             style={{ color: titleColor, fontSize: `${fontSize + 1}px` }}
           >
             {title}

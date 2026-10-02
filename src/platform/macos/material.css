@@ -1,11 +1,5 @@
 /* Build-selected Mac rules. All surfaces expose the same native backdrop;
    text, controls and editing DOM stay opaque and selectable. */
-:root[data-mac-material="glass"] {
-  --mac-tint: 8%;
-}
-:root[data-mac-material="frosted"] {
-  --mac-tint: 20%;
-}
 :root[data-mac-material="glass"] .app-main-surface,
 :root[data-mac-material="frosted"] .app-main-surface,
 :root[data-mac-material="glass"] .app-surface-frame,
@@ -30,4 +24,9 @@
 }
 :root[data-mac-material="solid"] .app-surface-frame {
   background-color: var(--color-cloud) !important;
+}
+
+:root[data-native-note-shell="true"]
+  :is([data-note-toolbar], [data-note-header], [data-note-display-title]) {
+  display: none !important;
 }

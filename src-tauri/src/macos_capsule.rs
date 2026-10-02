@@ -6,7 +6,7 @@ use tauri::Manager;
 thread_local! {
     static MONITORS: RefCell<Vec<Retained<AnyObject>>> = const { RefCell::new(Vec::new()) };
 }
-fn install_pointer_monitor(app: &tauri::AppHandle) {
+pub fn install_pointer_monitor(app: &tauri::AppHandle) {
     MONITORS.with(|monitors| {
         let mut monitors = monitors.borrow_mut();
         if !monitors.is_empty() {
@@ -39,7 +39,7 @@ fn install_pointer_monitor(app: &tauri::AppHandle) {
 
 pub fn initialize(
     window: &tauri::WebviewWindow,
-) -> Result<String, crate::services::notes::AppError> {
+) -> Result<crate::macos_material::MaterialState, crate::services::notes::AppError> {
     let app = window.app_handle().clone();
     window
         .app_handle()

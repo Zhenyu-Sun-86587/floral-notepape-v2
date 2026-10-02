@@ -16,7 +16,7 @@ pub fn configure(config: &crate::platform::macos::MacosConfig) {
     NOTES_ALL_SPACES.store(config.notes_on_all_spaces, Ordering::Relaxed);
     CAPSULES_ALL_SPACES.store(config.capsules_on_all_spaces, Ordering::Relaxed);
 }
-use tauri::{Emitter, Manager, WebviewWindow};
+use tauri::{Manager, WebviewWindow};
 thread_local! { static BASE_BEHAVIOR: RefCell<HashMap<String, Behavior>> = RefCell::new(HashMap::new()); }
 
 fn collection(base: Behavior, floating: bool, modern: bool, all_spaces: bool) -> Behavior {
@@ -59,6 +59,21 @@ pub fn unlock_collection(base: Behavior) -> Behavior {
         | Behavior::Stationary
         | Behavior::IgnoresCycle
 }
+pub fn configure_capsule_native(native: &NSWindow) {
+    native.setCollectionBehavior(capsule_collection(
+        native.collectionBehavior(),
+        modern_collections(),
+        CAPSULES_ALL_SPACES.load(Ordering::Relaxed),
+    ));
+    native.setLevel(CGWindowLevelForKey(CGWindowLevelKey::StatusWindowLevelKey) as isize);
+    native.setHidesOnDeactivate(false);
+}
+pub fn show_native_capsule(window: &tauri::Window) -> tauri::Result<()> {
+    dispatch(window, move |native| {
+        configure_capsule_native(native);
+        native.orderFrontRegardless();
+    })
+}
 fn modern_collections() -> bool {
     objc2_foundation::NSProcessInfo::processInfo()
         .operatingSystemVersion()
@@ -82,12 +97,32 @@ fn level(mode: WindowMode, locked: bool) -> isize {
         level
     }
 }
+pub trait NativeSurface: Clone + Send + Sync + 'static {
+    fn native_app(&self) -> &tauri::AppHandle;
+    fn ns_window(&self) -> tauri::Result<*mut std::ffi::c_void>;
+}
+impl NativeSurface for WebviewWindow {
+    fn native_app(&self) -> &tauri::AppHandle {
+        Manager::app_handle(self)
+    }
+    fn ns_window(&self) -> tauri::Result<*mut std::ffi::c_void> {
+        WebviewWindow::ns_window(self)
+    }
+}
+impl NativeSurface for tauri::Window {
+    fn native_app(&self) -> &tauri::AppHandle {
+        Manager::app_handle(self)
+    }
+    fn ns_window(&self) -> tauri::Result<*mut std::ffi::c_void> {
+        tauri::Window::ns_window(self)
+    }
+}
 fn dispatch(
-    window: &WebviewWindow,
+    window: &impl NativeSurface,
     action: impl FnOnce(&NSWindow) + Send + 'static,
 ) -> tauri::Result<()> {
     let w = window.clone();
-    window.app_handle().run_on_main_thread(move || {
+    window.native_app().run_on_main_thread(move || {
         let result = w.ns_window();
         let native = result.ok().and_then(|ptr| {
             // Tauri 持有的 NSWindow；只在主线程转换并保留到本次操作结束。
@@ -97,8 +132,7 @@ fn dispatch(
             action(&native);
         } else {
             let message = "Mac 原生窗口已不可用";
-            eprintln!("{}: {message}", w.label());
-            let _ = w.emit("surface-native-error", message);
+            eprintln!("{message}");
         }
     })
 }
@@ -163,6 +197,8 @@ pub fn refresh_config(
     let app = app.clone();
     let handle = app.clone();
     handle.run_on_main_thread(move || {
+        crate::macos_motion::cancel();
+        crate::macos_rail::refresh(&app);
         for (label, window) in app.webview_windows() {
             let _ = crate::macos_material::refresh(&window);
             if label.starts_with("capsule-") {
@@ -192,6 +228,8 @@ pub fn forget(window: &tauri::Window) {
     let label = window.label().to_owned();
     let _ = window.app_handle().run_on_main_thread(move || {
         crate::macos_material::forget(&label);
+        crate::macos_rail::forget(&label);
+        crate::macos_note_shell::forget(&label);
         BASE_BEHAVIOR.with(|map| {
             map.borrow_mut().remove(&label);
             NOTE_MODES.with(|map| {
@@ -338,7 +376,7 @@ fn primary_top() -> f64 {
         })
         .unwrap_or(0.0)
 }
-pub fn move_to(window: &WebviewWindow, x: f64, y: f64) -> tauri::Result<()> {
+pub fn move_to(window: &tauri::Window, x: f64, y: f64) -> tauri::Result<()> {
     dispatch(window, move |native| {
         native.setFrameTopLeftPoint(objc2_foundation::NSPoint::new(x, primary_top() - y));
     })
@@ -360,10 +398,14 @@ fn capsule_frame(
 /// 隐藏新窗口完成 ready 后，工作线程请求同一次 AppKit 主线程交接。
 pub fn present_capsules(
     app: &tauri::AppHandle,
-    changes: Vec<(WebviewWindow, crate::desktop::WindowBounds, f64, bool)>,
+    changes: Vec<(tauri::Window, crate::desktop::WindowBounds, f64, bool)>,
+    previous: Vec<crate::desktop::capsule_groups::GroupSurface>,
+    next: Vec<crate::desktop::capsule_groups::GroupSurface>,
 ) -> Result<(), crate::services::notes::AppError> {
     let (sender, receiver) = std::sync::mpsc::channel();
-    app.run_on_main_thread(move || {
+    let handle = app.clone();
+    let app = app.clone();
+    handle.run_on_main_thread(move || {
         let result = (|| {
             // 先校验整批对象，失败不先隐藏原入口。
             let windows = changes
@@ -377,6 +419,7 @@ pub fn present_capsules(
                     Ok((native, bounds, scale, show))
                 })
                 .collect::<Result<Vec<_>, crate::services::notes::AppError>>()?;
+            let start_frames = crate::macos_motion::capture(&app, &previous);
             let top = primary_top();
             for (native, bounds, scale, show) in &windows {
                 if *show {
@@ -393,6 +436,7 @@ pub fn present_capsules(
                     native.orderFrontRegardless();
                 }
             }
+            crate::macos_motion::transition(&app, &previous, &next, start_frames);
             for (native, _, _, show) in &windows {
                 if !show {
                     native.orderOut(None);
@@ -412,7 +456,11 @@ pub fn position_surface(
     bounds: crate::desktop::WindowBounds,
     scale: f64,
 ) -> tauri::Result<()> {
+    let w = window.clone();
     dispatch(window, move |native| {
         native.setFrame_display(capsule_frame(bounds, scale, primary_top()), true);
+        if let Some(window) = w.app_handle().get_webview_window(w.label()) {
+            let _ = crate::macos_material::layout(&window);
+        }
     })
 }

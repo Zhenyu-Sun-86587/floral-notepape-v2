@@ -16,6 +16,12 @@ export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
+      "#platform-note-shell": fileURLToPath(
+        new URL(
+          `./src/platform/${platform === "macos" ? "macos" : "windows"}/noteShell.ts`,
+          import.meta.url,
+        ),
+      ),
       "#platform-material": fileURLToPath(
         new URL(
           `./src/platform/${platform === "macos" ? "macos" : "windows"}/material.ts`,

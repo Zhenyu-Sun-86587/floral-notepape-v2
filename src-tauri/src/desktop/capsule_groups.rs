@@ -1,4 +1,19 @@
 use super::*;
+#[cfg(target_os = "macos")]
+pub type CapsuleWindow = tauri::Window;
+#[cfg(not(target_os = "macos"))]
+pub type CapsuleWindow = tauri::WebviewWindow;
+pub fn window(app: &AppHandle, label: &str) -> Option<CapsuleWindow> {
+    #[cfg(target_os = "macos")]
+    {
+        app.get_window(label)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        app.get_webview_window(label)
+    }
+}
+
 use crate::capsule_layout::{self, VisualGroup};
 use crate::surface_sessions::{CapsuleSide, SurfaceSession};
 use std::collections::HashSet;
@@ -31,6 +46,12 @@ impl GroupSurface {
     }
     pub fn member_keys(&self) -> Vec<String> {
         self.keys()
+    }
+    pub fn native_label(&self) -> &str {
+        &self.label
+    }
+    pub fn native_bounds(&self) -> WindowBounds {
+        self.bounds
     }
     pub fn monitor_index(&self) -> usize {
         self.monitor
@@ -201,6 +222,22 @@ fn entries(sessions: &[SurfaceSession], keys: &[String]) -> Result<Vec<CapsuleEn
         .collect())
 }
 
+#[cfg(target_os = "macos")]
+fn create_window(app: &AppHandle, label: &str) -> Result<CapsuleWindow, AppError> {
+    Ok(tauri::window::WindowBuilder::new(app, label)
+        .title("收纳便签")
+        .inner_size(36.0, 48.0)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .resizable(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .focused(false)
+        .visible(false)
+        .build()?)
+}
+#[cfg(not(target_os = "macos"))]
 fn create_window(app: &AppHandle, label: &str) -> Result<tauri::WebviewWindow, AppError> {
     let builder =
         WebviewWindowBuilder::new(app, label, WebviewUrl::App("capsule.html?group=1".into()))
@@ -375,7 +412,7 @@ fn present(app: &AppHandle, mut next: Vec<GroupSurface>) -> Result<(), AppError>
     }
     let prepare = (|| -> Result<(), AppError> {
         for group in &next {
-            let window = match app.get_webview_window(&group.label) {
+            let window = match window(app, &group.label) {
                 Some(window) => window,
                 None => create_window(app, &group.label)?,
             };
@@ -384,6 +421,9 @@ fn present(app: &AppHandle, mut next: Vec<GroupSurface>) -> Result<(), AppError>
                 window.set_position(PhysicalPosition::new(group.bounds.x, group.bounds.y))?;
                 window.set_size(PhysicalSize::new(group.bounds.width, group.bounds.height))?;
             }
+            #[cfg(target_os = "macos")]
+            crate::macos_rail::prepare(&window, group.clone())?;
+            #[cfg(not(target_os = "macos"))]
             app.emit_to(&group.label, "capsule-group-changed", group)?;
         }
         let registry = REGISTRY.0.lock().unwrap_or_else(|e| e.into_inner());
@@ -407,7 +447,7 @@ fn present(app: &AppHandle, mut next: Vec<GroupSurface>) -> Result<(), AppError>
     if let Err(error) = prepare {
         for group in &next {
             if !previous.iter().any(|g| g.label == group.label) {
-                if let Some(window) = app.get_webview_window(&group.label) {
+                if let Some(window) = window(app, &group.label) {
                     let _ = window.hide();
                 }
                 registry.pool.push(group.label.clone());
@@ -422,6 +462,11 @@ fn present(app: &AppHandle, mut next: Vec<GroupSurface>) -> Result<(), AppError>
         drop(registry);
         // ready 超时或 native 失败时恢复旧 DOM 和几何；旧窗口直到此时仍未退役。
         for group in &restored {
+            #[cfg(target_os = "macos")]
+            if let Some(window) = window(app, &group.label) {
+                let _ = crate::macos_rail::prepare(&window, group.clone());
+            }
+            #[cfg(not(target_os = "macos"))]
             let _ = app.emit_to(&group.label, "capsule-group-changed", group);
         }
         let _ = apply_native(app, &next, &restored);
@@ -442,7 +487,7 @@ fn present(app: &AppHandle, mut next: Vec<GroupSurface>) -> Result<(), AppError>
     };
     drop(registry);
     for label in retired {
-        if let Some(window) = app.get_webview_window(&label) {
+        if let Some(window) = window(app, &label) {
             window.destroy()?;
         }
     }
@@ -472,9 +517,7 @@ fn apply_native(
     let handles = changes
         .iter()
         .map(|(group, show)| {
-            let window = app
-                .get_webview_window(&group.label)
-                .ok_or_else(|| error("组窗口已关闭"))?;
+            let window = window(app, &group.label).ok_or_else(|| error("组窗口已关闭"))?;
             Ok((window.hwnd()?.0, group.bounds, *show))
         })
         .collect::<Result<Vec<_>, AppError>>()?;
@@ -532,16 +575,14 @@ fn apply_native(
             .filter(|g| !next.iter().any(|n| n.label == g.label))
             .map(|g| (g, false)),
     ) {
-        let window = app
-            .get_webview_window(&group.label)
-            .ok_or_else(|| error("组窗口已关闭"))?;
+        let window = window(app, &group.label).ok_or_else(|| error("组窗口已关闭"))?;
         let scale = monitors
             .get(group.monitor)
             .ok_or_else(|| error("显示器已断开，请重试"))?
             .scale_factor();
         changes.push((window, group.bounds, scale, show));
     }
-    crate::macos_surface::present_capsules(app, changes)
+    crate::macos_surface::present_capsules(app, changes, previous.to_vec(), next.to_vec())
 }
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 fn apply_native(
@@ -550,7 +591,7 @@ fn apply_native(
     next: &[GroupSurface],
 ) -> Result<(), AppError> {
     for group in next {
-        if let Some(window) = app.get_webview_window(&group.label) {
+        if let Some(window) = window(app, &group.label) {
             window.set_position(PhysicalPosition::new(group.bounds.x, group.bounds.y))?;
             window.set_size(PhysicalSize::new(group.bounds.width, group.bounds.height))?;
             show_silent_surface(&window)?;
@@ -560,7 +601,7 @@ fn apply_native(
         .iter()
         .filter(|g| !next.iter().any(|n| n.label == g.label))
     {
-        if let Some(window) = app.get_webview_window(&group.label) {
+        if let Some(window) = window(app, &group.label) {
             window.hide()?;
         }
     }
@@ -569,7 +610,7 @@ fn apply_native(
 
 /// 单成员拖出以同一 snapshot 交接到浮动组；原组紧凑收拢，取消时从 sessions 重求解。
 #[cfg(any(target_os = "windows", target_os = "macos"))]
-pub fn detach(app: &AppHandle, label: &str, key: &str) -> Result<tauri::WebviewWindow, AppError> {
+pub fn detach(app: &AppHandle, label: &str, key: &str) -> Result<CapsuleWindow, AppError> {
     let mut next = REGISTRY
         .0
         .lock()
@@ -581,9 +622,7 @@ pub fn detach(app: &AppHandle, label: &str, key: &str) -> Result<tauri::WebviewW
         .position(|g| g.label == label)
         .ok_or_else(|| error("找不到拖动组"))?;
     if next[index].members.len() == 1 {
-        return app
-            .get_webview_window(label)
-            .ok_or_else(|| error("组窗口已关闭"));
+        return window(app, label).ok_or_else(|| error("组窗口已关闭"));
     }
     let mut source = next.remove(index);
     let member_index = source
@@ -598,8 +637,7 @@ pub fn detach(app: &AppHandle, label: &str, key: &str) -> Result<tauri::WebviewW
         floating.runtime_id = registry.serial;
     }
     floating.members = vec![source.members.remove(member_index)];
-    let scale = app
-        .get_webview_window(label)
+    let scale = window(app, label)
         .ok_or_else(|| error("组窗口已关闭"))?
         .scale_factor()?;
     let member_start =
@@ -646,8 +684,7 @@ pub fn detach(app: &AppHandle, label: &str, key: &str) -> Result<tauri::WebviewW
     next.push(source);
     next.push(floating);
     present(app, next)?;
-    app.get_webview_window(&floating_label)
-        .ok_or_else(|| error("浮动窗口已关闭"))
+    window(app, &floating_label).ok_or_else(|| error("浮动窗口已关闭"))
 }
 
 #[cfg(test)]

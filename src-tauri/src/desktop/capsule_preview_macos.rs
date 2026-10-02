@@ -33,7 +33,7 @@ impl PreviewOccupancy {
     }
 }
 
-fn cursor_in_window(window: &tauri::WebviewWindow, point: PhysicalPosition<f64>) -> bool {
+fn cursor_in_window(window: &tauri::Window, point: PhysicalPosition<f64>) -> bool {
     if !window.is_visible().unwrap_or(false) {
         return false;
     }
@@ -107,7 +107,7 @@ fn check_capsule_preview(app: &AppHandle) -> Result<bool, AppError> {
         return Ok(false);
     };
     // 原生坐标不依赖 WebView 的 pointerleave；跨窗、失焦或隐藏时漏事件也能收尾。
-    let Ok(point) = capsule_cursor(&window) else {
+    let Ok(point) = crate::macos_surface::cursor() else {
         return Ok(true);
     };
     let rail_key = PREVIEW_OCCUPANCY
@@ -118,9 +118,11 @@ fn check_capsule_preview(app: &AppHandle) -> Result<bool, AppError> {
     let over_rail = rail_key
         .as_deref()
         .and_then(capsule_groups::owner_label)
-        .and_then(|label| app.get_webview_window(&label))
+        .and_then(|label| app.get_window(&label))
         .is_some_and(|rail| cursor_in_window(&rail, point));
-    let over_preview = cursor_in_window(&window, point);
+    let over_preview = app
+        .get_window(window.label())
+        .is_some_and(|native| cursor_in_window(&native, point));
     let mut state = PREVIEW_OCCUPANCY.lock().unwrap_or_else(|e| e.into_inner());
     // 位置查询期间可能收到新 rail enter，不能用旧坐标结果清掉新 owner。
     if !over_rail && state.rail_key == rail_key {
@@ -260,7 +262,7 @@ pub fn prewarm_capsule_preview(app: &AppHandle) -> Result<(), AppError> {
 }
 
 pub fn show_capsule_preview(
-    rail: &tauri::WebviewWindow,
+    rail: &capsule_groups::CapsuleWindow,
     key: &str,
     anchor_y: f64,
     anchor_x: f64,

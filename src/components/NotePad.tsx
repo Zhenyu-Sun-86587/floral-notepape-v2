@@ -1,3 +1,4 @@
+import { useNativeNoteShell } from "#platform-note-shell";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { useMemo } from "react";
@@ -1195,6 +1196,22 @@ export function NotePad({
   };
 
   const isTile = surfaceMode === "tile";
+  useNativeNoteShell({
+    title: title.trim() || "便签",
+    tile: isTile,
+    editing: isTile ? tileWriting : true,
+    locked: tileLocked,
+    actions: {
+      edit: () => (isTile ? (tileWriting ? finishTileWriting() : startTileWriting()) : saveNote()),
+      lock: () => lockTile(),
+      store: () => storeTile(),
+      pin: () => handlePin(),
+      close: async () => {
+        if (statusRef.current === "dirty") await saveNote();
+        handleClose();
+      },
+    },
+  });
   const appearanceNoteId = initialBindingId
     ? `linked:${initialBindingId}`
     : (editingNoteId ?? undefined);
@@ -1249,7 +1266,10 @@ export function NotePad({
           onDoubleClick={handleTileDoubleClick}
         >
           {(!tileLocked || /Windows|Macintosh/.test(navigator.userAgent)) && (
-            <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+            <div
+              data-note-toolbar="true"
+              className="absolute top-2 right-2 z-10 flex items-center gap-1"
+            >
               <button
                 type="button"
                 aria-label={tileWriting ? "保存并切换阅读模式" : "切换写作模式"}
@@ -1358,6 +1378,7 @@ export function NotePad({
         <div className={padSurfaceClassName} data-surface-mode={surfaceMode}>
           <>
             <div
+              data-note-header="true"
               className="flex items-center justify-between px-4 pt-3 pb-0 cursor-default"
               onMouseDown={handleDrag}
             >

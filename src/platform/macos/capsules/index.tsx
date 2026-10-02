@@ -1,5 +1,8 @@
 import { lazy, Suspense } from "react";
-export { CapsuleRail } from "./Rail";
+// Mac rails are AppKit-only windows; this entry serves Markdown previews.
+export function CapsuleRail() {
+  return null;
+}
 const Preview = lazy(() =>
   import("./Preview").then((module) => ({ default: module.CapsulePreview })),
 );
