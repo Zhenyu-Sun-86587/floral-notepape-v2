@@ -1,4 +1,5 @@
 import AppIntents
+import AppKit
 import SwiftUI
 import WidgetKit
 
@@ -46,6 +47,26 @@ struct TurnNotePage: AppIntent {
         return .result()
     }
 }
+struct CopyNoteText: AppIntent {
+    static var title: LocalizedStringResource = "复制便签文字"
+    static var openAppWhenRun: Bool = false
+    @Parameter(title: "便签") var noteKey: String
+    @Parameter(title: "文字") var text: String
+    init() {}
+    init(noteKey: String, text: String) { self.noteKey = noteKey; self.text = text }
+    @MainActor func perform() async throws -> some IntentResult {
+        // Removed sharing permission must also invalidate a cached copy button.
+        guard FolioWidgetStore.read().notes.contains(where: { $0.key == noteKey }), !text.isEmpty else { return .result() }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(String(text.prefix(4000)), forType: .string)
+        return .result()
+    }
+}
+struct KeepWidgetVisible: AppIntent {
+    static var title: LocalizedStringResource = "查看便签"
+    static var openAppWhenRun: Bool = false
+    func perform() async throws -> some IntentResult { .result() }
+}
 struct NoteProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> NoteEntry {
         NoteEntry(date: .now, note: FolioWidgetNote(key: "", title: "笺影", content: "记录此刻，留待回望。"))
@@ -71,6 +92,9 @@ struct NoteProvider: AppIntentTimelineProvider {
 struct NoteWidgetView: View {
     let entry: NoteEntry
     private var step: Int { entry.spread ? 2 : 1 }
+    private var visibleText: String {
+        (entry.lines + entry.rightLines).filter { !$0.rule }.map { String($0.text.characters) }.joined(separator: "\n")
+    }
     private var pageLabel: String {
         entry.spread && entry.page + 1 < entry.pageCount
             ? "\(entry.page + 1)–\(entry.page + 2) / \(entry.pageCount)"
@@ -82,13 +106,16 @@ struct NoteWidgetView: View {
                 if line.rule {
                     Divider().frame(height: line.height)
                 } else {
-                    HStack(alignment: .top, spacing: 6) {
+                    Button(intent: CopyNoteText(noteKey: entry.note?.key ?? "", text: String(line.text.characters))) {
+                      HStack(alignment: .top, spacing: 6) {
                         if line.quote { Rectangle().fill(.secondary).frame(width: 2) }
                         Text(line.text)
                             .font(.system(size: line.size, weight: line.heading ? .semibold : .regular, design: line.code ? .monospaced : .default))
                             .foregroundStyle(line.quote ? .secondary : .primary)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                    }.frame(height: line.height, alignment: .top)
+                      }.frame(height: line.height, alignment: .top)
+                       .contentShape(Rectangle()).allowsHitTesting(false)
+                    }.buttonStyle(.plain).accessibilityLabel("复制这一段文字")
                 }
             }
         }.frame(maxWidth: .infinity, alignment: .topLeading)
@@ -107,8 +134,9 @@ struct NoteWidgetView: View {
                     .font(.body).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
-            if entry.note != nil && entry.pageCount > 1 {
+            if entry.note != nil {
                 HStack {
+                  if entry.pageCount > 1 {
                     Button(intent: TurnNotePage(key: entry.pageKey, page: entry.page - step)) { Image(systemName: "chevron.left") }
                         .disabled(entry.page == 0).accessibilityLabel("上一页")
                     Spacer()
@@ -116,13 +144,21 @@ struct NoteWidgetView: View {
                     Spacer()
                     Button(intent: TurnNotePage(key: entry.pageKey, page: entry.page + step)) { Image(systemName: "chevron.right") }
                         .disabled(entry.page + step >= entry.pageCount).accessibilityLabel("下一页")
+                  } else { Spacer() }
+                  Button(intent: CopyNoteText(noteKey: entry.note?.key ?? "", text: visibleText)) { Image(systemName: "doc.on.doc") }
+                    .disabled(visibleText.isEmpty).accessibilityLabel("复制当前页文字")
                 }.buttonStyle(.plain)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .clipped()
         .containerBackground(.background, for: .widget)
-        .widgetURL(entry.note?.link)
+        // Consume clicks outside explicit controls; WidgetKit otherwise launches
+        // the host for an ordinary background/text click even without widgetURL.
+        .background {
+            Button(intent: KeepWidgetVisible()) { Color.clear.contentShape(Rectangle()) }
+                .buttonStyle(.plain)
+        }
         .privacySensitive()
     }
 }
@@ -133,7 +169,7 @@ struct FolioNoteWidget: Widget {
             NoteWidgetView(entry: entry)
         }
         .configurationDisplayName("笺影便签")
-        .description("显示 Markdown 便签，长内容可翻页；点击正文打开便签。尺寸由系统管理。")
+        .description("显示 Markdown 便签；点击段落复制文字，支持翻页和复制当前页。尺寸由系统管理。")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge])
     }
 }

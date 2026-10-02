@@ -45,7 +45,7 @@ export function WidgetSettings() {
       <div>macOS 桌面小组件</div>
       <p className="text-[11px] text-ink-faint">
         {status?.available
-          ? "选择允许显示的便签，再右键桌面 → 编辑小组件 → 笺影。每个小组件可选择一张便签；大小与外观由系统管理，点击打开便签。"
+          ? "选择允许显示的便签，再右键桌面 → 编辑小组件 → 笺影。点击正文段落复制文字，右下角复制当前页；不展开便签。尺寸与外观由系统管理。"
           : "当前安装包未启用原生小组件。需要使用已配置 Apple 签名与共享容器的小组件安装包。"}
       </p>
       {status?.available && (
