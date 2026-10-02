@@ -23,6 +23,9 @@ const MACOS_SHORTCUT_MIGRATION_MARKER: &str = ".macos-shortcut-default-v3";
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AppConfig {
+    #[cfg(target_os = "macos")]
+    #[serde(default)]
+    pub macos: crate::platform::macos::MacosConfig,
     #[serde(default = "default_locale")]
     pub locale: String,
     // 读入时可缺省（旧 config 无此字段），但返回前端前必在 load_config / save_config
@@ -1135,6 +1138,8 @@ impl NoteStore {
 
     fn default_config(&self) -> AppConfig {
         AppConfig {
+            #[cfg(target_os = "macos")]
+            macos: Default::default(),
             locale: default_locale(),
             data_dir: Some(self.data_dir.to_string_lossy().to_string()),
             #[cfg(target_os = "macos")]
@@ -1908,6 +1913,8 @@ mod tests {
         );
 
         let mut saved = AppConfig {
+            #[cfg(target_os = "macos")]
+            macos: Default::default(),
             locale: "en-US".into(),
             data_dir: None,
             global_shortcut: "Alt+Space".into(),

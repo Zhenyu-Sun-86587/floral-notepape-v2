@@ -243,7 +243,14 @@ fn create_window(
       masks |= NSWindowStyleMask::FullSizeContentView;
     }
 
-    let ns_window: id = msg_send![WINDOW_CLASS.0, alloc];
+    // Hermes: transparent borderless surfaces are real NSPanel overlays.
+    // Main windows retain NSWindow and normal application/fullscreen behavior.
+    let panel = attrs.transparent && !attrs.decorations;
+    let window_class = if panel { PANEL_CLASS.0 } else { WINDOW_CLASS.0 };
+    if panel {
+      masks |= NSWindowStyleMask::NonactivatingPanel;
+    }
+    let ns_window: id = msg_send![window_class, alloc];
     let ns_window_ptr: id = msg_send![
       ns_window,
       initWithContentRect: frame,
@@ -259,6 +266,11 @@ fn create_window(
       }
 
       let title = NSString::from_str(&attrs.title);
+      if panel {
+        let _: () = msg_send![&*ns_window, setFloatingPanel: true];
+        let _: () = msg_send![&*ns_window, setBecomesKeyOnlyIfNeeded: false];
+        ns_window.setHidesOnDeactivate(false);
+      }
       ns_window.setReleasedWhenClosed(false);
       ns_window.setTitle(&title);
       ns_window.setAcceptsMouseMovedEvents(true);
@@ -405,13 +417,13 @@ struct WindowClass(&'static Class);
 unsafe impl Send for WindowClass {}
 unsafe impl Sync for WindowClass {}
 
-static WINDOW_CLASS: Lazy<WindowClass> = Lazy::new(|| unsafe {
-  let window_superclass = class!(NSWindow);
-  let mut decl = ClassDecl::new(
-    CStr::from_bytes_with_nul(b"TaoWindow\0").unwrap(),
-    window_superclass,
-  )
-  .unwrap();
+static WINDOW_CLASS: Lazy<WindowClass> =
+  Lazy::new(|| unsafe { make_window_class(b"TaoWindow\0", class!(NSWindow)) });
+static PANEL_CLASS: Lazy<WindowClass> =
+  Lazy::new(|| unsafe { make_window_class(b"HermesTaoPanel\0", class!(NSPanel)) });
+unsafe fn make_window_class(name: &'static [u8], window_superclass: &'static Class) -> WindowClass {
+  let mut decl =
+    ClassDecl::new(CStr::from_bytes_with_nul(name).unwrap(), window_superclass).unwrap();
   decl.add_method(
     sel!(canBecomeMainWindow),
     is_focusable as extern "C" fn(_, _) -> _,
@@ -424,7 +436,7 @@ static WINDOW_CLASS: Lazy<WindowClass> = Lazy::new(|| unsafe {
   // progress bar states, follows ProgressState
   decl.add_ivar::<Bool>(CStr::from_bytes_with_nul(b"focusable\0").unwrap());
   WindowClass(decl.register())
-});
+}
 
 extern "C" fn is_focusable(this: &Object, _: Sel) -> Bool {
   #[allow(deprecated)] // TODO: Use define_class!

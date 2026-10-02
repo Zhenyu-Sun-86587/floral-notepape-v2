@@ -1224,6 +1224,8 @@ pub fn set_startup_file(path: String) {
 }
 
 pub fn setup_desktop(app: &mut App) -> Result<(), Box<dyn Error>> {
+    #[cfg(target_os = "macos")]
+    crate::macos_surface::configure(&load_config()?.macos);
     app.manage(RuntimeState::default());
     app.manage(NotepadPool::default());
     app.on_menu_event(|app, event| {
@@ -3464,6 +3466,7 @@ pub fn save_surface_session(
 }
 
 #[cfg(not(target_os = "windows"))]
+#[cfg(not(target_os = "macos"))]
 fn surface_mode_error(message: &str) -> AppError {
     AppError {
         code: "desktopAttachment".into(),
@@ -3472,6 +3475,15 @@ fn surface_mode_error(message: &str) -> AppError {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn apply_surface_window_mode(
+    window: &tauri::WebviewWindow,
+    mode: crate::surface_sessions::WindowMode,
+    locked: bool,
+) -> Result<(), AppError> {
+    crate::macos_surface::apply_mode(window, mode, locked)
+}
+#[cfg(not(target_os = "macos"))]
 fn apply_surface_window_mode(
     window: &tauri::WebviewWindow,
     mode: crate::surface_sessions::WindowMode,
@@ -3480,10 +3492,6 @@ fn apply_surface_window_mode(
     #[cfg(target_os = "windows")]
     if !locked {
         crate::lock_overlay::hide(window);
-    }
-    #[cfg(target_os = "macos")]
-    if !locked {
-        crate::macos_lock_overlay::hide(window);
     }
     window.set_ignore_cursor_events(false)?;
     #[cfg(target_os = "windows")]
@@ -3500,27 +3508,15 @@ fn apply_surface_window_mode(
     crate::clear_windows_border(window);
     if locked {
         // 锁定保留原层级设置；仅当前窗口临时置顶并允许鼠标穿透。
-        #[cfg(not(target_os = "macos"))]
         window.set_always_on_top(true)?;
-        #[cfg(not(target_os = "macos"))]
         window.set_ignore_cursor_events(true)?;
-        #[cfg(target_os = "macos")]
-        {
-            crate::macos_surface::apply(window, mode, true)?;
-            if let Some(key) = session_key_from_label(window.label()) {
-                crate::macos_lock_overlay::show(window, key);
-            }
-        }
         #[cfg(target_os = "windows")]
         if let Some(key) = session_key_from_label(window.label()) {
             crate::lock_overlay::show(window, key);
         }
         return Ok(());
     }
-    #[cfg(not(target_os = "macos"))]
     window.set_always_on_top(mode == crate::surface_sessions::WindowMode::AlwaysOnTop)?;
-    #[cfg(target_os = "macos")]
-    crate::macos_surface::apply(window, mode, false)?;
     if mode == crate::surface_sessions::WindowMode::DesktopAttached {
         #[cfg(target_os = "windows")]
         {
@@ -4718,6 +4714,8 @@ mod tests {
     #[cfg(desktop)]
     fn test_app_config(global_shortcut: &str, toggle_visibility_shortcut: &str) -> AppConfig {
         AppConfig {
+            #[cfg(target_os = "macos")]
+            macos: Default::default(),
             locale: "zh-CN".into(),
             data_dir: Some("D:\\notes".into()),
             global_shortcut: global_shortcut.into(),
@@ -4807,6 +4805,8 @@ mod tests {
     #[test]
     fn detects_runtime_config_changes() {
         let previous = AppConfig {
+            #[cfg(target_os = "macos")]
+            macos: Default::default(),
             locale: "zh-CN".into(),
             data_dir: Some("D:\\notes".into()),
             global_shortcut: "Ctrl+Space".into(),
@@ -4847,6 +4847,8 @@ mod tests {
             last_known_base_dir: None,
         };
         let next = AppConfig {
+            #[cfg(target_os = "macos")]
+            macos: Default::default(),
             locale: "en-US".into(),
             data_dir: Some("D:\\other-notes".into()),
             global_shortcut: "Alt+Space".into(),

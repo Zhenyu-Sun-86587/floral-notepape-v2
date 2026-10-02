@@ -1,12 +1,23 @@
+import { fileURLToPath } from "node:url";
+import process from "node:process";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vitest/config";
 
-// @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      "#platform-settings": fileURLToPath(
+        new URL(
+          `./src/platform/${["darwin", "macos"].includes(process.env.TAURI_ENV_PLATFORM ?? process.platform) ? "macos" : ["win32", "windows"].includes(process.env.TAURI_ENV_PLATFORM ?? process.platform) ? "windows" : "other"}/settings.tsx`,
+          import.meta.url,
+        ),
+      ),
+    },
+  },
   clearScreen: false,
   build: {
     rollupOptions: {
