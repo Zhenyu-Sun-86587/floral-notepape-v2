@@ -1241,6 +1241,8 @@ pub fn setup_desktop(app: &mut App) -> Result<(), Box<dyn Error>> {
     setup_app_menu(app)?;
     setup_tray(app)?;
     schedule_notepad_prewarm(app.handle());
+    #[cfg(target_os = "macos")]
+    watch_capsule_screens(app.handle());
     // 元数据变更统一唤醒 registry，前端不再各自重读并猜测布局。
     for event in ["notes-changed", "bindings-changed"] {
         let handle = app.handle().clone();
@@ -1798,7 +1800,7 @@ fn prewarm_notepad(app: &AppHandle) -> Result<(), AppError> {
     let visual_options = dynamic_window_visual_options(&label);
     let locale = configured_locale();
 
-    let window = WebviewWindowBuilder::new(
+    let builder = WebviewWindowBuilder::new(
         app,
         &label,
         WebviewUrl::App("index.html?view=notepad&standby=1".into()),
@@ -1814,8 +1816,8 @@ fn prewarm_notepad(app: &AppHandle) -> Result<(), AppError> {
     .shadow(false)
     .skip_taskbar(true)
     .visible(false)
-    .focused(false)
-    .build()?;
+    .focused(false);
+    let window = builder.build()?;
 
     // 预热窗口在池中等待期间保持低内存档位，激活时恢复 Normal
     set_webview_memory_usage_level(&window, true);
@@ -2084,7 +2086,8 @@ fn open_or_focus_window(
         .always_on_top(always_on_top)
         .shadow(opts.shadow)
         .skip_taskbar(opts.skip_taskbar)
-        .visible(false);
+        .visible(false)
+        .focused(!cfg!(target_os = "macos"));
 
     // 仅主窗口使用 macOS 原生红绿灯（Overlay 标题栏）。notepad / tile 是
     // decorations: false 的透明无边框窗口，叠加红绿灯会渲染在内容区上方造成冲突
@@ -2249,12 +2252,25 @@ fn shortcut_foreground_window() -> usize {
     0
 }
 
+// Mac 使用 Quartz 全局逻辑坐标，Windows 使用全局物理坐标。
+fn capsule_cursor(window: &tauri::WebviewWindow) -> Result<PhysicalPosition<f64>, AppError> {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = window;
+        crate::macos_surface::cursor()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(window.cursor_position()?)
+    }
+}
+
 pub async fn drag_capsule(
     window: tauri::WebviewWindow,
     key: String,
     group: bool,
 ) -> Result<bool, AppError> {
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     {
         if CAPSULE_DRAGGING.swap(true, Ordering::SeqCst) {
             return Ok(false);
@@ -2284,9 +2300,11 @@ pub async fn drag_capsule(
             move || -> Result<Option<(PhysicalPosition<f64>, bool, Vec<String>)>, AppError> {
                 // 与进行中的布局交接互斥；锁只在工作线程等待，不阻塞 UI/ready IPC。
                 let _operation = CAPSULE_OPERATIONS.lock().unwrap_or_else(|e| e.into_inner());
+                #[cfg(target_os = "windows")]
                 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
                     GetAsyncKeyState, VK_ESCAPE, VK_LBUTTON, VK_RBUTTON,
                 };
+                #[cfg(target_os = "windows")]
                 use windows_sys::Win32::UI::WindowsAndMessaging::{
                     GetSystemMetrics, SM_SWAPBUTTON,
                 };
@@ -2298,33 +2316,67 @@ pub async fn drag_capsule(
                 } else {
                     vec![drag_key.clone()]
                 };
-                let start = rail.cursor_position()?;
+                let start = capsule_cursor(&rail)?;
                 let mut moving = rail.clone();
-                let mut origin = moving.outer_position()?;
+                let mut origin = moving.outer_position()?.cast::<f64>();
+                #[cfg(target_os = "macos")]
+                {
+                    origin.x /= moving.scale_factor()?;
+                    origin.y /= moving.scale_factor()?;
+                }
+                #[cfg(target_os = "windows")]
                 let threshold = 4.0 * rail.scale_factor()?;
+                #[cfg(target_os = "macos")]
+                let threshold = 4.0;
                 let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+                #[cfg(target_os = "windows")]
                 let button = if unsafe { GetSystemMetrics(SM_SWAPBUTTON) } != 0 {
                     VK_RBUTTON
                 } else {
                     VK_LBUTTON
+                };
+                let escape_pressed = || {
+                    #[cfg(target_os = "windows")]
+                    {
+                        unsafe { GetAsyncKeyState(VK_ESCAPE as i32) < 0 }
+                    }
+                    #[cfg(target_os = "macos")]
+                    {
+                        crate::macos_surface::escape_pressed()
+                    }
+                };
+                let button_pressed = || {
+                    #[cfg(target_os = "windows")]
+                    {
+                        unsafe { GetAsyncKeyState(button as i32) < 0 }
+                    }
+                    #[cfg(target_os = "macos")]
+                    {
+                        crate::macos_surface::left_button_pressed()
+                    }
                 };
                 let mut dragged = false;
                 let mut last = (0_i32, 0_i32);
                 loop {
                     if app_is_exiting(rail.app_handle())
                         || std::time::Instant::now() >= deadline
-                        || unsafe { GetAsyncKeyState(VK_ESCAPE as i32) } < 0
+                        || escape_pressed()
                     {
                         return Ok(None);
                     }
-                    let point = moving.cursor_position()?;
+                    let point = capsule_cursor(&moving)?;
                     let dx = point.x - start.x;
                     let dy = point.y - start.y;
                     if !dragged && dx.hypot(dy) >= threshold {
                         if !group && snapshot.members.len() > 1 {
                             moving =
                                 capsule_groups::detach(rail.app_handle(), rail.label(), &drag_key)?;
-                            origin = moving.outer_position()?;
+                            origin = moving.outer_position()?.cast::<f64>();
+                            #[cfg(target_os = "macos")]
+                            {
+                                origin.x /= moving.scale_factor()?;
+                                origin.y /= moving.scale_factor()?;
+                            }
                         }
                         dragged = true;
                         visual_active.store(true, Ordering::SeqCst);
@@ -2334,16 +2386,19 @@ pub async fn drag_capsule(
                         // 单击保留已经打开的预览；真正拖动时才隐藏，避免重复建窗闪烁。
                         dismiss_capsule_preview(rail.app_handle())?;
                     }
-                    if unsafe { GetAsyncKeyState(button as i32) } >= 0 {
+                    if !button_pressed() {
                         return Ok(Some((point, dragged, members)));
                     }
                     if dragged {
                         let shift = (dx.round() as i32, dy.round() as i32);
                         if shift != last {
+                            #[cfg(target_os = "windows")]
                             moving.set_position(PhysicalPosition::new(
-                                origin.x + shift.0,
-                                origin.y + shift.1,
+                                (origin.x + shift.0 as f64).round() as i32,
+                                (origin.y + shift.1 as f64).round() as i32,
                             ))?;
+                            #[cfg(target_os = "macos")]
+                            crate::macos_surface::move_to(&moving, origin.x + dx, origin.y + dy)?;
                             last = shift;
                         }
                     }
@@ -2385,7 +2440,7 @@ pub async fn drag_capsule(
         })
         .await
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         let _ = (window, key, group);
         Ok(false)
@@ -2410,6 +2465,9 @@ fn dock_capsule_at(
     let monitors = app.available_monitors()?;
     let Some((_, monitor)) = monitors.iter().enumerate().min_by(|(_, a), (_, b)| {
         let distance = |m: &tauri::Monitor| {
+            #[cfg(target_os = "macos")]
+            let point =
+                PhysicalPosition::new(point.x * m.scale_factor(), point.y * m.scale_factor());
             let x = point.x.clamp(
                 m.position().x as f64,
                 m.position().x as f64 + m.size().width as f64,
@@ -2418,16 +2476,29 @@ fn dock_capsule_at(
                 m.position().y as f64,
                 m.position().y as f64 + m.size().height as f64,
             );
-            (point.x - x).hypot(point.y - y)
+            #[cfg(target_os = "macos")]
+            let scale = m.scale_factor();
+            #[cfg(not(target_os = "macos"))]
+            let scale = 1.0;
+            (point.x - x).hypot(point.y - y) / scale
         };
         distance(a).total_cmp(&distance(b))
     }) else {
         return Ok(());
     };
+    #[cfg(target_os = "macos")]
+    let point = PhysicalPosition::new(
+        point.x * monitor.scale_factor(),
+        point.y * monitor.scale_factor(),
+    );
+    #[cfg(target_os = "macos")]
+    let edge = (monitor.work_area().position, monitor.work_area().size);
+    #[cfg(not(target_os = "macos"))]
+    let edge = (*monitor.position(), *monitor.size());
     let side = nearest_capsule_side(
-        point.x - monitor.position().x as f64,
-        point.y - monitor.position().y as f64,
-        monitor.size().width as f64,
+        point.x - edge.0.x as f64,
+        point.y - edge.0.y as f64,
+        edge.1.width as f64,
     );
     let work = monitor.work_area();
     let length = (CAPSULE_TAB_STEP as f64 * monitor.scale_factor()).round();
@@ -2478,6 +2549,43 @@ pub async fn run_capsule_task<T: Send + 'static>(
         message: error.to_string(),
         details: Default::default(),
     })?
+}
+
+#[cfg(target_os = "macos")]
+fn watch_capsule_screens(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut previous = String::new();
+        while !app_is_exiting(&app) {
+            let handle = app.clone();
+            let signature = tauri::async_runtime::spawn_blocking(move || {
+                handle.available_monitors().map(|monitors| {
+                    monitors
+                        .iter()
+                        .map(|m| {
+                            format!(
+                                "{:?}:{:?}:{:?}:{:?}:{}",
+                                m.name(),
+                                m.position(),
+                                m.size(),
+                                m.work_area(),
+                                m.scale_factor()
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("|")
+                })
+            })
+            .await;
+            if let Ok(Ok(signature)) = signature {
+                if !previous.is_empty() && signature != previous {
+                    queue_capsule_sync(&app);
+                }
+                previous = signature;
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+    });
 }
 
 fn queue_capsule_sync(app: &AppHandle) {
@@ -2649,6 +2757,13 @@ fn cursor_in_window(window: &tauri::WebviewWindow, point: PhysicalPosition<f64>)
     if !window.is_visible().unwrap_or(false) {
         return false;
     }
+    #[cfg(target_os = "macos")]
+    let point = {
+        let Ok(scale) = window.scale_factor() else {
+            return false;
+        };
+        PhysicalPosition::new(point.x * scale, point.y * scale)
+    };
     let (Ok(origin), Ok(size)) = (window.outer_position(), window.outer_size()) else {
         return false;
     };
@@ -2700,7 +2815,7 @@ fn check_capsule_preview(app: &AppHandle) -> Result<bool, AppError> {
         return Ok(false);
     };
     // 原生坐标不依赖 WebView 的 pointerleave；跨窗、失焦或隐藏时漏事件也能收尾。
-    let Ok(point) = window.cursor_position() else {
+    let Ok(point) = capsule_cursor(&window) else {
         return Ok(true);
     };
     let rail_key = PREVIEW_OCCUPANCY
@@ -2726,6 +2841,10 @@ fn check_capsule_preview(app: &AppHandle) -> Result<bool, AppError> {
         if unsafe { GetAsyncKeyState(VK_LBUTTON as i32) } >= 0 {
             state.interacting = false;
         }
+    }
+    #[cfg(target_os = "macos")]
+    if !crate::macos_surface::left_button_pressed() {
+        state.interacting = false;
     }
     let close = state.should_close(std::time::Instant::now());
     drop(state);
@@ -2815,6 +2934,17 @@ pub fn capsule_hover(
     generation
 }
 
+fn capsule_layout_cross_inset(scale: f64) -> i32 {
+    #[cfg(target_os = "macos")]
+    {
+        (crate::capsule_layout::CROSS * scale).round() as i32
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = scale;
+        0
+    }
+}
 pub fn show_capsule_preview(
     rail: &tauri::WebviewWindow,
     key: &str,
@@ -2870,19 +3000,23 @@ pub fn show_capsule_preview(
         .round()
         .min(work.size.height as f64) as u32;
     let inset = (12.0 * scale).round() as i32;
+    #[cfg(target_os = "macos")]
+    let edge = (work.position, work.size);
+    #[cfg(not(target_os = "macos"))]
+    let edge = (*monitor.position(), *monitor.size());
     let x = if side == crate::surface_sessions::CapsuleSide::Top {
         (rail.outer_position()?.x + (anchor_x * scale).round() as i32 - width as i32 / 2).clamp(
             work.position.x,
             work.position.x + work.size.width as i32 - width as i32,
         )
     } else if side == crate::surface_sessions::CapsuleSide::Left {
-        monitor.position().x + inset
+        edge.0.x + inset
     } else {
-        monitor.position().x + monitor.size().width as i32 - width as i32 - inset
+        edge.0.x + edge.1.width as i32 - width as i32 - inset
     };
     let rail_y = rail.outer_position()?.y;
     let y = (if side == crate::surface_sessions::CapsuleSide::Top {
-        monitor.position().y + inset
+        edge.0.y + (capsule_layout_cross_inset(scale)) + inset
     } else {
         rail_y + (anchor_y * scale).round() as i32 - (22.0 * scale).round() as i32
     })
@@ -2893,7 +3027,7 @@ pub fn show_capsule_preview(
     let window = if let Some(window) = app.get_webview_window(CAPSULE_PREVIEW_LABEL) {
         window
     } else {
-        let window = WebviewWindowBuilder::new(
+        let builder = WebviewWindowBuilder::new(
             app,
             CAPSULE_PREVIEW_LABEL,
             WebviewUrl::App("capsule.html?preview=1".into()),
@@ -2907,8 +3041,8 @@ pub fn show_capsule_preview(
         .always_on_top(true)
         .skip_taskbar(true)
         .focused(false)
-        .visible(false)
-        .build()?;
+        .visible(false);
+        let window = builder.build()?;
         #[cfg(target_os = "windows")]
         crate::set_windows_corner_preference(&window, 0.0);
         window
@@ -2916,8 +3050,22 @@ pub fn show_capsule_preview(
     if PREVIEW_GENERATION.load(Ordering::SeqCst) != generation {
         return Ok(());
     }
-    window.set_size(PhysicalSize::new(width, height))?;
-    window.set_position(PhysicalPosition::new(x, y))?;
+    #[cfg(target_os = "macos")]
+    crate::macos_surface::position_surface(
+        &window,
+        WindowBounds {
+            x,
+            y,
+            width,
+            height,
+        },
+        scale,
+    )?;
+    #[cfg(not(target_os = "macos"))]
+    {
+        window.set_size(PhysicalSize::new(width, height))?;
+        window.set_position(PhysicalPosition::new(x, y))?;
+    }
     let preview = CapsulePreview {
         entry,
         side,

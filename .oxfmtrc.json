@@ -1,3 +1,8 @@
 {
-  "ignorePatterns": ["**/*.hbs", ".github/pull_request_template.md"]
+  "ignorePatterns": [
+    "**/*.hbs",
+    ".github/pull_request_template.md",
+    "src-tauri/vendor/wry/**",
+    "src-tauri/vendor/tao/**"
+  ]
 }

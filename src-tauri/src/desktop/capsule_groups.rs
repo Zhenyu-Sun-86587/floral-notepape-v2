@@ -124,6 +124,12 @@ pub(super) fn surface_bounds(
     side: CapsuleSide,
     group: &VisualGroup,
 ) -> WindowBounds {
+    // Mac 使用工作区边缘，避开菜单栏/刘海和已占用的 Dock。
+    #[cfg(target_os = "macos")]
+    let screen = {
+        let _ = screen;
+        work
+    };
     let cross = (capsule_layout::CROSS * scale).round() as u32;
     let (axis, length) =
         capsule_layout::physical_interval(group.axis_start, group.axis_length, scale);
@@ -196,7 +202,7 @@ fn entries(sessions: &[SurfaceSession], keys: &[String]) -> Result<Vec<CapsuleEn
 }
 
 fn create_window(app: &AppHandle, label: &str) -> Result<tauri::WebviewWindow, AppError> {
-    let window =
+    let builder =
         WebviewWindowBuilder::new(app, label, WebviewUrl::App("capsule.html?group=1".into()))
             .title("收纳便签")
             .inner_size(18.0, 44.0)
@@ -207,8 +213,8 @@ fn create_window(app: &AppHandle, label: &str) -> Result<tauri::WebviewWindow, A
             .always_on_top(true)
             .skip_taskbar(true)
             .focused(false)
-            .visible(false)
-            .build()?;
+            .visible(false);
+    let window = builder.build()?;
     #[cfg(target_os = "windows")]
     crate::set_windows_corner_preference(&window, 0.0);
     Ok(window)
@@ -510,7 +516,32 @@ fn apply_native(
         Err(error("原生组窗口事务未完成"))
     }
 }
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
+fn apply_native(
+    app: &AppHandle,
+    previous: &[GroupSurface],
+    next: &[GroupSurface],
+) -> Result<(), AppError> {
+    let monitors = app.available_monitors()?;
+    let mut changes = Vec::new();
+    for (group, show) in next.iter().map(|g| (g, true)).chain(
+        previous
+            .iter()
+            .filter(|g| !next.iter().any(|n| n.label == g.label))
+            .map(|g| (g, false)),
+    ) {
+        let window = app
+            .get_webview_window(&group.label)
+            .ok_or_else(|| error("组窗口已关闭"))?;
+        let scale = monitors
+            .get(group.monitor)
+            .ok_or_else(|| error("显示器已断开，请重试"))?
+            .scale_factor();
+        changes.push((window, group.bounds, scale, show));
+    }
+    crate::macos_surface::present_capsules(app, changes)
+}
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 fn apply_native(
     app: &AppHandle,
     previous: &[GroupSurface],
@@ -535,7 +566,7 @@ fn apply_native(
 }
 
 /// 单成员拖出以同一 snapshot 交接到浮动组；原组紧凑收拢，取消时从 sessions 重求解。
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 pub fn detach(app: &AppHandle, label: &str, key: &str) -> Result<tauri::WebviewWindow, AppError> {
     let mut next = REGISTRY
         .0
@@ -667,6 +698,40 @@ mod tests {
                     && bounds.y + bounds.height as i32 <= work.y + work.height as i32
             );
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn mac_capsules_follow_work_edges_instead_of_menu_and_dock() {
+        let screen = WindowBounds {
+            x: -2000,
+            y: -100,
+            width: 2000,
+            height: 1200,
+        };
+        let work = WindowBounds {
+            x: -1920,
+            y: -32,
+            width: 1920,
+            height: 1050,
+        };
+        let group = capsule_layout::solve(
+            vec![("note:test".into(), 0.5)],
+            500.0,
+            44.0,
+            14.0,
+            52.0,
+            4.0,
+        )
+        .groups
+        .remove(0);
+        let top = surface_bounds(screen, work, 2.0, CapsuleSide::Top, &group);
+        let left = surface_bounds(screen, work, 2.0, CapsuleSide::Left, &group);
+        let right = surface_bounds(screen, work, 2.0, CapsuleSide::Right, &group);
+        assert_eq!(top.y, work.y);
+        assert_eq!(left.x, work.x);
+        assert_eq!(right.x + right.width as i32, work.x + work.width as i32);
+        assert!(left.y >= work.y && left.y + left.height as i32 <= work.y + work.height as i32);
     }
 
     #[test]

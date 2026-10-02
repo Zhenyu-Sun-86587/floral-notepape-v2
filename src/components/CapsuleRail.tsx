@@ -201,7 +201,7 @@ export function CapsuleRail() {
             aria-label={`拖动合并的 ${entries.length} 个胶囊`}
             title="拖动整组胶囊"
             onPointerDown={(event) => {
-              if (event.button !== 0 || !navigator.userAgent.includes("Windows")) return;
+              if (event.button !== 0 || !/Windows|Macintosh/.test(navigator.userAgent)) return;
               event.preventDefault();
               drag(entries[0], true);
             }}
@@ -245,13 +245,13 @@ export function CapsuleRail() {
                 void invoke("surface_capsule_menu", { key: entry.key }).catch(reportCapsuleError);
               }}
               onPointerDown={(event) => {
-                if (event.button !== 0 || !navigator.userAgent.includes("Windows")) return;
+                if (event.button !== 0 || !/Windows|Macintosh/.test(navigator.userAgent)) return;
                 event.preventDefault();
                 drag(entry, false);
               }}
               onClick={(event) => {
-                // Windows 鼠标由原生拖动判定；键盘及 Mac 单击直接展开。
-                if (event.detail === 0 || !navigator.userAgent.includes("Windows")) {
+                // Windows/Mac 鼠标由原生拖动判定；键盘单击直接展开。
+                if (event.detail === 0 || !/Windows|Macintosh/.test(navigator.userAgent)) {
                   clearHoverTimer();
                   void invoke("surface_toggle_capsule", { key: entry.key }).catch(
                     reportCapsuleError,

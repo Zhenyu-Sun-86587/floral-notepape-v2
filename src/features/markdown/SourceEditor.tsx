@@ -4,6 +4,7 @@ import {
   useImperativeHandle,
   useRef,
   useState,
+  useMemo,
   type Ref,
   type HTMLAttributes,
 } from "react";
@@ -72,6 +73,13 @@ export function SourceEditor(props: SourceProps) {
   const composing = useRef(false);
   const [compositionRevision, setCompositionRevision] = useState(0);
   const syncExternal = useRef(() => {});
+  const documentValue = useRef(props.content);
+  const appliedAccess = useRef(!props.editing || !!props.locked);
+  const appliedMarkdown = useRef(props.markdown);
+  const markdownExtension = useMemo(
+    () => markdown({ base: markdownLanguage, extensions: mathSyntax, codeLanguages }),
+    [],
+  );
   useImperativeHandle(
     props.editorRef,
     () => ({
@@ -147,11 +155,7 @@ export function SourceEditor(props: SourceProps) {
       state: EditorState.create({
         doc: latest.current.content,
         extensions: [
-          language.current.of(
-            latest.current.markdown
-              ? markdown({ base: markdownLanguage, extensions: mathSyntax, codeLanguages })
-              : [],
-          ),
+          language.current.of(latest.current.markdown ? markdownExtension : []),
           syntaxHighlighting(sourceHighlightStyle, { fallback: true }),
           history(),
           EditorView.lineWrapping,
@@ -174,6 +178,7 @@ export function SourceEditor(props: SourceProps) {
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return;
             const value = update.state.doc.toString();
+            documentValue.current = value;
             if (
               !update.transactions.every(
                 (tr) => tr.annotation(Transaction.userEvent) === "external",
@@ -240,7 +245,9 @@ export function SourceEditor(props: SourceProps) {
     viewRef.current = view;
     syncExternal.current = () => {
       if (composing.current || view.composing) return;
-      const old = view.state.doc.toString();
+      // 本地输入回传的正文已经是 EditorState 的快照，不再拆分/拼接全文。
+      if (latest.current.content === documentValue.current) return;
+      const old = documentValue.current;
       const incoming = view.state.toText(latest.current.content).toString();
       if (old === incoming) return;
       // 外部更新只派发最小差异，保留 selection/history；候选期间推迟到 composition 提交。
@@ -249,7 +256,10 @@ export function SourceEditor(props: SourceProps) {
         annotations: [Transaction.userEvent.of("external"), Transaction.addToHistory.of(false)],
       });
     };
-    latest.current.onDocumentChange?.(view.state.doc.toString());
+    documentValue.current = view.state.doc.toString();
+    appliedAccess.current = !latest.current.editing || !!latest.current.locked;
+    appliedMarkdown.current = latest.current.markdown;
+    latest.current.onDocumentChange?.(documentValue.current);
     return () => {
       disposed = true;
       cancelAnimationFrame(frame);
@@ -264,22 +274,23 @@ export function SourceEditor(props: SourceProps) {
   useLayoutEffect(() => {
     const view = viewRef.current;
     if (!view || composing.current || view.composing) return;
-    view.dispatch({
-      effects: access.current.reconfigure(
-        EditorState.readOnly.of(!props.editing || !!props.locked),
-      ),
-    });
+    const readOnly = !props.editing || !!props.locked;
+    if (appliedAccess.current === readOnly) return;
+    appliedAccess.current = readOnly;
+    view.dispatch({ effects: access.current.reconfigure(EditorState.readOnly.of(readOnly)) });
   }, [props.editing, props.locked, compositionRevision]);
   useEffect(() => {
-    if (composing.current || viewRef.current?.composing) return;
+    if (
+      composing.current ||
+      viewRef.current?.composing ||
+      appliedMarkdown.current === props.markdown
+    )
+      return;
+    appliedMarkdown.current = props.markdown;
     viewRef.current?.dispatch({
-      effects: language.current.reconfigure(
-        props.markdown
-          ? markdown({ base: markdownLanguage, extensions: mathSyntax, codeLanguages })
-          : [],
-      ),
+      effects: language.current.reconfigure(props.markdown ? markdownExtension : []),
     });
-  }, [props.markdown, compositionRevision]);
+  }, [props.markdown, compositionRevision, markdownExtension]);
   return (
     <div
       ref={host}
