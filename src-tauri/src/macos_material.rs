@@ -179,7 +179,12 @@ fn install(window: &WebviewWindow, radius: f64) -> Result<MaterialState, AppErro
                     let _: () = msg_send![&*glass, setCornerRadius: radius];
                     let tint = NSColor::colorWithWhite_alpha(1.0, opacity * 0.12);
                     let _: () = msg_send![&*glass, setTintColor: &*tint];
-                    let _: () = msg_send![&*glass, setContentView: &*root];
+                    if window.label() == "capsule-preview" {
+                        // Selection/focus belongs to the WebView, not to the
+                        // glass subtree's dynamic interaction/emphasis state.
+                        let content=NSView::initWithFrame(NSView::alloc(mtm),frame);
+                        let _: () = msg_send![&*glass, setContentView: &*content];
+                    } else { let _: () = msg_send![&*glass, setContentView: &*root]; }
 
                 }
                 clip.addSubview(&glass);
@@ -187,7 +192,7 @@ fn install(window: &WebviewWindow, radius: f64) -> Result<MaterialState, AppErro
                 effects.push(glass);
             }
         }
-        if kind != "glass" { clip.addSubview(&root); }
+        if kind != "glass" || window.label() == "capsule-preview" { clip.addSubview(&root); }
         native.setOpaque(false);
         native.setBackgroundColor(Some(&NSColor::clearColor()));
         native.setAcceptsMouseMovedEvents(true);

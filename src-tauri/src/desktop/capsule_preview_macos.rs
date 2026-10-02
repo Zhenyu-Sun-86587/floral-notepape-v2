@@ -221,11 +221,6 @@ pub fn capsule_hover(
     generation
 }
 
-fn capsule_layout_cross_inset(scale: f64) -> i32 {
-    {
-        (crate::capsule_layout::CROSS * scale).round() as i32
-    }
-}
 fn preview_window(app: &AppHandle) -> Result<tauri::WebviewWindow, AppError> {
     if let Some(window) = app.get_webview_window(CAPSULE_PREVIEW_LABEL) {
         Ok(window)
@@ -316,16 +311,15 @@ pub fn show_capsule_preview(
         .round()
         .min(work.size.height as f64) as u32;
     let inset = (12.0 * scale).round() as i32;
-    let edge = (work.position, work.size);
     let x = if side == crate::surface_sessions::CapsuleSide::Top {
         (rail.outer_position()?.x + (anchor_x * scale).round() as i32 - width as i32 / 2).clamp(
             work.position.x,
             work.position.x + work.size.width as i32 - width as i32,
         )
     } else if side == crate::surface_sessions::CapsuleSide::Left {
-        edge.0.x + capsule_layout_cross_inset(scale) + inset
+        group.native_bounds().x + group.native_bounds().width as i32 + inset
     } else {
-        edge.0.x + edge.1.width as i32 - capsule_layout_cross_inset(scale) - width as i32 - inset
+        group.native_bounds().x - width as i32 - inset
     };
     let x = x.clamp(
         work.position.x,
@@ -333,7 +327,7 @@ pub fn show_capsule_preview(
     );
     let rail_y = rail.outer_position()?.y;
     let y = (if side == crate::surface_sessions::CapsuleSide::Top {
-        edge.0.y + (capsule_layout_cross_inset(scale)) + inset
+        group.native_bounds().y + group.native_bounds().height as i32 + inset
     } else {
         rail_y + (anchor_y * scale).round() as i32 - (22.0 * scale).round() as i32
     })

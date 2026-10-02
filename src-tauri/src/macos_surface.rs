@@ -346,6 +346,14 @@ pub fn cursor() -> Result<tauri::PhysicalPosition<f64>, crate::services::notes::
     let point = CGEvent::location(Some(&event));
     Ok(tauri::PhysicalPosition::new(point.x, point.y))
 }
+pub fn event_cursor(event: &objc2_app_kit::NSEvent) -> Option<tauri::PhysicalPosition<f64>> {
+    let window = event.window(objc2_foundation::MainThreadMarker::new()?)?;
+    let point = window.convertPointToScreen(event.locationInWindow());
+    Some(tauri::PhysicalPosition::new(
+        point.x,
+        primary_top() - point.y,
+    ))
+}
 pub fn left_button_pressed() -> bool {
     use objc2_core_graphics::{CGEventSource, CGEventSourceStateID, CGMouseButton};
     CGEventSource::button_state(

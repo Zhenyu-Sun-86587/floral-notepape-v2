@@ -32,6 +32,7 @@ pub struct GroupSurface {
     pub viewport_css: f64,
     pub content_css: f64,
     #[serde(skip)]
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     axis_start_css: f64,
     #[serde(skip)]
     monitor: usize,
@@ -226,6 +227,7 @@ fn entries(sessions: &[SurfaceSession], keys: &[String]) -> Result<Vec<CapsuleEn
 fn create_window(app: &AppHandle, label: &str) -> Result<CapsuleWindow, AppError> {
     Ok(tauri::window::WindowBuilder::new(app, label)
         .title("收纳便签")
+        .focusable(false)
         .inner_size(36.0, 48.0)
         .decorations(false)
         .transparent(true)
@@ -348,6 +350,23 @@ pub fn sync(app: &AppHandle) -> Result<(), AppError> {
             );
             for (group, reuse) in plan.groups.iter().zip(matches) {
                 let existing = reuse.map(|i| old[i]);
+                let expected = bounds(monitor, side, group);
+                #[cfg(target_os = "macos")]
+                let (expected_width, expected_height, expected_cross) = {
+                    let shape = crate::macos_droplet::geometry(group.members.len());
+                    (
+                        (shape.edge * monitor.scale_factor()).round() as u32,
+                        (shape.height * monitor.scale_factor()).round() as u32,
+                        if side == CapsuleSide::Top {
+                            shape.height
+                        } else {
+                            shape.edge
+                        },
+                    )
+                };
+                #[cfg(not(target_os = "macos"))]
+                let (expected_width, expected_height, expected_cross) =
+                    (expected.width, expected.height, capsule_layout::CROSS);
                 let (id, label) = {
                     let mut registry = REGISTRY.0.lock().unwrap_or_else(|e| e.into_inner());
                     registry.serial += 1;
@@ -358,9 +377,9 @@ pub fn sync(app: &AppHandle) -> Result<(), AppError> {
                         .filter(|g| {
                             g.members.len() == group.members.len()
                                 && g.slot_css == group.slot_length
-                                && g.cross_css == capsule_layout::CROSS
-                                && g.bounds.width == bounds(monitor, side, group).width
-                                && g.bounds.height == bounds(monitor, side, group).height
+                                && g.cross_css == expected_cross
+                                && g.bounds.width == expected_width
+                                && g.bounds.height == expected_height
                                 && group
                                     .members
                                     .iter()
@@ -377,7 +396,7 @@ pub fn sync(app: &AppHandle) -> Result<(), AppError> {
                     monitor: index,
                     side,
                     label,
-                    bounds: bounds(monitor, side, group),
+                    bounds: expected,
                     members: group
                         .members
                         .iter()
@@ -392,12 +411,54 @@ pub fn sync(app: &AppHandle) -> Result<(), AppError> {
                     content_css: group.content_length,
                     axis_start_css: group.axis_start,
                 });
+                #[cfg(target_os = "macos")]
+                {
+                    let surface = next.last_mut().unwrap();
+                    resize_droplet(surface, monitor.scale_factor());
+                    let work = monitor.work_area();
+                    surface.bounds.x = surface.bounds.x.clamp(
+                        work.position.x,
+                        work.position.x + work.size.width as i32 - surface.bounds.width as i32,
+                    );
+                    surface.bounds.y = surface.bounds.y.clamp(
+                        work.position.y,
+                        work.position.y + work.size.height as i32 - surface.bounds.height as i32,
+                    );
+                }
             }
         }
     }
     present(app, next)
 }
 
+#[cfg(target_os = "macos")]
+fn resize_droplet(group: &mut GroupSurface, scale: f64) {
+    let geometry = crate::macos_droplet::geometry(group.members.len());
+    let edge = (geometry.edge * scale).round() as u32;
+    let height = (geometry.height * scale).round() as u32;
+    if group.side == CapsuleSide::Top {
+        group.bounds.x += (group.bounds.width as i32 - edge as i32) / 2;
+    } else {
+        group.bounds.y += (group.bounds.height as i32 - height as i32) / 2;
+    }
+    if group.side == CapsuleSide::Right {
+        group.bounds.x += group.bounds.width as i32 - edge as i32;
+    }
+    group.bounds.width = edge;
+    group.bounds.height = height;
+    group.cross_css = if group.side == CapsuleSide::Top {
+        geometry.height
+    } else {
+        geometry.edge
+    };
+    group.viewport_css = if group.side == CapsuleSide::Top {
+        geometry.edge
+    } else {
+        geometry.height
+    };
+    group.content_css = geometry.document_height;
+    group.grip_css = 0.0;
+}
 fn present(app: &AppHandle, mut next: Vec<GroupSurface>) -> Result<(), AppError> {
     let previous;
     {
@@ -640,36 +701,50 @@ pub fn detach(app: &AppHandle, label: &str, key: &str) -> Result<CapsuleWindow, 
     let scale = window(app, label)
         .ok_or_else(|| error("组窗口已关闭"))?
         .scale_factor()?;
-    let member_start =
-        source.axis_start_css + source.grip_css + member_index as f64 * source.slot_css;
-    let (source_physical, _) = capsule_layout::physical_interval(source.axis_start_css, 0.0, scale);
-    let (member_physical, member_length) =
-        capsule_layout::physical_interval(member_start, source.slot_css, scale);
-    let local = member_physical - source_physical;
-    floating.axis_start_css = member_start;
-    floating.grip_css = 0.0;
-    floating.viewport_css = floating.slot_css;
-    floating.content_css = floating.slot_css;
-    if source.side == CapsuleSide::Top {
-        floating.bounds.x += local;
-        floating.bounds.width = member_length;
-    } else {
-        floating.bounds.y += local;
-        floating.bounds.height = member_length;
+    #[cfg(target_os = "windows")]
+    {
+        let member_start =
+            source.axis_start_css + source.grip_css + member_index as f64 * source.slot_css;
+        let (source_physical, _) =
+            capsule_layout::physical_interval(source.axis_start_css, 0.0, scale);
+        let (member_physical, member_length) =
+            capsule_layout::physical_interval(member_start, source.slot_css, scale);
+        let local = member_physical - source_physical;
+        floating.axis_start_css = member_start;
+        floating.grip_css = 0.0;
+        floating.viewport_css = floating.slot_css;
+        floating.content_css = floating.slot_css;
+        if source.side == CapsuleSide::Top {
+            floating.bounds.x += local;
+            floating.bounds.width = member_length;
+        } else {
+            floating.bounds.y += local;
+            floating.bounds.height = member_length;
+        }
+        source.grip_css = if source.members.len() > 1 {
+            source.grip_css
+        } else {
+            0.0
+        };
+        source.content_css = source.grip_css + source.members.len() as f64 * source.slot_css;
+        source.viewport_css = source.content_css.min(source.viewport_css);
+        let (_, source_length) =
+            capsule_layout::physical_interval(source.axis_start_css, source.viewport_css, scale);
+        if source.side == CapsuleSide::Top {
+            source.bounds.width = source_length;
+        } else {
+            source.bounds.height = source_length;
+        }
     }
-    source.grip_css = if source.members.len() > 1 {
-        source.grip_css
-    } else {
-        0.0
-    };
-    source.content_css = source.grip_css + source.members.len() as f64 * source.slot_css;
-    source.viewport_css = source.content_css.min(source.viewport_css);
-    let (_, source_length) =
-        capsule_layout::physical_interval(source.axis_start_css, source.viewport_css, scale);
-    if source.side == CapsuleSide::Top {
-        source.bounds.width = source_length;
-    } else {
-        source.bounds.height = source_length;
+    #[cfg(target_os = "macos")]
+    {
+        let cell = crate::macos_droplet::geometry(source.members.len() + 1).cells[member_index];
+        floating.bounds.x += (cell[0] * scale).round() as i32;
+        floating.bounds.y += (cell[1] * scale).round() as i32;
+        floating.bounds.width = (cell[2] * scale).round() as u32;
+        floating.bounds.height = (cell[3] * scale).round() as u32;
+        resize_droplet(&mut floating, scale);
+        resize_droplet(&mut source, scale);
     }
     // 两个新成员集合先在隐藏窗口准备，原窗口在 native batch 中一次退役。
     for group in [&mut source, &mut floating] {
