@@ -1,8 +1,8 @@
-import { materialLabel } from "#platform-settings";
+import { MaterialSettings } from "#platform-settings";
 import { useEffect, useState } from "react";
 import type { AppConfig, AppearanceTokens } from "../features/settings/types";
 import { resolveAppearance } from "../features/settings/theme";
-import { getMaterialStatus, type MaterialStatus } from "../features/settings/nativeMaterial";
+import { getMaterialStatus, type MaterialStatus } from "#platform-material";
 import { exportThemeFile, importThemeFile } from "../features/settings/themeFile";
 import { showToast } from "./Toast";
 import { chooseBackgroundImage } from "../features/settings/api";
@@ -129,23 +129,7 @@ export function AppearanceSection({ config, noteId, onChange }: Props) {
           导出 JSON 主题
         </button>
       </div>
-      <label className="flex items-center gap-2 text-[11px] text-ink-faint">
-        <input
-          type="checkbox"
-          checked={config.appearance?.nativeMaterial ?? false}
-          onChange={(event) =>
-            onChange({
-              ...config,
-              appearance: {
-                ...config.appearance,
-                version: 1,
-                nativeMaterial: event.target.checked,
-              },
-            })
-          }
-        />
-        {materialLabel}
-      </label>
+      <MaterialSettings config={config} onChange={onChange} />
       <p className="text-[10px] text-ink-ghost">
         {materialStatus === "active"
           ? "系统已接受原生材质请求；实际磨砂效果以桌面观察为准"

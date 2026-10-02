@@ -224,6 +224,41 @@ fn capsule_layout_cross_inset(scale: f64) -> i32 {
         (crate::capsule_layout::CROSS * scale).round() as i32
     }
 }
+fn preview_window(app: &AppHandle) -> Result<tauri::WebviewWindow, AppError> {
+    if let Some(window) = app.get_webview_window(CAPSULE_PREVIEW_LABEL) {
+        Ok(window)
+    } else {
+        let builder = WebviewWindowBuilder::new(
+            app,
+            CAPSULE_PREVIEW_LABEL,
+            WebviewUrl::App("capsule.html?preview=1".into()),
+        )
+        .title("便签预览")
+        .inner_size(300.0, 200.0)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .resizable(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .focused(false)
+        .visible(false);
+        let window = builder.accept_first_mouse(true).build()?;
+        Ok(window)
+    }
+}
+
+/// Warm the hidden renderer/material once; first hover must not pay startup cost.
+pub fn prewarm_capsule_preview(app: &AppHandle) -> Result<(), AppError> {
+    if crate::surface_sessions::list()?
+        .iter()
+        .any(|session| session.presentation == crate::surface_sessions::Presentation::Stored)
+    {
+        let _ = preview_window(app)?;
+    }
+    Ok(())
+}
+
 pub fn show_capsule_preview(
     rail: &tauri::WebviewWindow,
     key: &str,
@@ -304,27 +339,7 @@ pub fn show_capsule_preview(
         work.position.y,
         work.position.y + work.size.height as i32 - height as i32,
     );
-    let window = if let Some(window) = app.get_webview_window(CAPSULE_PREVIEW_LABEL) {
-        window
-    } else {
-        let builder = WebviewWindowBuilder::new(
-            app,
-            CAPSULE_PREVIEW_LABEL,
-            WebviewUrl::App("capsule.html?preview=1".into()),
-        )
-        .title("便签预览")
-        .inner_size(300.0, 200.0)
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .resizable(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .focused(false)
-        .visible(false);
-        let window = builder.build()?;
-        window
-    };
+    let window = preview_window(app)?;
     if PREVIEW_GENERATION.load(Ordering::SeqCst) != generation {
         return Ok(());
     }

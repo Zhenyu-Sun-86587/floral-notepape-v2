@@ -1,0 +1,33 @@
+/* Build-selected Mac rules. All surfaces expose the same native backdrop;
+   text, controls and editing DOM stay opaque and selectable. */
+:root[data-mac-material="glass"] {
+  --mac-tint: 8%;
+}
+:root[data-mac-material="frosted"] {
+  --mac-tint: 20%;
+}
+:root[data-mac-material="glass"] .app-main-surface,
+:root[data-mac-material="frosted"] .app-main-surface,
+:root[data-mac-material="glass"] .app-surface-frame,
+:root[data-mac-material="frosted"] .app-surface-frame {
+  background-color: color-mix(in srgb, var(--color-cloud) var(--mac-tint), transparent) !important;
+  border-width: 0 !important;
+  box-shadow: none;
+}
+:root:is([data-mac-material="glass"], [data-mac-material="frosted"])
+  :is(
+    .app-main-titlebar,
+    .app-main-sidebar,
+    .app-settings-panel,
+    .app-main-editor-pane,
+    .appearance-note-content
+  ) {
+  background-color: transparent !important;
+  backdrop-filter: none;
+}
+:root:is([data-mac-material="glass"], [data-mac-material="frosted"]) [data-pad-editor-body="true"] {
+  background: transparent !important;
+}
+:root[data-mac-material="solid"] .app-surface-frame {
+  background-color: var(--color-cloud) !important;
+}

@@ -8,3 +8,12 @@ export const materialLabel = "原生磨砂";
 
 export const desktopLayerLabel = "桌面层";
 export const supportsDesktopLayer = false;
+
+import { MaterialSettings as SharedMaterialSettings } from "../windows/MaterialSettings";
+import type { AppConfig } from "../../features/settings/types";
+export function MaterialSettings(props: {
+  config: AppConfig;
+  onChange: (config: AppConfig) => void;
+}) {
+  return <SharedMaterialSettings {...props} label={materialLabel} />;
+}

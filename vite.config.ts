@@ -16,6 +16,12 @@ export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
+      "#platform-material": fileURLToPath(
+        new URL(
+          `./src/platform/${platform === "macos" ? "macos" : "windows"}/material.ts`,
+          import.meta.url,
+        ),
+      ),
       "#platform-capsules": fileURLToPath(
         new URL(
           `./src/platform/${platform === "macos" ? "macos" : "windows"}/capsules/index.${platform === "macos" ? "tsx" : "ts"}`,

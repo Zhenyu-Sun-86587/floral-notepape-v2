@@ -214,6 +214,8 @@ fn create_window(app: &AppHandle, label: &str) -> Result<tauri::WebviewWindow, A
             .skip_taskbar(true)
             .focused(false)
             .visible(false);
+    #[cfg(target_os = "macos")]
+    let builder = builder.accept_first_mouse(true);
     let window = builder.build()?;
     #[cfg(target_os = "windows")]
     crate::set_windows_corner_preference(&window, 0.0);

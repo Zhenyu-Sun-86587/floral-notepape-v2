@@ -13,6 +13,8 @@ pub mod macos_capsule;
 #[cfg(target_os = "macos")]
 pub mod macos_lock_overlay;
 #[cfg(target_os = "macos")]
+pub mod macos_material;
+#[cfg(target_os = "macos")]
 pub mod macos_surface;
 pub mod platform;
 pub mod services;
@@ -192,7 +194,7 @@ async fn surface_capsule_dismiss(app: AppHandle) -> Result<(), AppError> {
 #[cfg(target_os = "macos")]
 #[tauri::command]
 async fn surface_capsule_material(window: tauri::WebviewWindow) -> Result<String, AppError> {
-    run_settings_task(move || crate::macos_capsule::material(&window)).await
+    run_settings_task(move || crate::macos_capsule::initialize(&window)).await
 }
 
 #[tauri::command]
@@ -622,6 +624,16 @@ fn config_save_blocking(app: AppHandle, config: AppConfig) -> Result<AppConfig, 
     Ok(saved)
 }
 
+#[cfg(target_os = "macos")]
+#[tauri::command]
+async fn surface_apply_material(
+    window: tauri::WebviewWindow,
+    radius: f64,
+) -> Result<String, AppError> {
+    run_settings_task(move || crate::macos_material::apply(&window, radius)).await
+}
+
+#[cfg(not(target_os = "macos"))]
 #[tauri::command]
 fn set_native_material(
     window: tauri::WebviewWindow,
@@ -657,22 +669,6 @@ fn set_native_material(
                 window.set_shadow(true)?;
                 set_windows_corner_preference(&window, radius);
             }
-        }
-        Ok(enabled)
-    }
-    #[cfg(target_os = "macos")]
-    {
-        use tauri::window::{Effect, EffectsBuilder};
-        window.set_shadow(true)?;
-        if enabled {
-            window.set_effects(
-                EffectsBuilder::new()
-                    .effect(Effect::UnderWindowBackground)
-                    .radius(radius.max(0.0))
-                    .build(),
-            )?;
-        } else {
-            window.set_effects(None::<tauri::utils::config::WindowEffectsConfig>)?;
         }
         Ok(enabled)
     }
@@ -1062,7 +1058,10 @@ pub fn run() {
             config_get,
             copy_background_image,
             config_save,
+            #[cfg(not(target_os = "macos"))]
             set_native_material,
+            #[cfg(target_os = "macos")]
+            surface_apply_material,
             theme_read,
             theme_write,
             config_migrate_data_dir,

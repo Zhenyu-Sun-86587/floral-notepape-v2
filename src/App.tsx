@@ -13,7 +13,7 @@ import {
   resolveAppearance,
   watchSystemTheme,
 } from "./features/settings/theme";
-import { applyNativeMaterial } from "./features/settings/nativeMaterial";
+import { applyNativeMaterial } from "#platform-material";
 import type { AppConfig, ThemeOption } from "./features/settings/types";
 import { getInitialRoute } from "./features/windows/windowRoutes";
 import { syncLanguage } from "./locales";

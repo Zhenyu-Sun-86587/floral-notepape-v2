@@ -43,13 +43,15 @@ export function CapsuleRail() {
     if (group && materialReady)
       void invoke("surface_capsule_group_ready", { revision: group.revision }).catch(reportError);
   }, [group, materialReady]);
-  const leave = () => {
+  const leave = (key?: string) => {
+    if (key && owner.current !== key) return;
     intent.current.cancel();
-    const key = owner.current;
+    const previous = owner.current;
     owner.current = null;
-    if (key) void hover(false, key).catch(reportError);
+    if (previous) void hover(false, previous).catch(reportError);
   };
   const enter = (entry: CapsuleEntry, button: HTMLButtonElement) => {
+    if (owner.current === entry.key) return;
     leave();
     if (entry.expanded || busy.current) return;
     owner.current = entry.key;
@@ -87,7 +89,7 @@ export function CapsuleRail() {
     <nav
       className={`mac-rail side-${side}`}
       aria-label="边缘便签"
-      onPointerLeave={leave}
+      onPointerLeave={() => leave()}
       style={
         {
           "--slot": `${group?.slotCss ?? 48}px`,
@@ -123,9 +125,9 @@ export function CapsuleRail() {
             aria-label={`${entry.expanded ? "收回" : "展开"} ${entry.title}`}
             title={entry.expanded ? entry.title : undefined}
             onPointerEnter={(event) => enter(entry, event.currentTarget)}
-            onPointerLeave={leave}
+            onPointerLeave={() => leave(entry.key)}
             onFocus={(event) => enter(entry, event.currentTarget)}
-            onBlur={leave}
+            onBlur={() => leave(entry.key)}
             onContextMenu={(event) => {
               event.preventDefault();
               leave();

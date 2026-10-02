@@ -12,6 +12,7 @@ static NOTES_ALL_SPACES: AtomicBool = AtomicBool::new(true);
 static CAPSULES_ALL_SPACES: AtomicBool = AtomicBool::new(true);
 thread_local! { static NOTE_MODES: RefCell<HashMap<String, (WindowMode, bool)>> = RefCell::new(HashMap::new()); }
 pub fn configure(config: &crate::platform::macos::MacosConfig) {
+    crate::macos_material::configure(config);
     NOTES_ALL_SPACES.store(config.notes_on_all_spaces, Ordering::Relaxed);
     CAPSULES_ALL_SPACES.store(config.capsules_on_all_spaces, Ordering::Relaxed);
 }
@@ -163,6 +164,7 @@ pub fn refresh_config(
     let handle = app.clone();
     handle.run_on_main_thread(move || {
         for (label, window) in app.webview_windows() {
+            let _ = crate::macos_material::refresh(&window);
             if label.starts_with("capsule-") {
                 let all = CAPSULES_ALL_SPACES.load(Ordering::Relaxed);
                 let _ = dispatch(&window, move |native| {
@@ -189,7 +191,7 @@ pub fn refresh_config(
 pub fn forget(window: &tauri::Window) {
     let label = window.label().to_owned();
     let _ = window.app_handle().run_on_main_thread(move || {
-        crate::macos_capsule::forget(&label);
+        crate::macos_material::forget(&label);
         BASE_BEHAVIOR.with(|map| {
             map.borrow_mut().remove(&label);
             NOTE_MODES.with(|map| {
