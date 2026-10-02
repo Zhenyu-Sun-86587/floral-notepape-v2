@@ -1,4 +1,4 @@
-当前阶段：[Mac 1.7.25 便签三档玻璃](Docs/MAC_NOTE_GLASS_1.7.25.md)。便签与胶囊分别设置效果档位，原生背景与文字分层，最高档限制背景采样开销；Windows 实现保持不变。
+当前阶段：[Mac 1.7.26 正文双击编辑](Docs/MAC_NOTE_GLASS_1.7.25.md)。Mac 阅读态正文不再单击进入编辑，双击行为遵循既有设置；Windows 实现保持不变。
 
 上一阶段：[Mac 1.7.18 胶囊重构与原生玻璃](Docs/MAC_CAPSULES_1.7.18.md)。Windows 胶囊保持原实现，基础检查与人工验收见文档。
 
@@ -10,7 +10,7 @@
 
 **简体中文** · [繁體中文](README_zh-HK.md) · [English](README_en-US.md)
 
-把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.25（Mac 便签三档玻璃）**，Windows 发布版本为 **1.7.9**。
+把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.26（Mac 正文双击编辑）**，Windows 发布版本为 **1.7.9**。
 
 [下载 Windows 1.7.9](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.9) · [反馈问题](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [Mac 开发交接](Docs/MAC_HANDOFF.md)
 

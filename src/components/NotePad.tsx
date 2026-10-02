@@ -1253,6 +1253,7 @@ export function NotePad({
           contentEditorRef={tileContentRef}
           locked={tileLocked}
           onEditorActivate={() => void startTileWriting()}
+          doubleClickToEdit={tileDoubleClickToEdit}
           onEditorDeactivate={() => void finishTileWriting()}
           onEditorPaste={imagePasteHandler}
           onEditorDrop={imageDropHandler}
