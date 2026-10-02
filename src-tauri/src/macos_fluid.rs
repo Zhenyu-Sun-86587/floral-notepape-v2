@@ -16,15 +16,40 @@ unsafe extern "C" {
     fn hermes_fluid_morph(label: *const c_char, start: *const f64, end: *const f64, count: i32);
     fn hermes_fluid_status(output: *mut c_char, capacity: i32);
     fn hermes_fluid_request();
+    fn hermes_fluid_note(
+        window: *mut c_void,
+        backing: *mut c_void,
+        label: *const c_char,
+        radius: f64,
+        opacity: f64,
+    );
+}
+pub fn install_note(window: &NSWindow, backing: &NSView, label: &str, radius: f64, opacity: f64) {
+    if let Ok(label) = CString::new(label) {
+        unsafe {
+            hermes_fluid_note(
+                (window as *const NSWindow).cast_mut().cast(),
+                (backing as *const NSView).cast_mut().cast(),
+                label.as_ptr(),
+                radius,
+                opacity,
+            );
+        }
+    }
 }
 #[cfg(test)]
 mod tests {
     unsafe extern "C" {
         fn hermes_fluid_selftest() -> i32;
+        fn hermes_fluid_note_selftest() -> i32;
     }
     #[test]
     fn metal_shader_draws_transparent_outside_and_connected_glass_inside() {
         assert_eq!(unsafe { hermes_fluid_selftest() }, 1);
+    }
+    #[test]
+    fn metal_note_shader_preserves_transparent_corners_and_reading_surface() {
+        assert_eq!(unsafe { hermes_fluid_note_selftest() }, 1);
     }
 }
 pub fn install(window: &NSWindow, backing: &NSView, label: &str, cells: &[[f64; 4]], opacity: f64) {

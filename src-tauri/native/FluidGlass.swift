@@ -13,6 +13,12 @@ vertex V fluidVertex(uint i [[vertex_id]]) {
     return {float4(p[i],0,1),float2((p[i].x+1)*.5,1-(p[i].y+1)*.5)};
 }
 float shape(float2 p,constant float4 *u) {
+    if(u[2].z>0.5) {
+        float r=min(u[2].w,min(u[0].x,u[0].y)*.5);
+        float inset=max(0.,u[2].y-1.)*min(u[0].x,u[0].y)*.15;
+        float2 q=abs(p-u[0].xy*.5)-u[0].xy*.5+r+inset;
+        return length(max(q,0.))+min(max(q.x,q.y),0.)-r;
+    }
     float d=10000;
     for(uint i=0;i<uint(u[2].x);i++) {
         float4 c=u[3+i];
@@ -37,11 +43,19 @@ fragment float4 fluidFragment(V in [[stage_in]],constant float4 *u [[buffer(0)]]
                     shape(p+float2(0,.6),u)-shape(p-float2(0,.6),u));
     n=normalize(n+float2(.0001));
     float t=clamp(1+d/22.,0.,1.);
-    float lens=pow(t,2.2)*16.;
+    bool note=u[2].z>0.5;
+    float lens=pow(t,2.2)*(note ? 7. : 16.);
     float2 uv=(u[0].zw+p-n*lens)/u[1].xy;
     float3 col=desktop.sample(s,uv).rgb;
+    if(note) {
+        float2 step=1.5/u[1].xy;
+        col=(col*2+desktop.sample(s,uv+float2(step.x,0)).rgb+
+             desktop.sample(s,uv-float2(step.x,0)).rgb+
+             desktop.sample(s,uv+float2(0,step.y)).rgb+
+             desktop.sample(s,uv-float2(0,step.y)).rgb)/6.;
+    }
     // Low tint, directional rim light, no solid border.
-    col=mix(col,float3(.92,.97,1),.025+u[1].z*.08);
+    col=mix(col,float3(.92,.97,1),note ? .08+u[1].z*.35 : .025+u[1].z*.08);
     float rim=exp(-abs(d)*.65);
     float light=pow(max(0.,dot(n,normalize(float2(-.6,-.8)))),3.);
     col+=rim*(light*.22-.025);
@@ -56,6 +70,14 @@ private final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
     var pixel: CVPixelBuffer?
     var cache: CVMetalTextureCache?
     var active = true
+    var configuration: SCStreamConfiguration?
+    var fps = 24
+    func rate(_ value:Int) {
+        guard value != fps, let configuration, active else { return }
+        fps = value
+        configuration.minimumFrameInterval = CMTime(value:1,timescale:Int32(value))
+        stream?.updateConfiguration(configuration) { _ in }
+    }
     init(display: SCDisplay, content: SCShareableContent) throws {
         self.display = display
         super.init()
@@ -68,7 +90,9 @@ private final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
         let ratio = min(1,1600.0/Double(display.width))
         config.width = max(1,Int(Double(display.width)*ratio))
         config.height = max(1,Int(Double(display.height)*ratio))
-        config.minimumFrameInterval = CMTime(value:1,timescale:24)
+        fps = Fluid.views.values.contains { $0.displayID == display.displayID && !$0.isNote } ? 24 : 12
+        config.minimumFrameInterval = CMTime(value:1,timescale:Int32(fps))
+        configuration = config
         config.queueDepth = 3
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.showsCursor = false
@@ -104,6 +128,7 @@ private final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
         guard active else { return }
         stop()
         Fluid.status = "采样失败，已回退到弹性玻璃"
+        Fluid.retryAfter = ProcessInfo.processInfo.systemUptime+15
         NSLog("Fluid capture: %@",String(describing:error))
         for view in Fluid.views.values where view.displayID == display.displayID { view.fallback() }
     }
@@ -126,6 +151,17 @@ private final class FluidView: MTKView, MTKViewDelegate {
     var fromScale: Float = 1
     var serial = 0
     var suspended = false
+    var isNote = false
+    var radius: Float = 28
+    var lastDraw = 0.0
+    override var isOpaque: Bool { false }
+    func limitResolution() {
+        guard isNote else { return }
+        let longest=max(bounds.width,bounds.height)
+        let scale=min(window?.backingScaleFactor ?? 2,768/max(1,longest))
+        drawableSize=CGSize(width:max(1,bounds.width*scale),height:max(1,bounds.height*scale))
+    }
+    override func setFrameSize(_ size:NSSize) { super.setFrameSize(size); limitResolution() }
     var morphFrom: [SIMD4<Float>] = []
     var morphTo: [SIMD4<Float>] = []
     var morphStart = 0.0
@@ -159,6 +195,7 @@ private final class FluidView: MTKView, MTKViewDelegate {
         serial += 1
         let token = serial
         isPaused = false
+        preferredFramesPerSecond=isNote ? 24 : 60
         DispatchQueue.main.asyncAfter(deadline:.now()+0.7) { [weak self] in
             guard let self, self.serial == token else { return }
             self.isPaused = true
@@ -172,6 +209,11 @@ private final class FluidView: MTKView, MTKViewDelegate {
     func mtkView(_ view: MTKView,drawableSizeWillChange size:CGSize) {}
     func draw(in view: MTKView) {
         guard !suspended else { return }
+        if isNote && isPaused {
+            let now=ProcessInfo.processInfo.systemUptime
+            guard now-lastDraw >= 1.0/12 else { return }
+            lastDraw=now
+        }
         if let screen = window?.screen,
            let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
            displayID != id.uint32Value {
@@ -179,7 +221,7 @@ private final class FluidView: MTKView, MTKViewDelegate {
             fallback()
             Fluid.prune(); Fluid.start()
         }
-        guard let window, window.isVisible, let screen = window.screen,
+        guard let window, window.isVisible, window.isOnActiveSpace, let screen = window.screen,
               let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
               let capture = Fluid.captures[id.uint32Value], capture.active,
               let cv = capture.texture, let pixel = capture.pixel,
@@ -197,7 +239,7 @@ private final class FluidView: MTKView, MTKViewDelegate {
         }
         let uniforms = [SIMD4<Float>(Float(bounds.width),Float(bounds.height),Float(global.minX-screen.frame.minX),Float(screen.frame.maxY-global.maxY)),
             SIMD4<Float>(Float(screen.frame.width),Float(screen.frame.height),concentration,0),
-            SIMD4<Float>(Float(moving.count),scale(time),0,0)] + moving
+            SIMD4<Float>(Float(moving.count),scale(time),isNote ? 1 : 0,radius)] + moving
         encoder.setRenderPipelineState(pipeline)
         uniforms.withUnsafeBytes { encoder.setFragmentBytes($0.baseAddress!,length:$0.count,index:0) }
         encoder.setFragmentTexture(texture,index:0)
@@ -208,7 +250,7 @@ private final class FluidView: MTKView, MTKViewDelegate {
         command.commit()
         isHidden = false
         backing?.isHidden = true
-        Fluid.status = "流体玻璃运行中 · 背景采样 24fps"
+        Fluid.status = "流体玻璃运行中 · 胶囊上限24fps / 便签上限12fps"
     }
 }
 
@@ -237,8 +279,38 @@ private enum Fluid {
     static var starting = false
     static var generation = 0
     static var status = "未启用流体玻璃"
+    static var monitor: Timer?
+    static var observers: [NSObjectProtocol] = []
+    static var retryAfter = 0.0
+    static func needed() -> Set<CGDirectDisplayID> {
+        Set(views.values.compactMap {
+            guard let window=$0.window, window.isVisible, window.isOnActiveSpace, !window.isMiniaturized else { return nil }
+            return (window.screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+        })
+    }
+    static func watch() {
+        guard monitor == nil else { return }
+        for name in [NSWindow.didMoveNotification,NSWindow.didResizeNotification] {
+            observers.append(NotificationCenter.default.addObserver(forName:name,object:nil,queue:.main) { note in
+                guard let window=note.object as? NSWindow else { return }
+                for view in views.values where view.window === window && !view.suspended { view.draw() }
+            })
+        }
+        observers.append(NotificationCenter.default.addObserver(forName:NSApplication.didChangeScreenParametersNotification,object:nil,queue:.main) { _ in
+            generation += 1; starting=false
+            for capture in captures.values { capture.stop() }
+            captures.removeAll(); start()
+        })
+        monitor=Timer.scheduledTimer(withTimeInterval:1,repeats:true) { _ in
+            prune(); start()
+        }
+        monitor?.tolerance=0.2
+    }
     static func start() {
-        guard !starting, !views.isEmpty else { return }
+        let required=needed()
+        guard !starting, !views.isEmpty, !required.isEmpty,
+              required.contains(where: { captures[$0]?.active != true }),
+              ProcessInfo.processInfo.systemUptime>=retryAfter else { return }
         guard CGPreflightScreenCaptureAccess() else { status = "需要屏幕录制权限，当前使用弹性玻璃"; return }
         guard pipeline != nil else { status = "Metal 不可用，当前使用弹性玻璃"; return }
         starting = true
@@ -247,19 +319,25 @@ private enum Fluid {
             DispatchQueue.main.async {
                 guard generation == token else { return }
                 starting = false
-                guard let content else { status = "无法读取屏幕，当前使用弹性玻璃"; return }
-                let needed = Set(views.values.compactMap { ($0.window?.screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value })
+                guard let content else { status = "无法读取屏幕，当前使用弹性玻璃"; retryAfter=ProcessInfo.processInfo.systemUptime+15; return }
+                let needed = needed()
                 for display in content.displays where needed.contains(display.displayID) && captures[display.displayID]?.active != true {
                     do { captures[display.displayID] = try Capture(display:display,content:content) }
-                    catch { status = "采样启动失败，当前使用弹性玻璃" }
+                    catch { status = "采样启动失败，当前使用弹性玻璃"; retryAfter=ProcessInfo.processInfo.systemUptime+15 }
                 }
             }
         }
     }
     static func prune() {
-        let needed = Set(views.values.compactMap { ($0.window?.screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value })
+        let needed = needed()
+        if needed.isEmpty && !views.isEmpty { status="无可见流体窗口，背景采样已暂停" }
         for id in Array(captures.keys) where !needed.contains(id) { captures.removeValue(forKey:id)?.stop() }
-        if views.isEmpty { generation += 1; starting = false; status = "未启用流体玻璃" }
+        for (id,capture) in captures {
+            capture.rate(views.values.contains { $0.displayID == id && !$0.isNote && $0.window?.isVisible == true && $0.window?.isOnActiveSpace == true } ? 24 : 12)
+        }
+        if views.isEmpty { generation += 1; starting = false; status = "未启用流体玻璃"; monitor?.invalidate(); monitor=nil
+            for token in observers { NotificationCenter.default.removeObserver(token) }; observers.removeAll()
+        }
     }
 }
 
@@ -279,8 +357,25 @@ func install(_ raw: UnsafeMutableRawPointer, _ backingRaw: UnsafeMutableRawPoint
     if let id = window.screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber { view.displayID=id.uint32Value }
     root.addSubview(view,positioned:.above,relativeTo:backing)
     Fluid.views[key] = view
+    Fluid.watch()
     Fluid.prune()
     Fluid.start()
+}
+@_cdecl("hermes_fluid_note")
+func note(_ raw:UnsafeMutableRawPointer,_ backingRaw:UnsafeMutableRawPointer,_ label:UnsafePointer<CChar>,_ radius:Double,_ opacity:Double) {
+    let key=String(cString:label)
+    if let old=Fluid.views.removeValue(forKey:key) { old.fallback(); old.removeFromSuperview() }
+    guard Fluid.pipeline != nil else { return }
+    let window=Unmanaged<NSWindow>.fromOpaque(raw).takeUnretainedValue()
+    let backing=Unmanaged<NSView>.fromOpaque(backingRaw).takeUnretainedValue()
+    guard let root=window.contentView else { return }
+    let view=FluidView(frame:root.bounds,backing:backing,cells:[],opacity:Float(opacity))
+    view.isNote=true; view.radius=Float(radius); view.autoResizeDrawable=false
+    if let id=window.screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber { view.displayID=id.uint32Value }
+    root.addSubview(view,positioned:.above,relativeTo:backing)
+    view.limitResolution()
+    Fluid.views[key]=view
+    Fluid.watch(); Fluid.prune(); Fluid.start()
 }
 @_cdecl("hermes_fluid_remove")
 func remove(_ label: UnsafePointer<CChar>) {
@@ -313,12 +408,20 @@ func status(_ output: UnsafeMutablePointer<CChar>, _ capacity:Int32) {
 }
 @_cdecl("hermes_fluid_request")
 func request() {
+    Fluid.retryAfter=0
     if !CGPreflightScreenCaptureAccess() { _ = CGRequestScreenCaptureAccess() }
     Fluid.start()
 }
 // Offscreen GPU smoke check. Never starts capture or asks for permission.
 @_cdecl("hermes_fluid_selftest")
 func selftest() -> Int32 {
+    smoke(false)
+}
+@_cdecl("hermes_fluid_note_selftest")
+func noteSelftest() -> Int32 {
+    smoke(true)
+}
+private func smoke(_ note:Bool) -> Int32 {
     guard let device=Fluid.device, let pipeline=Fluid.pipeline,
           let command=Fluid.queue?.makeCommandBuffer() else { return 0 }
     let outputDescription=MTLTextureDescriptor.texture2DDescriptor(pixelFormat:.bgra8Unorm,width:88,height:64,mipmapped:false)
@@ -336,7 +439,7 @@ func selftest() -> Int32 {
     pass.colorAttachments[0].storeAction = .store
     pass.colorAttachments[0].clearColor=MTLClearColorMake(0,0,0,0)
     guard let encoder=command.makeRenderCommandEncoder(descriptor:pass) else { return 0 }
-    let uniforms:[SIMD4<Float>]=[SIMD4(88,64,0,0),SIMD4(88,64,0.25,0),SIMD4(2,1,0,0),SIMD4(22,22,22,0),SIMD4(46,22,22,0)]
+    let uniforms:[SIMD4<Float>]=[SIMD4(88,64,0,0),SIMD4(88,64,0.25,0),SIMD4(2,1,note ? 1 : 0,20),SIMD4(22,22,22,0),SIMD4(46,22,22,0)]
     encoder.setRenderPipelineState(pipeline)
     uniforms.withUnsafeBytes { encoder.setFragmentBytes($0.baseAddress!,length:$0.count,index:0) }
     encoder.setFragmentTexture(input,index:0)

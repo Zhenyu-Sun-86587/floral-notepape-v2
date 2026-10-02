@@ -62,6 +62,17 @@ pub fn fluid_capsules() -> bool {
 pub fn capsule_tint(opacity: f64) -> f64 {
     opacity * if elastic_capsules() { 0.025 } else { 0.12 }
 }
+pub fn note_dynamics(label: &str) -> CapsuleDynamics {
+    if !label.starts_with("tile-") && !label.starts_with("notepad-") {
+        return CapsuleDynamics::Lightweight;
+    }
+    CONFIG
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .map(|c| c.note_dynamics)
+        .unwrap_or_default()
+}
 pub fn opacity(label: &str, glass: bool) -> f64 {
     let config = CONFIG.read().unwrap_or_else(|e| e.into_inner());
     let defaults = MacosConfig::default();
@@ -83,6 +94,8 @@ struct Host {
     kind: String,
     opacity: f64,
     radius: f64,
+    dynamics: CapsuleDynamics,
+    background: Option<Retained<NSView>>,
 }
 thread_local! { static HOSTS: RefCell<HashMap<String, Host>> = RefCell::new(HashMap::new()); }
 pub fn configure(config: &MacosConfig) {
@@ -145,12 +158,14 @@ fn install(window: &WebviewWindow, radius: f64) -> Result<MaterialState, AppErro
     let kind_owned = state.kind.clone();
     let kind = kind_owned.as_str();
     let opacity = state.opacity;
+    let dynamics = note_dynamics(window.label());
     let glass_class = AnyClass::get(c"NSGlassEffectView");
     HOSTS.with(|hosts| {
         let mut hosts = hosts.borrow_mut();
-        if hosts.get(window.label()).is_some_and(|host| host.kind == kind && host.radius == radius && host.opacity == opacity) {
+        if hosts.get(window.label()).is_some_and(|host| host.kind == kind && host.radius == radius && host.opacity == opacity && host.dynamics == dynamics) {
             return Ok(state.clone());
         }
+        crate::macos_fluid::remove(window.label());
         let (root, clip) = if let Some(host) = hosts.get(window.label()) {
             // The Wry root never moves during a mode change. NSGlassEffectView
             // owns its contentView: reparenting that content across effects can
@@ -176,6 +191,12 @@ fn install(window: &WebviewWindow, radius: f64) -> Result<MaterialState, AppErro
         };
 
         let frame = clip.bounds();
+        let background = NSView::initWithFrame(NSView::alloc(mtm),frame);
+        background.setAutoresizingMask(Sizing::ViewWidthSizable | Sizing::ViewHeightSizable);
+        let fluid = kind == "glass" && dynamics == CapsuleDynamics::Fluid;
+        let separate = kind == "glass" && dynamics != CapsuleDynamics::Lightweight;
+        background.setWantsLayer(true);
+        if separate { clip.addSubview(&background); }
         let mut effects = Vec::new();
         let mut glass_host = None;
         if kind == "glass" || kind == "frosted" {
@@ -190,7 +211,7 @@ fn install(window: &WebviewWindow, radius: f64) -> Result<MaterialState, AppErro
             }
             // Clear glass keeps a lighter backdrop; frosted keeps full diffusion.
             backdrop.setAlphaValue(opacity);
-            clip.addSubview(&backdrop);
+            if separate { background.addSubview(&backdrop); } else { clip.addSubview(&backdrop); }
             effects.push(backdrop);
             if kind == "glass" {
                 let glass = effect_view(glass_class.expect("available glass"), frame);
@@ -198,9 +219,9 @@ fn install(window: &WebviewWindow, radius: f64) -> Result<MaterialState, AppErro
                 unsafe {
                     let _: () = msg_send![&*glass, setStyle: 1_isize];
                     let _: () = msg_send![&*glass, setCornerRadius: radius];
-                    let tint = NSColor::colorWithWhite_alpha(1.0, opacity * 0.12);
+                    let tint = NSColor::colorWithWhite_alpha(1.0, opacity * if dynamics == CapsuleDynamics::Lightweight { 0.12 } else { 0.025 });
                     let _: () = msg_send![&*glass, setTintColor: &*tint];
-                    if window.label() == "capsule-preview" {
+                    if window.label() == "capsule-preview" || separate {
                         // Selection/focus belongs to the WebView, not to the
                         // glass subtree's dynamic interaction/emphasis state.
                         let content=NSView::initWithFrame(NSView::alloc(mtm),frame);
@@ -208,21 +229,51 @@ fn install(window: &WebviewWindow, radius: f64) -> Result<MaterialState, AppErro
                     } else { let _: () = msg_send![&*glass, setContentView: &*root]; }
 
                 }
-                clip.addSubview(&glass);
+                if separate { background.addSubview(&glass); } else { clip.addSubview(&glass); }
                 glass_host = Some(glass.clone());
                 effects.push(glass);
             }
         }
-        if kind != "glass" || window.label() == "capsule-preview" { clip.addSubview(&root); }
+        if kind != "glass" || window.label() == "capsule-preview" || separate { clip.addSubview(&root); }
+        if fluid {
+            crate::macos_fluid::install_note(native,&background,window.label(),radius,opacity);
+        }
+        if separate { effects.push(background.clone()); }
         native.setOpaque(false);
         native.setBackgroundColor(Some(&NSColor::clearColor()));
         native.setAcceptsMouseMovedEvents(true);
         native.setHasShadow(!window.label().starts_with("capsule-group"));
-        hosts.insert(window.label().into(), Host { root, clip, effects, glass: glass_host, kind: kind.into(), opacity, radius });
+        hosts.insert(window.label().into(), Host { root, clip, effects, glass: glass_host, kind: kind.into(), opacity, radius, dynamics, background:separate.then_some(background) });
         crate::macos_note_shell::attach(window, &hosts.get(window.label()).unwrap().root);
         let _ = window.emit("mac-material-changed", &state);
         Ok(state)
     })
+}
+pub fn drag_feedback(window: &NSWindow, pressed: bool) {
+    let reduce: bool = unsafe {
+        let workspace: *mut AnyObject =
+            msg_send![AnyClass::get(c"NSWorkspace").unwrap(), sharedWorkspace];
+        msg_send![workspace, accessibilityDisplayShouldReduceMotion]
+    };
+    if reduce {
+        return;
+    }
+    HOSTS.with(|hosts| {
+        for (label, host) in hosts.borrow().iter() {
+            if host
+                .clip
+                .window()
+                .as_deref()
+                .is_some_and(|w| std::ptr::eq(w, window))
+            {
+                if let Some(background) = &host.background {
+                    crate::macos_rail::animate_material(background, pressed, 0.985);
+                    crate::macos_fluid::press(label, pressed);
+                }
+                break;
+            }
+        }
+    });
 }
 /// Command workers can wait for AppKit. Main-thread callers use refresh directly.
 pub fn apply(window: &WebviewWindow, radius: f64) -> Result<MaterialState, AppError> {
@@ -245,6 +296,7 @@ pub fn refresh(window: &WebviewWindow) -> Result<(), AppError> {
     Ok(())
 }
 pub fn forget(label: &str) {
+    crate::macos_fluid::remove(label);
     HOSTS.with(|hosts| {
         hosts.borrow_mut().remove(label);
     });

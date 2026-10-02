@@ -144,39 +144,42 @@ fn press_feedback(label: &str, pressed: bool) {
         let Some(material) = rails.get(label).and_then(|r| r.material.as_ref()) else {
             return;
         };
-        let Some(layer) = material.layer() else {
-            return;
-        };
-        let Some(class) = AnyClass::get(c"CASpringAnimation") else {
-            return;
-        };
-        let scale = if pressed { 0.96 } else { 1.0 };
-        let size = material.bounds().size;
-        for (path, target) in [
-            ("transform.scale", scale),
-            ("transform.translation.x", size.width * (1.0 - scale) / 2.0),
-            ("transform.translation.y", size.height * (1.0 - scale) / 2.0),
-        ] {
-            let key = NSString::from_str(path);
-            let value = NSNumber::new_f64(target);
-            unsafe {
-                let presentation = layer.presentationLayer();
-                let source = presentation.as_ref().unwrap_or(&layer);
-                let from: Option<Retained<AnyObject>> = msg_send![&**source,valueForKeyPath:&*key];
-                let animation: Retained<AnyObject> = msg_send![class,animationWithKeyPath:&*key];
-                let _: () = msg_send![&*animation,setFromValue:from.as_deref()];
-                let _: () = msg_send![&*animation,setToValue:&*value];
-                let _: () = msg_send![&*animation,setMass:0.7_f64];
-                let _: () = msg_send![&*animation,setStiffness:260.0_f64];
-                let _: () =
-                    msg_send![&*animation,setDamping:if pressed { 25.0_f64 } else { 18.0_f64 }];
-                let duration: f64 = msg_send![&*animation, settlingDuration];
-                let _: () = msg_send![&*animation,setDuration:duration.min(0.65)];
-                let _: () = msg_send![&*layer,setValue:&*value,forKeyPath:&*key];
-                let _: () = msg_send![&*layer,addAnimation:&*animation,forKey:&*key];
-            }
-        }
+        animate_material(material, pressed, 0.96);
     });
+}
+/// Shared native spring; only decorative background moves, never text/hit targets.
+pub fn animate_material(material: &NSView, pressed: bool, compression: f64) {
+    let Some(layer) = material.layer() else {
+        return;
+    };
+    let Some(class) = AnyClass::get(c"CASpringAnimation") else {
+        return;
+    };
+    let scale = if pressed { compression } else { 1.0 };
+    let size = material.bounds().size;
+    for (path, target) in [
+        ("transform.scale", scale),
+        ("transform.translation.x", size.width * (1.0 - scale) / 2.0),
+        ("transform.translation.y", size.height * (1.0 - scale) / 2.0),
+    ] {
+        let key = NSString::from_str(path);
+        let value = NSNumber::new_f64(target);
+        unsafe {
+            let presentation = layer.presentationLayer();
+            let source = presentation.as_ref().unwrap_or(&layer);
+            let from: Option<Retained<AnyObject>> = msg_send![&**source,valueForKeyPath:&*key];
+            let animation: Retained<AnyObject> = msg_send![class,animationWithKeyPath:&*key];
+            let _: () = msg_send![&*animation,setFromValue:from.as_deref()];
+            let _: () = msg_send![&*animation,setToValue:&*value];
+            let _: () = msg_send![&*animation,setMass:0.7_f64];
+            let _: () = msg_send![&*animation,setStiffness:260.0_f64];
+            let _: () = msg_send![&*animation,setDamping:if pressed { 25.0_f64 } else { 18.0_f64 }];
+            let duration: f64 = msg_send![&*animation, settlingDuration];
+            let _: () = msg_send![&*animation,setDuration:duration.min(0.65)];
+            let _: () = msg_send![&*layer,setValue:&*value,forKeyPath:&*key];
+            let _: () = msg_send![&*layer,addAnimation:&*animation,forKey:&*key];
+        }
+    }
 }
 fn view(class: &AnyClass, frame: NSRect) -> Retained<NSView> {
     unsafe {

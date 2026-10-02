@@ -37,7 +37,7 @@ define_class!(
     struct Header;
     impl Header {
         #[unsafe(method(mouseDown:))]
-        fn drag(&self, event:&NSEvent) { if let Some(window)=self.window() { window.performWindowDragWithEvent(event); } }
+        fn drag(&self, event:&NSEvent) { if let Some(window)=self.window() { crate::macos_material::drag_feedback(&window,true); window.performWindowDragWithEvent(event); crate::macos_material::drag_feedback(&window,false); } }
         #[unsafe(method(acceptsFirstMouse:))]
         fn first_mouse(&self, _: Option<&NSEvent>) -> bool { true }
     }
@@ -47,7 +47,7 @@ define_class!(
     struct Caption;
     impl Caption {
         #[unsafe(method(mouseDown:))]
-        fn drag(&self,event:&NSEvent) { if let Some(window)=self.window() { window.performWindowDragWithEvent(event); } }
+        fn drag(&self,event:&NSEvent) { if let Some(window)=self.window() { crate::macos_material::drag_feedback(&window,true); window.performWindowDragWithEvent(event); crate::macos_material::drag_feedback(&window,false); } }
     }
 );
 struct Chrome {
