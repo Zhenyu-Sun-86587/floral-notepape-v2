@@ -1061,6 +1061,7 @@ pub fn run() {
             surface_capsule_preview_state,
             #[cfg(target_os = "macos")]
             surface_capsule_material,
+            #[cfg(target_os = "macos")]
             macos_fluid_status,
             surface_capsule_present,
             surface_capsule_hide,

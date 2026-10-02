@@ -1,4 +1,4 @@
-当前阶段：[Mac 1.7.23 三档玻璃与真实背景折射](Docs/MAC_FLUID_1.7.23.md)。保留轻量与弹性档，新增实验性 Metal 流体玻璃；Windows 实现保持不变。
+当前阶段：[Mac 1.7.24 三档玻璃与真实背景折射](Docs/MAC_FLUID_1.7.23.md)。保留轻量与弹性档，新增实验性 Metal 流体玻璃；Windows 实现保持不变。
 
 上一阶段：[Mac 1.7.18 胶囊重构与原生玻璃](Docs/MAC_CAPSULES_1.7.18.md)。Windows 胶囊保持原实现，基础检查与人工验收见文档。
 
@@ -10,7 +10,7 @@
 
 **简体中文** · [繁體中文](README_zh-HK.md) · [English](README_en-US.md)
 
-把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.23（Mac 三档玻璃）**，Windows 发布版本为 **1.7.9**。
+把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.24（Mac 三档玻璃）**，Windows 发布版本为 **1.7.9**。
 
 [下载 Windows 1.7.9](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.9) · [反馈问题](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [Mac 开发交接](Docs/MAC_HANDOFF.md)
 
