@@ -1,4 +1,4 @@
-当前阶段：[Mac 1.7.19 整窗液态玻璃与首次交互修复](Docs/MAC_MATERIALS_1.7.19.md)。胶囊取消实线描边，液态玻璃/磨砂可切换，正文区共享透明材质。
+当前阶段：[Mac 1.7.20 原生胶囊与便签外层](Docs/MAC_NATIVE_1.7.20.md)。AppKit 胶囊、原生便签标题栏、分界面材质浓度和原生融合动画；正文保留 Markdown 编辑器，Windows 实现保持不变。
 
 上一阶段：[Mac 1.7.18 胶囊重构与原生玻璃](Docs/MAC_CAPSULES_1.7.18.md)。Windows 胶囊保持原实现，基础检查与人工验收见文档。
 
@@ -10,7 +10,7 @@
 
 **简体中文** · [繁體中文](README_zh-HK.md) · [English](README_en-US.md)
 
-把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.18（Mac 胶囊重构）**，Windows 发布版本为 **1.7.9**。
+把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.20（Mac 原生视图）**，Windows 发布版本为 **1.7.9**。
 
 [下载 Windows 1.7.9](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.9) · [反馈问题](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [Mac 开发交接](Docs/MAC_HANDOFF.md)
 

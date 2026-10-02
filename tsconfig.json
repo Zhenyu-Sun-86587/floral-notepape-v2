@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "paths": {
+      "#platform-note-shell": ["./src/platform/macos/noteShell.ts"],
       "#platform-material": ["./src/platform/macos/material.ts"],
       "#platform-settings": ["./src/platform/macos/settings.tsx"],
       "#platform-capsules": ["./src/platform/macos/capsules/index.tsx"]

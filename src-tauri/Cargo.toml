@@ -1,6 +1,6 @@
 [package]
 name = "hermes-surface-dev"
-version = "1.7.19"
+version = "1.7.20"
 description = "A lightweight cross-platform desktop note app"
 authors = ["Achilng"]
 edition = "2021"
@@ -66,6 +66,7 @@ windows-sys = { version = "0.59", features = [
 ] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+tauri = { version = "2", features = ["unstable"] }
 keyring = { version = "3", features = ["apple-native"] }
 block2 = "0.6"
 objc2 = "0.6"

@@ -15,6 +15,12 @@ pub mod macos_lock_overlay;
 #[cfg(target_os = "macos")]
 pub mod macos_material;
 #[cfg(target_os = "macos")]
+pub mod macos_motion;
+#[cfg(target_os = "macos")]
+pub mod macos_note_shell;
+#[cfg(target_os = "macos")]
+pub mod macos_rail;
+#[cfg(target_os = "macos")]
 pub mod macos_surface;
 pub mod platform;
 pub mod services;
@@ -116,7 +122,7 @@ async fn surface_capsule_entry(key: String) -> Result<Option<desktop::CapsuleEnt
 
 #[tauri::command]
 async fn surface_capsule_preview(
-    window: tauri::WebviewWindow,
+    window: desktop::capsule_groups::CapsuleWindow,
     key: String,
     anchor_y: f64,
     anchor_x: f64,
@@ -180,7 +186,10 @@ async fn surface_capsule_hover(
 }
 
 #[tauri::command]
-fn surface_capsule_menu(window: tauri::WebviewWindow, key: String) -> Result<(), AppError> {
+fn surface_capsule_menu(
+    window: desktop::capsule_groups::CapsuleWindow,
+    key: String,
+) -> Result<(), AppError> {
     desktop::popup_capsule_menu(&window, &key)
 }
 
@@ -193,7 +202,9 @@ async fn surface_capsule_dismiss(app: AppHandle) -> Result<(), AppError> {
 
 #[cfg(target_os = "macos")]
 #[tauri::command]
-async fn surface_capsule_material(window: tauri::WebviewWindow) -> Result<String, AppError> {
+async fn surface_capsule_material(
+    window: tauri::WebviewWindow,
+) -> Result<macos_material::MaterialState, AppError> {
     run_settings_task(move || crate::macos_capsule::initialize(&window)).await
 }
 
@@ -213,7 +224,7 @@ async fn surface_capsule_present(
 
 #[tauri::command]
 async fn surface_capsule_drag(
-    window: tauri::WebviewWindow,
+    window: desktop::capsule_groups::CapsuleWindow,
     key: String,
     group: Option<bool>,
 ) -> Result<bool, AppError> {
@@ -629,8 +640,17 @@ fn config_save_blocking(app: AppHandle, config: AppConfig) -> Result<AppConfig, 
 async fn surface_apply_material(
     window: tauri::WebviewWindow,
     radius: f64,
-) -> Result<String, AppError> {
+) -> Result<macos_material::MaterialState, AppError> {
     run_settings_task(move || crate::macos_material::apply(&window, radius)).await
+}
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+async fn surface_native_note_state(
+    window: tauri::WebviewWindow,
+    state: macos_note_shell::NoteState,
+) -> Result<bool, AppError> {
+    run_settings_task(move || macos_note_shell::update(&window, state)).await
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -1062,6 +1082,8 @@ pub fn run() {
             set_native_material,
             #[cfg(target_os = "macos")]
             surface_apply_material,
+            #[cfg(target_os = "macos")]
+            surface_native_note_state,
             theme_read,
             theme_write,
             config_migrate_data_dir,

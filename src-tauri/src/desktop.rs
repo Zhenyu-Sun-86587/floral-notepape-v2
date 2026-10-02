@@ -1062,6 +1062,8 @@ fn clear_hidden_window_state(app: &AppHandle) {
 }
 
 fn toggle_app_visibility(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    let _ = app.run_on_main_thread(crate::macos_motion::cancel);
     let _ = dismiss_capsule_preview(app);
     let Some(state) = app.try_state::<RuntimeState>() else {
         return;
@@ -1070,6 +1072,13 @@ fn toggle_app_visibility(app: &AppHandle) {
     if let Some(labels) = state.take_hidden_window_labels() {
         let mut focus_target = None;
         for label in &labels {
+            #[cfg(target_os = "macos")]
+            if label.starts_with("capsule-group-") {
+                if let Some(window) = app.get_window(label) {
+                    let _ = crate::macos_surface::show_native_capsule(&window);
+                }
+                continue;
+            }
             if let Some(window) = app.get_webview_window(label) {
                 let _ = window.unminimize();
                 if label.starts_with("capsule-") {
@@ -1100,6 +1109,13 @@ fn toggle_app_visibility(app: &AppHandle) {
     }
 
     let mut labels = Vec::new();
+    #[cfg(target_os = "macos")]
+    for (label, window) in app.windows() {
+        if label.starts_with("capsule-group-") && window.is_visible().unwrap_or(false) {
+            labels.push(label);
+            let _ = window.hide();
+        }
+    }
     for (label, window) in app.webview_windows() {
         if window.is_visible().unwrap_or(false) {
             labels.push(label.clone());
@@ -1311,6 +1327,12 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
     if matches!(event, WindowEvent::Moved(_) | WindowEvent::Resized(_)) {
         if let Some(webview) = window.app_handle().get_webview_window(window.label()) {
             crate::macos_lock_overlay::reposition(&webview);
+            if matches!(event, WindowEvent::Resized(_)) {
+                let w = webview.clone();
+                let _ = window.app_handle().run_on_main_thread(move || {
+                    let _ = crate::macos_material::layout(&w);
+                });
+            }
         }
     }
     #[cfg(target_os = "windows")]
@@ -2244,11 +2266,11 @@ pub fn record_surface_close(window: &tauri::WebviewWindow) {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CapsuleEntry {
-    key: String,
-    title: String,
-    preview: String,
-    color_key: u8,
-    expanded: bool,
+    pub key: String,
+    pub title: String,
+    pub preview: String,
+    pub color_key: u8,
+    pub expanded: bool,
 }
 
 // WebView2 建窗不能运行在同步 IPC / UI 事件回调中。所有收纳变更串行排到工作线程，
@@ -2270,7 +2292,9 @@ fn shortcut_foreground_window() -> usize {
 }
 
 // Mac 使用 Quartz 全局逻辑坐标，Windows 使用全局物理坐标。
-fn capsule_cursor(window: &tauri::WebviewWindow) -> Result<PhysicalPosition<f64>, AppError> {
+fn capsule_cursor(
+    window: &capsule_groups::CapsuleWindow,
+) -> Result<PhysicalPosition<f64>, AppError> {
     #[cfg(target_os = "macos")]
     {
         let _ = window;
@@ -2283,7 +2307,7 @@ fn capsule_cursor(window: &tauri::WebviewWindow) -> Result<PhysicalPosition<f64>
 }
 
 pub async fn drag_capsule(
-    window: tauri::WebviewWindow,
+    window: capsule_groups::CapsuleWindow,
     key: String,
     group: bool,
 ) -> Result<bool, AppError> {
@@ -2711,7 +2735,10 @@ pub fn capsule_entry(key: &str) -> Result<Option<CapsuleEntry>, AppError> {
     capsule_entry_from_session(&session)
 }
 
-pub fn popup_capsule_menu(window: &tauri::WebviewWindow, key: &str) -> Result<(), AppError> {
+pub fn popup_capsule_menu(
+    window: &capsule_groups::CapsuleWindow,
+    key: &str,
+) -> Result<(), AppError> {
     crate::surface_sessions::validate_key(key)?;
     if capsule_groups::owner(window.label(), key).is_none() {
         return Ok(());

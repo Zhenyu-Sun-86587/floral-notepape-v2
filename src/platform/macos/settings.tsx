@@ -5,6 +5,10 @@ export interface PlatformConfig {
     capsulesOnAllSpaces: boolean;
     materialEffect?: "liquidGlass" | "frosted";
     materialEnabled?: boolean;
+    mainOpacity?: { glass: number; frosted: number };
+    noteOpacity?: { glass: number; frosted: number };
+    capsuleOpacity?: { glass: number; frosted: number };
+    capsuleLiquidMotion?: boolean;
   };
 }
 export function PlatformSettings({
@@ -92,6 +96,58 @@ export function MaterialSettings({
           <option value="frosted">磨砂</option>
         </select>
       </label>
+      {(
+        [
+          ["mainOpacity", "主界面", 35, 70],
+          ["noteOpacity", "便签", 35, 70],
+          ["capsuleOpacity", "胶囊与预览", 25, 60],
+        ] as const
+      ).map(([key, label, glass, frosted]) => {
+        const mode =
+          (settings.materialEffect ?? "liquidGlass") === "liquidGlass" ? "glass" : "frosted";
+        const values = settings[key] ?? { glass, frosted };
+        return (
+          <label key={key} className="block text-[11px] text-ink-soft">
+            <span className="flex justify-between">
+              <span>
+                {label}
+                {mode === "glass" ? "玻璃浓度" : "磨砂不透明度"}
+              </span>
+              <span>{values[mode]}%</span>
+            </span>
+            <input
+              aria-label={`${label}材质浓度`}
+              type="range"
+              min="0"
+              max="100"
+              value={values[mode]}
+              className="w-full accent-bamboo"
+              onChange={(event) =>
+                onChange({
+                  ...config,
+                  macos: { ...settings, [key]: { ...values, [mode]: Number(event.target.value) } },
+                })
+              }
+            />
+          </label>
+        );
+      })}
+      <label className="flex justify-between text-[11px] text-ink-soft">
+        胶囊液态融合动画
+        <input
+          type="checkbox"
+          checked={settings.capsuleLiquidMotion ?? true}
+          onChange={(event) =>
+            onChange({
+              ...config,
+              macos: { ...settings, capsuleLiquidMotion: event.target.checked },
+            })
+          }
+        />
+      </label>
+      <p className="text-[10px] text-ink-faint">
+        数值越低越通透，文字不随背景变淡。玻璃保留系统折射；系统“减少动态效果”时关闭融合动画。
+      </p>
       <p className="text-[10px] text-ink-faint">
         应用于主窗口、便签、胶囊与悬停预览的整块背景。液态玻璃需要 macOS 26；较旧系统自动使用磨砂。
       </p>
