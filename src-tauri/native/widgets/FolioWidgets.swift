@@ -27,6 +27,8 @@ struct NoteEntry: TimelineEntry {
     let date: Date
     let note: FolioWidgetNote?
     var lines: [WidgetMarkdownLine] = []
+    var rightLines: [WidgetMarkdownLine] = []
+    var spread: Bool = false
     var page: Int = 0
     var pageCount: Int = 1
     var pageKey: String = ""
@@ -57,33 +59,48 @@ struct NoteProvider: AppIntentTimelineProvider {
         let notes = FolioWidgetStore.read().notes
         let note = configuration.note.map { selected in notes.first { $0.key == selected.id } } ?? notes.first
         guard let note else { return NoteEntry(date: .now, note: nil) }
-        let pages = WidgetMarkdown.pages(note.content, width: context.displaySize.width - 32, height: context.displaySize.height - 82)
+        let spread = context.family == .systemExtraLarge
+        let width = spread ? (context.displaySize.width - 48) / 2 : context.displaySize.width - 32
+        let pages = WidgetMarkdown.pages(note.content, width: width, height: context.displaySize.height - 82)
         let key = note.key + "." + String(context.family.rawValue)
-        let page = min(FolioWidgetStore.page(for: key), pages.count - 1)
-        return NoteEntry(date: .now, note: note, lines: pages[page], page: page, pageCount: pages.count, pageKey: key)
+        let step = spread ? 2 : 1
+        let page = min(FolioWidgetStore.page(for: key), pages.count - 1) / step * step
+        return NoteEntry(date: .now, note: note, lines: pages[page], rightLines: spread && page + 1 < pages.count ? pages[page + 1] : [], spread: spread, page: page, pageCount: pages.count, pageKey: key)
     }
 }
 struct NoteWidgetView: View {
     let entry: NoteEntry
+    private var step: Int { entry.spread ? 2 : 1 }
+    private var pageLabel: String {
+        entry.spread && entry.page + 1 < entry.pageCount
+            ? "\(entry.page + 1)–\(entry.page + 2) / \(entry.pageCount)"
+            : "\(entry.page + 1) / \(entry.pageCount)"
+    }
+    private func page(_ lines: [WidgetMarkdownLine]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(lines) { line in
+                if line.rule {
+                    Divider().frame(height: line.height)
+                } else {
+                    HStack(alignment: .top, spacing: 6) {
+                        if line.quote { Rectangle().fill(.secondary).frame(width: 2) }
+                        Text(line.text)
+                            .font(.system(size: line.size, weight: line.heading ? .semibold : .regular, design: line.code ? .monospaced : .default))
+                            .foregroundStyle(line.quote ? .secondary : .primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }.frame(height: line.height, alignment: .top)
+                }
+            }
+        }.frame(maxWidth: .infinity, alignment: .topLeading)
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(entry.note?.title ?? "选择一张便签")
                 .font(.headline).lineLimit(1).widgetAccentable()
             if entry.note != nil {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(entry.lines) { line in
-                        if line.rule {
-                            Divider().frame(height: line.height)
-                        } else {
-                            HStack(alignment: .top, spacing: 6) {
-                                if line.quote { Rectangle().fill(.secondary).frame(width: 2) }
-                                Text(line.text)
-                                    .font(.system(size: line.size, weight: line.heading ? .semibold : .regular, design: line.code ? .monospaced : .default))
-                                    .foregroundStyle(line.quote ? .secondary : .primary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }.frame(height: line.height, alignment: .top)
-                        }
-                    }
+                HStack(alignment: .top, spacing: 16) {
+                    page(entry.lines)
+                    if entry.spread { page(entry.rightLines) }
                 }
             } else {
                 Text("在笺影设置中选择便签，再编辑小组件。")
@@ -92,13 +109,13 @@ struct NoteWidgetView: View {
             Spacer(minLength: 0)
             if entry.note != nil && entry.pageCount > 1 {
                 HStack {
-                    Button(intent: TurnNotePage(key: entry.pageKey, page: entry.page - 1)) { Image(systemName: "chevron.left") }
+                    Button(intent: TurnNotePage(key: entry.pageKey, page: entry.page - step)) { Image(systemName: "chevron.left") }
                         .disabled(entry.page == 0).accessibilityLabel("上一页")
                     Spacer()
-                    Text("\(entry.page + 1) / \(entry.pageCount)").font(.caption).foregroundStyle(.secondary)
+                    Text(pageLabel).font(.caption).foregroundStyle(.secondary)
                     Spacer()
-                    Button(intent: TurnNotePage(key: entry.pageKey, page: entry.page + 1)) { Image(systemName: "chevron.right") }
-                        .disabled(entry.page + 1 == entry.pageCount).accessibilityLabel("下一页")
+                    Button(intent: TurnNotePage(key: entry.pageKey, page: entry.page + step)) { Image(systemName: "chevron.right") }
+                        .disabled(entry.page + step >= entry.pageCount).accessibilityLabel("下一页")
                 }.buttonStyle(.plain)
             }
         }
