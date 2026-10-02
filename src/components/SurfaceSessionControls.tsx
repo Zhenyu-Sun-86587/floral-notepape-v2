@@ -151,7 +151,7 @@ export function SurfaceSessionControls({ sessionKey }: { sessionKey: string }) {
           {session?.windowMode === "desktopAttached" && (
             <p className="mb-2 text-xs text-ink-faint">
               {navigator.userAgent.includes("Macintosh")
-                ? "桌面层在普通应用下方；编辑时临时回到普通层。跨 Spaces、显示桌面和 Stage Manager 的效果待实机验收。"
+                ? "桌面层随各桌面显示，位于普通应用下方；编辑时临时回到普通层。需要在其他应用或全屏空间上悬浮时，请选择置顶模式。"
                 : "桌面附着时会停用原生 Acrylic 和窗口阴影，避免黑边；便签颜色与圆角仍保留。"}
             </p>
           )}

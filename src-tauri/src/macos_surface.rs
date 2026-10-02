@@ -7,14 +7,47 @@ use std::{cell::RefCell, collections::HashMap};
 use tauri::{Emitter, Manager, WebviewWindow};
 thread_local! { static BASE_BEHAVIOR: RefCell<HashMap<String, Behavior>> = RefCell::new(HashMap::new()); }
 
-fn collection(base: Behavior, desktop: bool) -> Behavior {
-    if !desktop {
-        return base;
+fn collection(base: Behavior, floating: bool, modern: bool) -> Behavior {
+    // Spaces、Mission Control、窗口循环、全屏/Stage Manager 分组分别有互斥位。
+    let conflicting = Behavior::MoveToActiveSpace
+        | Behavior::Managed
+        | Behavior::Transient
+        | Behavior::Stationary
+        | Behavior::ParticipatesInCycle
+        | Behavior::IgnoresCycle
+        | Behavior::FullScreenPrimary
+        | Behavior::FullScreenAuxiliary
+        | Behavior::FullScreenNone
+        | Behavior::Primary
+        | Behavior::Auxiliary
+        | Behavior::CanJoinAllApplications;
+    let mut flags = (base & !conflicting) | Behavior::CanJoinAllSpaces;
+    if floating {
+        flags |= Behavior::FullScreenAuxiliary;
+        if modern {
+            flags |= Behavior::CanJoinAllApplications;
+        }
     }
-    // Managed/Transient/Stationary 以及 Cycle 两组选项各自互斥。
-    let conflicting = Behavior::Managed | Behavior::Transient | Behavior::ParticipatesInCycle;
-    (base & !conflicting) | Behavior::Stationary | Behavior::IgnoresCycle
+    flags
 }
+fn note_collection(base: Behavior, floating: bool, modern: bool) -> Behavior {
+    collection(base, floating, modern) | Behavior::Managed | Behavior::ParticipatesInCycle
+}
+fn capsule_collection(base: Behavior, modern: bool) -> Behavior {
+    collection(base, true, modern) | Behavior::Stationary | Behavior::IgnoresCycle
+}
+pub fn unlock_collection(base: Behavior) -> Behavior {
+    (base & !(Behavior::Managed | Behavior::Transient | Behavior::ParticipatesInCycle))
+        | Behavior::Stationary
+        | Behavior::IgnoresCycle
+}
+fn modern_collections() -> bool {
+    objc2_foundation::NSProcessInfo::processInfo()
+        .operatingSystemVersion()
+        .majorVersion
+        >= 13
+}
+
 fn level(mode: WindowMode, locked: bool) -> isize {
     let key = if locked || mode == WindowMode::AlwaysOnTop {
         CGWindowLevelKey::FloatingWindowLevelKey
@@ -59,16 +92,25 @@ pub fn apply(window: &WebviewWindow, mode: WindowMode, locked: bool) -> tauri::R
                 .entry(label)
                 .or_insert_with(|| native.collectionBehavior())
         });
-        native.setCollectionBehavior(collection(
+        native.setCollectionBehavior(note_collection(
             base,
-            !locked && mode == WindowMode::DesktopAttached,
+            locked || mode == WindowMode::AlwaysOnTop,
+            modern_collections(),
         ));
         native.setLevel(level(mode, locked));
         native.setHidesOnDeactivate(false);
     })
 }
 pub fn show_without_activation(window: &WebviewWindow) -> tauri::Result<()> {
-    dispatch(window, |native| {
+    let capsule = window.label().starts_with("capsule-");
+    dispatch(window, move |native| {
+        if capsule {
+            native.setCollectionBehavior(capsule_collection(
+                native.collectionBehavior(),
+                modern_collections(),
+            ));
+            native.setHidesOnDeactivate(false);
+        }
         native.orderFrontRegardless();
     })
 }
@@ -92,17 +134,55 @@ mod tests {
         assert_eq!(level(WindowMode::DesktopAttached, true), floating);
     }
     #[test]
-    fn desktop_behavior_is_stationary_without_forcing_all_spaces() {
-        let base = Behavior::Managed | Behavior::ParticipatesInCycle;
-        let desktop = collection(base, true);
-        assert!(desktop.contains(Behavior::Stationary | Behavior::IgnoresCycle));
-        assert!(!desktop.intersects(
-            Behavior::Managed
-                | Behavior::Transient
+    fn notes_join_spaces_and_mission_control_without_conflicting_bits() {
+        let base = Behavior::Transient
+            | Behavior::Stationary
+            | Behavior::MoveToActiveSpace
+            | Behavior::IgnoresCycle
+            | Behavior::FullScreenPrimary
+            | Behavior::Primary;
+        let note = note_collection(base, true, true);
+        assert!(note.contains(
+            Behavior::CanJoinAllSpaces
+                | Behavior::Managed
                 | Behavior::ParticipatesInCycle
-                | Behavior::CanJoinAllSpaces
+                | Behavior::FullScreenAuxiliary
+                | Behavior::CanJoinAllApplications
         ));
-        assert_eq!(collection(base, false), base);
+        assert!(!note.intersects(
+            Behavior::Transient
+                | Behavior::Stationary
+                | Behavior::MoveToActiveSpace
+                | Behavior::IgnoresCycle
+                | Behavior::FullScreenPrimary
+                | Behavior::Primary
+                | Behavior::Auxiliary
+        ));
+        let desktop = note_collection(base, false, true);
+        assert!(desktop.contains(Behavior::CanJoinAllSpaces | Behavior::Managed));
+        assert!(
+            !desktop.intersects(Behavior::FullScreenAuxiliary | Behavior::CanJoinAllApplications)
+        );
+    }
+    #[test]
+    fn capsule_follows_spaces_without_becoming_a_mission_control_card() {
+        let capsule = capsule_collection(Behavior::Managed | Behavior::ParticipatesInCycle, true);
+        assert!(capsule.contains(
+            Behavior::CanJoinAllSpaces
+                | Behavior::Stationary
+                | Behavior::IgnoresCycle
+                | Behavior::FullScreenAuxiliary
+                | Behavior::CanJoinAllApplications
+        ));
+        assert!(!capsule
+            .intersects(Behavior::Managed | Behavior::Transient | Behavior::ParticipatesInCycle));
+        assert!(!capsule_collection(Behavior::Primary, false)
+            .contains(Behavior::CanJoinAllApplications));
+        let unlock = unlock_collection(note_collection(Behavior::empty(), true, true));
+        assert!(unlock.contains(
+            Behavior::CanJoinAllSpaces | Behavior::FullScreenAuxiliary | Behavior::Stationary
+        ));
+        assert!(!unlock.contains(Behavior::Managed | Behavior::ParticipatesInCycle));
     }
     #[test]
     fn capsule_frame_projects_target_scale_and_negative_screen_origin() {
@@ -202,6 +282,11 @@ pub fn present_capsules(
             let top = primary_top();
             for (native, bounds, scale, show) in &windows {
                 if *show {
+                    native.setCollectionBehavior(capsule_collection(
+                        native.collectionBehavior(),
+                        modern_collections(),
+                    ));
+                    native.setHidesOnDeactivate(false);
                     native.setFrame_display(capsule_frame(*bounds, *scale, top), true);
                     native.orderFrontRegardless();
                 }

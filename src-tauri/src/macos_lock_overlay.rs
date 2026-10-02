@@ -178,7 +178,9 @@ fn show_now(window: &WebviewWindow, key: String, mtm: MainThreadMarker) {
     panel.setHidesOnDeactivate(false);
     panel.setFloatingPanel(true);
     panel.setLevel(parent.level());
-    panel.setCollectionBehavior(parent.collectionBehavior());
+    panel.setCollectionBehavior(crate::macos_surface::unlock_collection(
+        parent.collectionBehavior(),
+    ));
     let icon = UnlockIcon::alloc(mtm).set_ivars(IconIvars {
         app: window.app_handle().clone(),
         key,
