@@ -5,12 +5,17 @@ use crate::{
     services::notes::{default_store, AppError},
 };
 use serde::Serialize;
-use std::{ffi::CString, sync::mpsc, time::Duration};
+use std::{
+    ffi::{CStr, CString},
+    sync::{mpsc, OnceLock},
+    time::Duration,
+};
 use tauri::Listener;
+static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
 unsafe extern "C" {
     fn folio_widgets_available() -> bool;
     fn folio_widgets_publish(json: *const std::ffi::c_char) -> bool;
-    fn folio_widgets_initialize();
+    fn folio_widgets_initialize(callback: extern "C" fn(*const std::ffi::c_char));
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -136,9 +141,43 @@ fn refresh() -> Result<(), AppError> {
     }
     Ok(())
 }
+fn parse_explicit_open(url: &str) -> Option<(&str, &str)> {
+    let (kind, id) = url.strip_prefix("folio://widget-open/")?.split_once('/')?;
+    if !matches!(kind, "note" | "linked") || uuid::Uuid::parse_str(id).is_err() {
+        return None;
+    }
+    Some((kind, id))
+}
+extern "C" fn explicit_open(pointer: *const std::ffi::c_char) {
+    if pointer.is_null() {
+        return;
+    }
+    let url = unsafe { CStr::from_ptr(pointer) }.to_string_lossy();
+    let Some((kind, id)) = parse_explicit_open(&url) else {
+        return;
+    };
+    let key = format!("{kind}:{id}");
+    if !selected().is_ok_and(|keys| keys.contains(&key)) {
+        return;
+    }
+    let Some(app) = APP.get().cloned() else {
+        return;
+    };
+    let (kind, id) = (kind.to_owned(), id.to_owned());
+    tauri::async_runtime::spawn(async move {
+        if kind == "note" {
+            if default_store().and_then(|s| s.read_note(&id)).is_ok() {
+                let _ = crate::desktop::open_tile_window(app, id, None).await;
+            }
+        } else if crate::linked::read(&id).is_ok() {
+            let _ = crate::desktop::open_linked_tile_window_now(&app, &id, None);
+        }
+    });
+}
 pub fn setup(app: &tauri::AppHandle) {
+    let _ = APP.set(app.clone());
     unsafe {
-        folio_widgets_initialize();
+        folio_widgets_initialize(explicit_open);
     }
     let (tx, rx) = mpsc::sync_channel(1);
     for event in [
@@ -161,4 +200,25 @@ pub fn setup(app: &tauri::AppHandle) {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn only_explicit_widget_open_links_are_accepted() {
+        let id = "40a88de0-7176-4be4-b4ea-c9155cae5ce4";
+        for kind in ["note", "linked"] {
+            assert!(
+                super::parse_explicit_open(&format!("folio://widget-open/{kind}/{id}")).is_some()
+            );
+            assert!(super::parse_explicit_open(&format!("folio://{kind}/{id}")).is_none());
+        }
+        for url in [
+            "folio://widget-open/note/../../config.json",
+            "folio://widget-open/other/40a88de0-7176-4be4-b4ea-c9155cae5ce4",
+            "https://widget-open/note/40a88de0-7176-4be4-b4ea-c9155cae5ce4",
+        ] {
+            assert!(super::parse_explicit_open(url).is_none());
+        }
+    }
 }

@@ -74,6 +74,19 @@ struct KeepWidgetVisible: AppIntent {
     static var openAppWhenRun: Bool = false
     func perform() async throws -> some IntentResult { .result() }
 }
+struct ExpandWidgetNote: AppIntent {
+    static var title: LocalizedStringResource = "展开便签"
+    static var openAppWhenRun: Bool = false
+    @Parameter(title: "便签") var noteKey: String
+    init() {}
+    init(noteKey: String) { self.noteKey = noteKey }
+    func perform() async throws -> some IntentResult & OpensIntent {
+        guard let note = FolioWidgetStore.read().notes.first(where: { $0.key == noteKey }), let url = note.link else {
+            throw NSError(domain: "FolioWidgets", code: 1, userInfo: [NSLocalizedDescriptionKey: "这张便签已不再共享，请重新选择便签。"])
+        }
+        return .result(opensIntent: OpenURLIntent(url))
+    }
+}
 struct CopySharedNote: AppIntent {
     static var title: LocalizedStringResource = "复制便签 Markdown"
     static var openAppWhenRun: Bool = false
@@ -143,10 +156,15 @@ struct NoteWidgetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let note = entry.note {
+              HStack(spacing: 8) {
                 Button(intent: CopyNoteText(noteKey: note.key, text: note.title)) {
                     Text(note.title).font(.headline).lineLimit(1).widgetAccentable()
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }.buttonStyle(.plain).accessibilityLabel("复制便签标题").help("复制标题")
+                Button(intent: ExpandWidgetNote(noteKey: note.key)) {
+                    Image(systemName: "arrow.up.right.square").frame(width: 22, height: 22)
+                }.buttonStyle(.plain).accessibilityLabel("展开便签").help("展开便签")
+              }.layoutPriority(1)
             } else {
                 Text("选择一张便签").font(.headline).lineLimit(1)
             }

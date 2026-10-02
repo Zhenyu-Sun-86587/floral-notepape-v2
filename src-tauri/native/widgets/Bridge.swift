@@ -1,16 +1,22 @@
 import AppKit
 import WidgetKit
 
+typealias FolioOpenCallback = @convention(c) (UnsafePointer<CChar>) -> Void
 private final class FolioURLHandler: NSObject {
     static let shared = FolioURLHandler()
+    var callback: FolioOpenCallback?
     @objc func handle(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
         // Consume legacy widget links without opening any note. Old archived
         // timelines can retain folio://note/... until WidgetKit refreshes them.
+        guard let url = event.paramDescriptor(forKeyword: 0x2D2D2D2D)?.stringValue,
+              url.hasPrefix("folio://widget-open/") else { return }
+        url.withCString { callback?($0) }
     }
 }
 
 @_cdecl("folio_widgets_initialize")
-func folioWidgetsInitialize() {
+func folioWidgetsInitialize(_ callback: FolioOpenCallback) {
+    FolioURLHandler.shared.callback = callback
     NSAppleEventManager.shared().setEventHandler(
         FolioURLHandler.shared,
         andSelector: #selector(FolioURLHandler.handle(_:reply:)),
