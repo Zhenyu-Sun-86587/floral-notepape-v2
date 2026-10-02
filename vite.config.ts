@@ -5,16 +5,25 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vitest/config";
 
 const host = process.env.TAURI_DEV_HOST;
+const targetPlatform = process.env.TAURI_ENV_PLATFORM ?? process.platform;
+const platform = ["darwin", "macos"].includes(targetPlatform)
+  ? "macos"
+  : ["win32", "windows"].includes(targetPlatform)
+    ? "windows"
+    : "other";
 
 export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
-      "#platform-settings": fileURLToPath(
+      "#platform-capsules": fileURLToPath(
         new URL(
-          `./src/platform/${["darwin", "macos"].includes(process.env.TAURI_ENV_PLATFORM ?? process.platform) ? "macos" : ["win32", "windows"].includes(process.env.TAURI_ENV_PLATFORM ?? process.platform) ? "windows" : "other"}/settings.tsx`,
+          `./src/platform/${platform === "macos" ? "macos" : "windows"}/capsules/index.${platform === "macos" ? "tsx" : "ts"}`,
           import.meta.url,
         ),
+      ),
+      "#platform-settings": fileURLToPath(
+        new URL(`./src/platform/${platform}/settings.tsx`, import.meta.url),
       ),
     },
   },

@@ -189,6 +189,7 @@ pub fn refresh_config(
 pub fn forget(window: &tauri::Window) {
     let label = window.label().to_owned();
     let _ = window.app_handle().run_on_main_thread(move || {
+        crate::macos_capsule::forget(&label);
         BASE_BEHAVIOR.with(|map| {
             map.borrow_mut().remove(&label);
             NOTE_MODES.with(|map| {

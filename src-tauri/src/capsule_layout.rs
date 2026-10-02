@@ -1,6 +1,15 @@
 //! 边缘布局的唯一几何 authority。输入/输出均为逻辑像素，物理取整仅在窗口边界执行。
+#[cfg(target_os = "macos")]
+pub const SLOT: f64 = 48.0;
+#[cfg(not(target_os = "macos"))]
 pub const SLOT: f64 = 44.0;
+#[cfg(target_os = "macos")]
+pub const GRIP: f64 = 20.0;
+#[cfg(not(target_os = "macos"))]
 pub const GRIP: f64 = 14.0;
+#[cfg(target_os = "macos")]
+pub const CROSS: f64 = 36.0;
+#[cfg(not(target_os = "macos"))]
 pub const CROSS: f64 = 18.0;
 pub const MERGE: f64 = 52.0;
 pub const GAP: f64 = 4.0;

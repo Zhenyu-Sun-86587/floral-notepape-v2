@@ -1,8 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { CapsuleRail } from "./components/CapsuleRail";
-import { CapsulePreview } from "./components/CapsulePreview";
-import "./capsule.css";
+import { CapsuleRail, CapsulePreview } from "#platform-capsules";
 
 const params = new URLSearchParams(window.location.search);
 const root = document.getElementById("root");
