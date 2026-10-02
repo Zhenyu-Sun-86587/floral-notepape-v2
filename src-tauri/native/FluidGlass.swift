@@ -44,7 +44,7 @@ fragment float4 fluidFragment(V in [[stage_in]],constant float4 *u [[buffer(0)]]
     n=normalize(n+float2(.0001));
     float t=clamp(1+d/22.,0.,1.);
     bool note=u[2].z>0.5;
-    float lens=pow(t,2.2)*(note ? 7. : 16.);
+    float lens=pow(t,2.2)*(note ? 7. : 16.)*u[1].w;
     float2 uv=(u[0].zw+p-n*lens)/u[1].xy;
     float3 col=desktop.sample(s,uv).rgb;
     if(note) {
@@ -90,7 +90,7 @@ private final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
         let ratio = min(1,1600.0/Double(display.width))
         config.width = max(1,Int(Double(display.width)*ratio))
         config.height = max(1,Int(Double(display.height)*ratio))
-        fps = Fluid.views.values.contains { $0.displayID == display.displayID && !$0.isNote } ? 24 : 12
+        fps = Fluid.views.values.contains { $0.displayID == display.displayID && !$0.isNote } ? Fluid.capsuleFPS : Fluid.noteFPS
         config.minimumFrameInterval = CMTime(value:1,timescale:Int32(fps))
         configuration = config
         config.queueDepth = 3
@@ -118,8 +118,7 @@ private final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
         guard result == kCVReturnSuccess, let next else { return }
         pixel = image
         texture = next
-        for view in Fluid.views.values where view.displayID == display.displayID && !view.suspended {
-            view.isHidden = false
+        for view in Fluid.views.values where view.displayID == display.displayID && view.renderable {
             if view.isPaused { view.draw() }
         }
     }
@@ -154,11 +153,12 @@ private final class FluidView: MTKView, MTKViewDelegate {
     var isNote = false
     var radius: Float = 28
     var lastDraw = 0.0
+    var renderable: Bool { !suspended && window?.isVisible == true && window?.isOnActiveSpace == true && window?.isMiniaturized == false }
     override var isOpaque: Bool { false }
     func limitResolution() {
         guard isNote else { return }
         let longest=max(bounds.width,bounds.height)
-        let scale=min(window?.backingScaleFactor ?? 2,768/max(1,longest))
+        let scale=min(window?.backingScaleFactor ?? 2,Fluid.noteEdge/max(1,longest))
         drawableSize=CGSize(width:max(1,bounds.width*scale),height:max(1,bounds.height*scale))
     }
     override func setFrameSize(_ size:NSSize) { super.setFrameSize(size); limitResolution() }
@@ -195,7 +195,7 @@ private final class FluidView: MTKView, MTKViewDelegate {
         serial += 1
         let token = serial
         isPaused = false
-        preferredFramesPerSecond=isNote ? 24 : 60
+        preferredFramesPerSecond=isNote ? Fluid.noteFPS*2 : (Fluid.lowPower ? 30 : 60)
         DispatchQueue.main.asyncAfter(deadline:.now()+0.7) { [weak self] in
             guard let self, self.serial == token else { return }
             self.isPaused = true
@@ -205,13 +205,20 @@ private final class FluidView: MTKView, MTKViewDelegate {
         morphFrom = start; morphTo = end
         morphStart = ProcessInfo.processInfo.systemUptime
         isPaused = false
+        preferredFramesPerSecond=Fluid.lowPower ? 30 : 60
+        serial += 1
+        let token=serial
+        DispatchQueue.main.asyncAfter(deadline:.now()+0.7) { [weak self] in
+            guard let self, self.serial == token else { return }
+            self.cells=end; self.morphFrom=[]; self.morphTo=[]; self.isPaused=true
+        }
     }
     func mtkView(_ view: MTKView,drawableSizeWillChange size:CGSize) {}
     func draw(in view: MTKView) {
-        guard !suspended else { return }
+        guard renderable else { return }
         if isNote && isPaused {
             let now=ProcessInfo.processInfo.systemUptime
-            guard now-lastDraw >= 1.0/12 else { return }
+            guard now-lastDraw >= 1.0/Double(Fluid.noteFPS) else { return }
             lastDraw=now
         }
         if let screen = window?.screen,
@@ -238,7 +245,7 @@ private final class FluidView: MTKView, MTKViewDelegate {
             moving = zip(morphFrom,morphTo).map { $0+($1-$0)*response }
         }
         let uniforms = [SIMD4<Float>(Float(bounds.width),Float(bounds.height),Float(global.minX-screen.frame.minX),Float(screen.frame.maxY-global.maxY)),
-            SIMD4<Float>(Float(screen.frame.width),Float(screen.frame.height),concentration,0),
+            SIMD4<Float>(Float(screen.frame.width),Float(screen.frame.height),concentration,Fluid.strength),
             SIMD4<Float>(Float(moving.count),scale(time),isNote ? 1 : 0,radius)] + moving
         encoder.setRenderPipelineState(pipeline)
         uniforms.withUnsafeBytes { encoder.setFragmentBytes($0.baseAddress!,length:$0.count,index:0) }
@@ -250,11 +257,16 @@ private final class FluidView: MTKView, MTKViewDelegate {
         command.commit()
         isHidden = false
         backing?.isHidden = true
-        Fluid.status = "流体玻璃运行中 · 胶囊上限24fps / 便签上限12fps"
+        Fluid.status = "桌面折射运行中 · 胶囊上限\(Fluid.capsuleFPS)fps / 便签上限\(Fluid.noteFPS)fps"
     }
 }
 
 private enum Fluid {
+    static var lowPower = false
+    static var strength: Float = 1
+    static var noteFPS: Int { lowPower ? 6 : 12 }
+    static var capsuleFPS: Int { lowPower ? 12 : 24 }
+    static var noteEdge: CGFloat { lowPower ? 512 : 768 }
     static let device = MTLCreateSystemDefaultDevice()
     static let queue = device?.makeCommandQueue()
     static var pipeline: MTLRenderPipelineState? = {
@@ -333,7 +345,7 @@ private enum Fluid {
         if needed.isEmpty && !views.isEmpty { status="无可见流体窗口，背景采样已暂停" }
         for id in Array(captures.keys) where !needed.contains(id) { captures.removeValue(forKey:id)?.stop() }
         for (id,capture) in captures {
-            capture.rate(views.values.contains { $0.displayID == id && !$0.isNote && $0.window?.isVisible == true && $0.window?.isOnActiveSpace == true } ? 24 : 12)
+            capture.rate(views.values.contains { $0.displayID == id && !$0.isNote && $0.renderable } ? capsuleFPS : noteFPS)
         }
         if views.isEmpty { generation += 1; starting = false; status = "未启用流体玻璃"; monitor?.invalidate(); monitor=nil
             for token in observers { NotificationCenter.default.removeObserver(token) }; observers.removeAll()
@@ -341,6 +353,19 @@ private enum Fluid {
     }
 }
 
+// Live budget changes reuse views and capture, preserving editor/input state.
+@_cdecl("hermes_fluid_config")
+func configure(_ lowPower:Int32,_ strength:Double) {
+    let changed=Fluid.lowPower != (lowPower != 0) || Fluid.strength != Float(strength)
+    guard changed else { return }
+    Fluid.lowPower=lowPower != 0; Fluid.strength=Float(min(1,max(0,strength)))
+    Fluid.prune()
+    for view in Fluid.views.values {
+        view.limitResolution()
+        if !view.isPaused { view.preferredFramesPerSecond=view.isNote ? Fluid.noteFPS*2 : (Fluid.lowPower ? 30 : 60) }
+        view.draw()
+    }
+}
 @_cdecl("hermes_fluid_install")
 func install(_ raw: UnsafeMutableRawPointer, _ backingRaw: UnsafeMutableRawPointer, _ label: UnsafePointer<CChar>, _ rects: UnsafePointer<Double>, _ count: Int32, _ opacity: Double) {
     let key = String(cString:label)

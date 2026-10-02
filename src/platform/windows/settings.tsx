@@ -7,3 +7,4 @@ export const desktopLayerHint =
 export const materialLabel = "Windows Acrylic 原生磨砂";
 
 export { MaterialSettings } from "./MaterialSettings";
+export const productName = "Hermes Surface Dev";

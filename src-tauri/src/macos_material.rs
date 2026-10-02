@@ -86,6 +86,16 @@ pub fn opacity(label: &str, glass: bool) -> f64 {
     }
     .value(glass)
 }
+pub fn note_spring_enabled() -> bool {
+    CONFIG
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .is_some_and(MacosConfig::note_spring_enabled)
+}
+pub fn current_config() -> Option<MacosConfig> {
+    CONFIG.read().unwrap_or_else(|e| e.into_inner()).clone()
+}
 struct Host {
     root: Retained<NSView>,
     clip: Retained<NSView>,
@@ -194,7 +204,7 @@ fn install(window: &WebviewWindow, radius: f64) -> Result<MaterialState, AppErro
         let background = NSView::initWithFrame(NSView::alloc(mtm),frame);
         background.setAutoresizingMask(Sizing::ViewWidthSizable | Sizing::ViewHeightSizable);
         let fluid = kind == "glass" && dynamics == CapsuleDynamics::Fluid;
-        let separate = kind == "glass" && dynamics != CapsuleDynamics::Lightweight;
+        let separate = kind == "glass" && (window.label().starts_with("tile-") || window.label().starts_with("notepad-"));
         background.setWantsLayer(true);
         if separate { clip.addSubview(&background); }
         let mut effects = Vec::new();
@@ -250,6 +260,9 @@ fn install(window: &WebviewWindow, radius: f64) -> Result<MaterialState, AppErro
     })
 }
 pub fn drag_feedback(window: &NSWindow, pressed: bool) {
+    if !note_spring_enabled() {
+        return;
+    }
     let reduce: bool = unsafe {
         let workspace: *mut AnyObject =
             msg_send![AnyClass::get(c"NSWorkspace").unwrap(), sharedWorkspace];

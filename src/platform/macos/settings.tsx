@@ -1,6 +1,8 @@
 import type { AppConfig } from "../../features/settings/types";
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { WidgetSettings } from "./WidgetSettings";
+export const productName = "笺影";
 export interface PlatformConfig {
   macos?: {
     notesOnAllSpaces: boolean;
@@ -13,6 +15,9 @@ export interface PlatformConfig {
     capsuleLiquidMotion?: boolean;
     capsuleDynamics?: "lightweight" | "elastic" | "fluid";
     noteDynamics?: "lightweight" | "elastic" | "fluid";
+    noteSpring?: boolean | null;
+    refractionStrength?: number;
+    fluidLowPower?: boolean;
   };
 }
 export function PlatformSettings({
@@ -50,6 +55,7 @@ export function PlatformSettings({
       <p className="text-[11px] text-ink-faint">
         保存后立即生效。关闭后留在当前所属桌面；开启后，置顶便签和胶囊也显示在其他应用的原生全屏空间。
       </p>
+      <WidgetSettings />
     </section>
   );
 }
@@ -69,10 +75,19 @@ export function MaterialSettings({
 }) {
   const settings = config.macos ?? { notesOnAllSpaces: true, capsulesOnAllSpaces: true };
   const [fluidStatus, setFluidStatus] = useState("");
+  const glass =
+    (settings.materialEnabled ?? true) &&
+    (settings.materialEffect ?? "liquidGlass") === "liquidGlass";
+  const fluid =
+    glass && (settings.capsuleDynamics === "fluid" || settings.noteDynamics === "fluid");
+  const noteSpring =
+    settings.noteSpring ??
+    (settings.noteDynamics != null && settings.noteDynamics !== "lightweight");
   useEffect(() => {
-    if (settings.capsuleDynamics !== "fluid" && settings.noteDynamics !== "fluid") return;
+    if (!fluid) return;
     let active = true;
-    const refresh = () =>
+    const refresh = () => {
+      if (document.hidden) return;
       void invoke<string>("macos_fluid_status").then(
         (text) => {
           if (active) setFluidStatus(text);
@@ -81,13 +96,16 @@ export function MaterialSettings({
           if (active) setFluidStatus("流体模块状态不可用，保留原生效果");
         },
       );
+    };
     refresh();
-    const timer = window.setInterval(refresh, 2000);
+    const timer = window.setInterval(refresh, 5000);
+    document.addEventListener("visibilitychange", refresh);
     return () => {
       active = false;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
     };
-  }, [settings.capsuleDynamics, settings.noteDynamics]);
+  }, [fluid]);
   return (
     <div className="space-y-2">
       <label className="flex items-center justify-between text-[12px] text-ink-soft">
@@ -135,7 +153,7 @@ export function MaterialSettings({
             <span className="flex justify-between">
               <span>
                 {label}
-                {mode === "glass" ? "玻璃浓度" : "磨砂不透明度"}
+                {mode === "glass" ? "背景浓度" : "磨砂不透明度"}
               </span>
               <span>{values[mode]}%</span>
             </span>
@@ -157,69 +175,125 @@ export function MaterialSettings({
         );
       })}
       <label className="flex justify-between text-[11px] text-ink-soft">
-        胶囊液态融合动画
+        胶囊融合与按压动画
         <input
           type="checkbox"
           checked={settings.capsuleLiquidMotion ?? true}
           onChange={(event) =>
             onChange({
               ...config,
-              macos: { ...settings, capsuleLiquidMotion: event.target.checked },
+              macos: {
+                ...settings,
+                capsuleLiquidMotion: event.target.checked,
+                capsuleDynamics:
+                  event.target.checked && settings.capsuleDynamics === "lightweight"
+                    ? "elastic"
+                    : settings.capsuleDynamics,
+              },
             })
           }
         />
       </label>
       <label className="flex justify-between items-center text-[11px] text-ink-soft">
-        胶囊动态效果
+        胶囊背景
         <select
-          aria-label="胶囊动态效果"
-          value={settings.capsuleDynamics ?? "lightweight"}
+          aria-label="胶囊背景"
+          disabled={!glass}
+          value={settings.capsuleDynamics === "fluid" ? "fluid" : "native"}
           className="rounded-lg px-3 py-2 bg-paper-warm"
           onChange={(event) =>
             onChange({
               ...config,
               macos: {
                 ...settings,
-                capsuleDynamics: event.target.value as "lightweight" | "elastic" | "fluid",
+                capsuleDynamics:
+                  event.target.value === "fluid"
+                    ? "fluid"
+                    : settings.capsuleDynamics === "lightweight"
+                      ? "lightweight"
+                      : "elastic",
               },
             })
           }
         >
-          <option value="lightweight">轻量（当前效果）</option>
-          <option value="elastic">弹性玻璃</option>
-          <option value="fluid">流体玻璃（最高 · 实验）</option>
+          <option value="native">系统原生玻璃</option>
+          <option value="fluid">桌面折射（实验 · 较高开销）</option>
         </select>
       </label>
       <label className="flex justify-between items-center text-[11px] text-ink-soft">
-        便签背景效果
+        便签背景
         <select
-          aria-label="便签背景效果"
-          value={settings.noteDynamics ?? "lightweight"}
+          aria-label="便签背景"
+          disabled={!glass}
+          value={settings.noteDynamics === "fluid" ? "fluid" : "native"}
           className="rounded-lg px-3 py-2 bg-paper-warm"
           onChange={(event) =>
             onChange({
               ...config,
               macos: {
                 ...settings,
-                noteDynamics: event.target.value as "lightweight" | "elastic" | "fluid",
+                noteDynamics:
+                  event.target.value === "fluid" ? "fluid" : noteSpring ? "elastic" : "lightweight",
+                noteSpring,
               },
             })
           }
         >
-          <option value="lightweight">轻量（当前效果）</option>
-          <option value="elastic">弹性玻璃</option>
-          <option value="fluid">流体玻璃（最高 · 实验）</option>
+          <option value="native">系统原生玻璃</option>
+          <option value="fluid">桌面折射（实验 · 较高开销）</option>
         </select>
       </label>
+      <label className="flex justify-between text-[11px] text-ink-soft">
+        便签拖动回弹
+        <input
+          type="checkbox"
+          checked={noteSpring}
+          disabled={!glass}
+          onChange={(event) =>
+            onChange({ ...config, macos: { ...settings, noteSpring: event.target.checked } })
+          }
+        />
+      </label>
       <p className="text-[10px] text-ink-faint">
-        便签档位独立于胶囊。最高档只绘制背景，正文保持完整分辨率；背景上限12fps、最长边768像素，正文区域弱折射，边缘更明显。
+        原生玻璃也有系统折射；背景浓度调整染色与扩散，不控制系统折射强度。想去除玻璃变形请选择“磨砂”。回弹只影响交互动画，不是另一种静态材质。
       </p>
-      {(settings.capsuleDynamics === "fluid" || settings.noteDynamics === "fluid") && (
+      {fluid && (
         <div className="space-y-2 text-[11px] text-ink-soft">
           <p>
-            最高档采样真实桌面并用 GPU
+            桌面折射采样真实桌面并用 GPU
             折射。需要屏幕录制权限，开销明显更高；画面仅在本机内存中处理，不保存、不上传，不采集音频。胶囊超过
             12 个时使用原生玻璃。
+          </p>
+          <label className="block">
+            桌面折射强度（便签与胶囊） {settings.refractionStrength ?? 100}%
+            <input
+              aria-label="桌面折射强度"
+              type="range"
+              min="0"
+              max="100"
+              value={settings.refractionStrength ?? 100}
+              className="w-full accent-bamboo"
+              onChange={(event) =>
+                onChange({
+                  ...config,
+                  macos: { ...settings, refractionStrength: Number(event.target.value) },
+                })
+              }
+            />
+          </label>
+          <label className="flex justify-between">
+            桌面折射节能模式
+            <input
+              type="checkbox"
+              checked={settings.fluidLowPower ?? false}
+              onChange={(event) =>
+                onChange({ ...config, macos: { ...settings, fluidLowPower: event.target.checked } })
+              }
+            />
+          </label>
+          <p>
+            节能：便签6fps / 512像素，胶囊采样12fps；标准：便签12fps /
+            768像素，胶囊采样24fps。文字分辨率不变。强度调到0仍会采样；停止采样请选原生背景。
           </p>
           <p role="status">{fluidStatus || "保存后启用；未授权时回退到弹性玻璃"}</p>
           <button
@@ -234,11 +308,11 @@ export function MaterialSettings({
           >
             授权 / 重试背景采样
           </button>
-          <p>如系统要求，授权后重启应用。便签与胶囊都切回低档后停止采样。</p>
+          <p>如系统要求，授权后重启应用。便签与胶囊都切回原生背景后停止采样。</p>
         </div>
       )}
       <p className="text-[10px] text-ink-faint">
-        弹性档减少白色染色，融合时形变回弹；动画更长，交互时合成开销更高，空闲时不运行模拟。关闭融合动画或开启系统“减少动态效果”可减少动态开销。
+        原生背景优先适合日常使用。桌面折射开销随可见便签数量增加；不可见窗口暂停绘制，没有可见折射窗口时停止采样。动画只在交互期间运行。
       </p>
       <p className="text-[10px] text-ink-faint">
         数值越低越通透，文字不随背景变淡。玻璃保留系统折射；系统“减少动态效果”时关闭融合动画。

@@ -2,6 +2,7 @@
 use objc2_app_kit::{NSView, NSWindow};
 use std::ffi::{c_char, c_void, CString};
 unsafe extern "C" {
+    fn hermes_fluid_config(low_power: i32, strength: f64);
     fn hermes_fluid_install(
         window: *mut c_void,
         backing: *mut c_void,
@@ -24,7 +25,18 @@ unsafe extern "C" {
         opacity: f64,
     );
 }
+pub fn configure(config: &crate::platform::macos::MacosConfig) {
+    unsafe {
+        hermes_fluid_config(
+            i32::from(config.fluid_low_power),
+            f64::from(config.refraction_strength.min(100)) / 100.0,
+        );
+    }
+}
 pub fn install_note(window: &NSWindow, backing: &NSView, label: &str, radius: f64, opacity: f64) {
+    if let Some(config) = crate::macos_material::current_config() {
+        configure(&config);
+    }
     if let Ok(label) = CString::new(label) {
         unsafe {
             hermes_fluid_note(
@@ -53,6 +65,9 @@ mod tests {
     }
 }
 pub fn install(window: &NSWindow, backing: &NSView, label: &str, cells: &[[f64; 4]], opacity: f64) {
+    if let Some(config) = crate::macos_material::current_config() {
+        configure(&config);
+    }
     let Ok(label) = CString::new(label) else {
         return;
     };

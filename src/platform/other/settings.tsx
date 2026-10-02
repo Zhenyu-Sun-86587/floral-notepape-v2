@@ -17,3 +17,4 @@ export function MaterialSettings(props: {
 }) {
   return <SharedMaterialSettings {...props} label={materialLabel} />;
 }
+export const productName = "Hermes Surface Dev";

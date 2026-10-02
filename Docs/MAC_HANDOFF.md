@@ -1,4 +1,6 @@
-当前阶段：[Mac 1.7.25 便签三档玻璃](MAC_NOTE_GLASS_1.7.25.md)。便签独立档位，使用 AppKit/Core Animation 与共享 ScreenCaptureKit/Metal 背景；Windows 编译隔离。
+当前修复：[Mac 1.8.6：独立展开控件改用原生Link](MAC_WIDGETS_1.8.6.md)。1.8.4的复制按钮显示及点击不展开已由用户确认；1.8.5的OpenURLIntent不支持自定义scheme，本版更正为独立Link，保留正文复制及旧整块点击链接禁用。展开最终交互仍待人工检查。旧进程/刷新修复见[1.8.4](MAC_WIDGETS_1.8.4.md)，交互基础见[WidgetKit接入](MAC_WIDGETS_1.8.3.md)，签名流程见[免费签名实验](MAC_WIDGETS_FREE_SIGNING.md)。
+
+阶段基线：[笺影 Mac 1.8.2 阶段封盘](MAC_BASELINE_1.8.0.md)。Mac 应用包、可执行文件与启动项采用英文名 Folio，显示名为笺影；现有数据身份保留。后续从本基线推进，保持 Windows 平台隔离，交互与效果验收以人工为主。
 
 上一阶段：[Mac 1.7.18 胶囊重构与原生玻璃](MAC_CAPSULES_1.7.18.md)。Windows 胶囊保持原实现，基础检查与人工验收见文档。
 

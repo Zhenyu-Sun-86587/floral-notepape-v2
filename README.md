@@ -1,4 +1,6 @@
-当前阶段：[Mac 1.7.26 正文双击编辑](Docs/MAC_NOTE_GLASS_1.7.25.md)。Mac 阅读态正文不再单击进入编辑，双击行为遵循既有设置；Windows 实现保持不变。
+当前修复：[笺影 Mac 1.8.3：缩放布局与原生小组件代码](Docs/MAC_WIDGETS_1.8.3.md)。便签缩放保留标题区域；WidgetKit 代码已接入，实际小组件暂待完整 Xcode 和 Apple 签名，普通安装包尚未启用。
+
+阶段基线：[笺影 Mac 1.8.2 阶段封盘](Docs/MAC_BASELINE_1.8.0.md)。Mac 底层应用与安装包使用英文名 Folio，显示名为笺影。背景、动画和桌面折射预算分开设置，关闭主窗后仅菜单栏驻留；Windows 实现保持不变。
 
 上一阶段：[Mac 1.7.18 胶囊重构与原生玻璃](Docs/MAC_CAPSULES_1.7.18.md)。Windows 胶囊保持原实现，基础检查与人工验收见文档。
 
@@ -10,7 +12,7 @@
 
 **简体中文** · [繁體中文](README_zh-HK.md) · [English](README_en-US.md)
 
-把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.26（Mac 正文双击编辑）**，Windows 发布版本为 **1.7.9**。
+把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.8.3（笺影 Mac）**，Windows 发布版本为 **1.7.9**。
 
 [下载 Windows 1.7.9](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.9) · [反馈问题](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [Mac 开发交接](Docs/MAC_HANDOFF.md)
 
