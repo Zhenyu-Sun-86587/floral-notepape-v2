@@ -6,13 +6,17 @@
 
 原生小组件代码独立位于 `src-tauri/native/widgets/`，提供小、中、大、特大系统尺寸，桌面与通知中心共用 WidgetKit。系统管理背景、尺寸和玻璃/着色外观；不做自定义屏幕捕获。小组件不能直接输入正文或任意拉伸；点击通过经过UUID校验的 `folio://note/...` 或 `folio://linked/...` 打开对应便签。正文展示基础 Markdown 行与行内样式，公式、Mermaid、HTML和图片仍需在便签查看。
 
-**普通1.8.3安装包尚未包含可加载的小组件扩展。** 本机构建环境只有 Command Line Tools，无 Xcode 的 `appintentsmetadataprocessor`，也没有 Apple 签名身份。Swift扩展和桥接完成类型检查；云端完整扩展构建已验证，签名、系统加载及交互仍待验证。设置明确显示不可用，不提供无效启用开关。不能把编译通过当作系统小组件验收通过。
+**公开的普通1.8.3安装包尚未包含可加载的小组件扩展。** 另有本机个人开发签名测试版：扩展由 GitHub Actions 编译，本机免费 Apple Development 身份签名，已确认 App Group 读写、系统添加及桌面占位内容渲染；选择笔记、刷新和点击打开仍待人工检查。配置文件绑定本机且只有7天有效期，不作为通用分发包。具体流程见 [免费签名实验](MAC_WIDGETS_FREE_SIGNING.md)。
 
 2026-10-03 已实际运行 [GitHub Actions 构建检查](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/37037576845)：macOS runner使用Xcode26.6，56秒完成构建，生成包含arm64/x86_64的`FolioWidgets.appex`，`Metadata.appintents/extract.actionsdata`中存在SelectNote配置元数据。产物已下载并核对扩展点`com.apple.widgetkit-extension`。二进制只有linker临时签名，TeamIdentifier未设置，Info.plist未绑定；本机与runner均有0个有效签名身份。这证明完整Xcode无需安装在本机，但不能证明免费Personal Team签名、App Group访问或小组件系统加载成功。
 
-工作流位于`.github/workflows/macos-widget-check.yml`，只读仓库权限，不使用签名Secrets。运行`python3 scripts/build-macos-widgets.py --compile-only`可生成构建检查产物和`BUILD_REPORT.json`；该产物不作为可安装包发布，也未替换本机应用。免费签名验证仍需可用的Personal Team开发身份。
+工作流位于`.github/workflows/macos-widget-check.yml`，只读仓库权限，不使用签名Secrets。运行`python3 scripts/build-macos-widgets.py --compile-only`可生成构建检查产物和`BUILD_REPORT.json`；该产物本身不作为可安装包发布。测试版通过 `--prebuilt-extension` 使用匹配版本的云端扩展，再在本机嵌入配置文件并签名，无需在本机安装完整 Xcode。
 
 ## 数据与性能
+
+小组件正文现按原生文本布局分页，支持标题、粗体/斜体/行内代码、无序/有序列表、任务标记、引用、分隔线和围栏代码块。长段落按字符边界分片，避免截断后无法查看；原生 AppIntent 按钮切换上一页/下一页，不启动主应用。页码按笔记和系统尺寸保存，同一笔记同一尺寸的多个小组件共享页码。公式、HTML、图片和复杂表格仍需打开便签查看。
+
+WidgetKit没有任意比例的竖向长条尺寸；中号是横向矩形，大号是方形，特大号由系统决定是否提供。不能将系统中号描述为竖长条。竖向长条需另行使用可自由缩放的桌面层便签，无法作为自定义WidgetFamily加入系统图库。
 
 只有用户在 Mac 设置中明确选择的便签进入 App Group，内部笔记与绑定外部文件均可选择，最多32张。每张快照最多4000个字符；完整原文仍在原存储中。快照为只读，使用原子替换；移除选择或删除笔记会更新快照。普通安装包缺少扩展或 App Group 时不导出笔记。
 

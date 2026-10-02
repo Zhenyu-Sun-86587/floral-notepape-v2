@@ -1,9 +1,11 @@
 """Build and embed the real WidgetKit extension into an already built Folio.app.
 
-Requires full Xcode and a matching Apple signing identity/team. No ad-hoc
-fallback: a typechecked Swift binary alone is not a working WidgetKit product.
+Requires a matching Apple signing identity/team. Build with full Xcode locally,
+or sign a previously compiled CI extension locally. No ad-hoc fallback.
 """
 import argparse
+from datetime import datetime, timezone
+import fnmatch
 import hashlib
 import json
 from pathlib import Path
@@ -17,6 +19,49 @@ def run(*args):
     subprocess.run(args, check=True)
 
 
+def validate_extension(extension, version):
+    info = plistlib.loads((extension / 'Contents/Info.plist').read_bytes())
+    if (info.get('CFBundleIdentifier') != 'dev.hermes.surface.widgets'
+            or info.get('NSExtension', {}).get('NSExtensionPointIdentifier') != 'com.apple.widgetkit-extension'
+            or info.get('CFBundleShortVersionString') != version
+            or not (extension / 'Contents/MacOS' / info.get('CFBundleExecutable', '')).is_file()
+            or not (extension / 'Contents/Resources/Metadata.appintents/extract.actionsdata').is_file()):
+        raise RuntimeError('Extension identity, version, executable or App Intents metadata does not match.')
+    return info
+
+
+def check_team(bundle, team):
+    signature = subprocess.run(['codesign', '-dv', '--verbose=2', str(bundle)],
+                               check=True, capture_output=True, text=True).stderr
+    if 'TeamIdentifier=' + team not in signature.splitlines():
+        raise RuntimeError('Signing identity does not belong to the requested team.')
+
+
+def embed_profile(bundle, directory, identifier, team):
+    if directory is None:
+        return {}
+    profile = directory / (identifier + '.provisionprofile')
+    decoded = subprocess.run(['security', 'cms', '-D', '-i', str(profile)],
+                             check=True, capture_output=True).stdout
+    payload = plistlib.loads(decoded)
+    entitlements = payload.get('Entitlements', {})
+    application_id = team + '.' + identifier
+    expires = payload.get('ExpirationDate')
+    if (team not in payload.get('TeamIdentifier', [])
+            or 'OSX' not in payload.get('Platform', [])
+            or entitlements.get('com.apple.application-identifier') != application_id
+            or expires is None
+            or expires.replace(tzinfo=timezone.utc) <= datetime.now(timezone.utc)):
+        raise RuntimeError('macOS development profile is expired or belongs to another app/team.')
+    group = team + '.dev.hermes.surface.widgets'
+    if not any(fnmatch.fnmatchcase(group, allowed)
+               for allowed in entitlements.get('com.apple.security.application-groups', [])):
+        raise RuntimeError('Development profile does not authorize the App Group; enable App Groups and regenerate it.')
+    shutil.copy2(profile, bundle / 'Contents/embedded.provisionprofile')
+    return {'com.apple.application-identifier': application_id,
+            'com.apple.developer.team-identifier': team}
+
+
 def project(directory, source):
     objects = {}
 
@@ -27,7 +72,7 @@ def project(directory, source):
 
     refs = []
     builds = []
-    for name in ['Shared.swift', 'FolioWidgets.swift']:
+    for name in ['Shared.swift', 'Markdown.swift', 'FolioWidgets.swift']:
         ref = add(name, isa='PBXFileReference', lastKnownFileType='sourcecode.swift',
                   path=str(source / name), sourceTree='<absolute>')
         refs.append(ref)
@@ -69,9 +114,17 @@ def main():
     parser.add_argument('--app', type=Path)
     parser.add_argument('--team')
     parser.add_argument('--identity')
+    parser.add_argument('--prebuilt-extension', type=Path, help='Sign and embed a matching CI-built extension without local Xcode.')
+    parser.add_argument('--keychain', type=Path, help='Optional dedicated keychain containing the signing identity.')
+    parser.add_argument('--profiles-dir', type=Path, help='Directory containing matching macOS development profiles for host and widget.')
+    parser.add_argument('--development', action='store_true', help='Use development/debug entitlements; requires matching development profiles.')
     parser.add_argument('--compile-only', action='store_true', help='Build an unsigned extension for CI validation only; do not install or enable it.')
     parser.add_argument('--output', type=Path, default=Path('local-build/widget-ci'))
     args = parser.parse_args()
+    if args.compile_only and args.prebuilt_extension:
+        parser.error('--compile-only and --prebuilt-extension are mutually exclusive.')
+    if args.development and not args.profiles_dir:
+        parser.error('--development requires --profiles-dir.')
     if args.compile_only:
         run('xcodebuild', '-version')
         source = Path(__file__).resolve().parent.parent / 'src-tauri/native/widgets'
@@ -102,7 +155,8 @@ def main():
         parser.error('Signed embedding requires --app, --team and --identity.')
     if args.identity == '-' or len(args.team) != 10 or not args.team.isalnum():
         parser.error('Use an Apple signing identity and its 10-character team identifier.')
-    run('xcodebuild', '-version')
+    if not args.prebuilt_extension:
+        run('xcodebuild', '-version')
     app = args.app.resolve()
     info_path = app / 'Contents/Info.plist'
     info = plistlib.loads(info_path.read_bytes())
@@ -112,31 +166,55 @@ def main():
     group = args.team + '.dev.hermes.surface.widgets'
     with tempfile.TemporaryDirectory(prefix='folio-widget-build-') as tmp:
         tmp = Path(tmp)
-        proj = tmp / 'FolioWidgets.xcodeproj'
-        project(proj, source)
-        run('xcodebuild', '-project', str(proj), '-target', 'FolioWidgets',
-            '-configuration', 'Release', 'build',
-            'CONFIGURATION_BUILD_DIR=' + str(tmp / 'products'),
-            'DEVELOPMENT_TEAM=' + args.team, 'CODE_SIGN_IDENTITY=' + args.identity,
-            'FOLIO_APP_GROUP=' + group, 'MARKETING_VERSION=' + info['CFBundleShortVersionString'])
-        extension = tmp / 'products/FolioWidgets.appex'
-        run('codesign', '--verify', '--strict', str(extension))
         embedded = app / 'Contents/PlugIns/FolioWidgets.appex'
         if embedded.exists():
             parser.error('Widget extension already embedded; use a freshly built app.')
+        if args.prebuilt_extension:
+            extension = args.prebuilt_extension.resolve()
+        else:
+            proj = tmp / 'FolioWidgets.xcodeproj'
+            project(proj, source)
+            run('xcodebuild', '-project', str(proj), '-target', 'FolioWidgets',
+                '-configuration', 'Release', 'build',
+                'CONFIGURATION_BUILD_DIR=' + str(tmp / 'products'),
+                'CODE_SIGNING_ALLOWED=NO', 'CODE_SIGNING_REQUIRED=NO',
+                'FOLIO_APP_GROUP=' + group, 'MARKETING_VERSION=' + info['CFBundleShortVersionString'])
+            extension = tmp / 'products/FolioWidgets.appex'
+        extension_info = validate_extension(extension, info['CFBundleShortVersionString'])
+        prepared = tmp / 'prepared/FolioWidgets.appex'
+        shutil.copytree(extension, prepared)
+        extension_info['FolioAppGroup'] = group
+        (prepared / 'Contents/Info.plist').write_bytes(plistlib.dumps(extension_info))
+        widget_entitlement = tmp / 'widget.entitlements'
+        widget_entitlement.write_bytes(plistlib.dumps({
+            **embed_profile(prepared, args.profiles_dir, 'dev.hermes.surface.widgets', args.team),
+            'com.apple.security.app-sandbox': True,
+            'com.apple.security.application-groups': [group],
+            **({'com.apple.security.get-task-allow': True} if args.development else {}),
+        }))
+        signing = ['codesign', '--force', '--sign', args.identity, '--options', 'runtime']
+        if args.keychain:
+            signing += ['--keychain', str(args.keychain.resolve())]
+        run(*signing, '--entitlements', str(widget_entitlement), str(prepared))
+        run('codesign', '--verify', '--strict', str(prepared))
+        check_team(prepared, args.team)
         embedded.parent.mkdir(exist_ok=True)
-        shutil.copytree(extension, embedded)
+        shutil.copytree(prepared, embedded)
         info['FolioAppGroup'] = group
         info_path.write_bytes(plistlib.dumps(info))
         entitlement = tmp / 'host.entitlements'
-        entitlement.write_bytes(plistlib.dumps({'com.apple.security.application-groups': [group]}))
+        entitlement.write_bytes(plistlib.dumps({
+            **embed_profile(app, args.profiles_dir, 'dev.hermes.surface', args.team),
+            **({'com.apple.security.get-task-allow': True} if args.development else {}),
+            'com.apple.security.application-groups': [group]}))
         # Framework/native binaries require the same trusted identity. Sign
         # inside-out without a broad --deep signing operation.
         for dylib in (app / 'Contents').rglob('*.dylib'):
             if 'FolioWidgets.appex' not in dylib.parts:
-                run('codesign', '--force', '--sign', args.identity, str(dylib))
-        run('codesign', '--force', '--sign', args.identity, '--entitlements', str(entitlement), str(app))
+                run(*signing, str(dylib))
+        run(*signing, '--entitlements', str(entitlement), str(app))
         run('codesign', '--verify', '--deep', '--strict', str(app))
+        check_team(app, args.team)
     print(json.dumps({'app': str(app), 'appGroup': group, 'widget': 'FolioWidgets.appex'}))
 
 

@@ -18,6 +18,14 @@ struct FolioWidgetSnapshot: Codable {
 }
 
 enum FolioWidgetStore {
+    static var defaults: UserDefaults? {
+        guard let group = Bundle.main.object(forInfoDictionaryKey: "FolioAppGroup") as? String else { return nil }
+        return UserDefaults(suiteName: group)
+    }
+    static func page(for key: String) -> Int { max(0, defaults?.integer(forKey: "page." + key) ?? 0) }
+    static func setPage(_ page: Int, for key: String) {
+        defaults?.set(max(0, min(4000, page)), forKey: "page." + key)
+    }
     static var container: URL? {
         guard let group = Bundle.main.object(forInfoDictionaryKey: "FolioAppGroup") as? String,
               !group.isEmpty else { return nil }

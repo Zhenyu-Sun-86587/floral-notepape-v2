@@ -1,0 +1,155 @@
+diff --git a/Sources/XKit/GrandSlam/Anisette/XADIProvider.swift b/Sources/XKit/GrandSlam/Anisette/XADIProvider.swift
+index b1bd242..8645076 100644
+--- a/Sources/XKit/GrandSlam/Anisette/XADIProvider.swift
++++ b/Sources/XKit/GrandSlam/Anisette/XADIProvider.swift
+@@ -64,14 +64,25 @@ public actor XADIProvider: RawADIProvider {
+             try? FileManager.default.removeItem(at: tmp)
+         }
+ 
+-        xadi_Load(strdup(libDir.path()))
++        // Native C APIs require a filesystem path, not a percent-encoded URL path.
++        for name in ["libCoreADI.so", "libstoreservicescore.so"] {
++            guard FileManager.default.fileExists(atPath: libDir.appendingPathComponent(name).path(percentEncoded: false)) else {
++                throw CocoaError(.fileNoSuchFile)
++            }
++        }
++        xadi_Load(strdup(libDir.path(percentEncoded: false)))
+ 
+         let rawID = id.uuidString.replacingOccurrences(of: "-", with: "").prefix(16).lowercased()
+         try check(xadi_SetAndroidID(rawID, UInt32(rawID.utf8.count)))
+ 
+         let adi = dir.appending(path: "adi")
+         try? FileManager.default.createDirectory(at: adi, withIntermediateDirectories: true)
+-        try check(xadi_SetProvisioningPath(adi.path()))
++        try check(xadi_SetProvisioningPath(adi.path(percentEncoded: false)))
++    }
++
++    // Local smoke check; loads the library without logging in or requesting a certificate.
++    public func folioValidateLibraryLoading() async throws {
++        try await loadADI(id: UUID())
+     }
+ 
+     @MainActor private func loadADI(id: UUID) async throws {
+diff --git a/Sources/XToolSupport/DSCommands/DSCertificatesCommand.swift b/Sources/XToolSupport/DSCommands/DSCertificatesCommand.swift
+index 790c02e..641850f 100644
+--- a/Sources/XToolSupport/DSCommands/DSCertificatesCommand.swift
++++ b/Sources/XToolSupport/DSCommands/DSCertificatesCommand.swift
+@@ -9,11 +9,98 @@ struct DSCertificatesCommand: AsyncParsableCommand {
+         abstract: "Interact with certificates",
+         subcommands: [
+             DSCertificatesListCommand.self,
++            DSCertificatesFolioCreateCommand.self,
++            DSCertificatesFolioPreflightCommand.self,
++            DSCertificatesFolioProfilesCommand.self,
+         ],
+         defaultSubcommand: DSCertificatesListCommand.self
+     )
+ }
+ 
++// macOS-only local experiment. Reuse registrations and never delete profiles/devices.
++struct DSCertificatesFolioProfilesCommand: AsyncParsableCommand {
++    static let configuration = CommandConfiguration(commandName: "folio-profiles", abstract: "Request macOS development profiles for Folio on one Mac")
++    @Argument var udid: String
++    @Argument var output: String
++    func run() async throws {
++        let client = DeveloperAPIClient(auth: try AuthToken.saved().authData())
++        var devices = try await client.devicesGetCollection().ok.body.json.data
++        if !devices.contains(where: { $0.attributes?.udid == udid }) {
++            let response = try await client.devicesCreateInstance(body: .json(.init(data: .init(_type: .devices, attributes: .init(name: "Folio Mac test", platform: .init(.macOs), udid: udid)))))
++            devices.append(try response.created.body.json.data)
++        }
++        guard let device = devices.first(where: { $0.attributes?.udid == udid }) else { throw Console.Error("Mac device registration missing") }
++        let certificates = try await client.certificatesGetCollection().ok.body.json.data
++        guard certificates.count == 1 else { throw Console.Error("Expected exactly the one test certificate; refusing ambiguous selection") }
++        let directory = URL(fileURLWithPath: output, isDirectory: true)
++        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
++        for identifier in ["dev.hermes.surface", "dev.hermes.surface.widgets"] {
++            var bundleIDs = try await client.bundleIdsGetCollection(query: .init(filter_lbrack_identifier_rbrack_: [identifier])).ok.body.json.data
++            if !bundleIDs.contains(where: { $0.attributes?.identifier == identifier }) {
++                let response = try await client.bundleIdsCreateInstance(body: .json(.init(data: .init(_type: .bundleIds, attributes: .init(name: identifier == "dev.hermes.surface" ? "Folio" : "Folio Widgets", platform: .init(.macOs), identifier: identifier)))))
++                bundleIDs.append(try response.created.body.json.data)
++            }
++            guard let bundle = bundleIDs.first(where: { $0.attributes?.identifier == identifier }) else { throw Console.Error("Bundle registration missing") }
++            let capabilities = try await client.bundleIdsBundleIdCapabilitiesGetToManyRelated(.init(path: .init(id: bundle.id))).ok.body.json.data
++            if !capabilities.contains(where: { $0.attributes?.capabilityType?.value1 == .appGroups }) {
++                let response = try await client.bundleIdCapabilitiesCreateInstance(body: .json(.init(data: .init(_type: .bundleIdCapabilities, attributes: .init(capabilityType: .init(.appGroups)), relationships: .init(bundleId: .init(data: .init(_type: .bundleIds, id: bundle.id)), capability: .init(data: .init(_type: .capabilities, id: .init(.appGroups))))))))
++                _ = try response.created
++            }
++            let response = try await client.profilesCreateInstance(body: .json(.init(data: .init(_type: .profiles, attributes: .init(name: "Folio Mac test " + identifier + " " + UUID().uuidString, profileType: .init(.macAppDevelopment)), relationships: .init(bundleId: .init(data: .init(_type: .bundleIds, id: bundle.id)), devices: .init(data: [.init(_type: .devices, id: device.id)]), certificates: .init(data: [.init(_type: .certificates, id: certificates[0].id)]))))))
++            guard let content = try response.created.body.json.data.attributes?.profileContent, let data = Data(base64Encoded: content) else { throw Console.Error("No profile in response") }
++            let path = directory.appendingPathComponent(identifier + ".provisionprofile")
++            try data.write(to: path, options: .atomic)
++            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path.path)
++            print("Saved macOS development profile for " + identifier)
++        }
++    }
++}
++
++struct DSCertificatesFolioPreflightCommand: AsyncParsableCommand {
++    static let configuration = CommandConfiguration(commandName: "folio-preflight", abstract: "Validate local library loading without account operations")
++    func run() async throws {
++        try await XADIProvider().folioValidateLibraryLoading()
++        print("Native library loading passed, including paths with spaces.")
++    }
++}
++
++// Local experiment only. Never revoke existing certificates.
++struct DSCertificatesFolioCreateCommand: AsyncParsableCommand {
++    static let configuration = CommandConfiguration(commandName: "folio-create", abstract: "Create one development certificate without revocation")
++    @Argument var output: String
++
++    func run() async throws {
++        let auth = try AuthToken.saved().authData()
++        let client = DeveloperAPIClient(auth: auth)
++        let existing = try await client.certificatesGetCollection().ok.body.json.data
++        guard existing.isEmpty else {
++            throw Console.Error("Existing certificates found; refusing to create or revoke anything.")
++        }
++        let directory = URL(fileURLWithPath: output, isDirectory: true)
++        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
++        let keypair = try Keypair()
++        let key = try keypair.privateKey()
++        let keyPath = directory.appendingPathComponent("development.key")
++        guard !FileManager.default.fileExists(atPath: keyPath.path) else {
++            throw Console.Error("Key already exists; refusing to overwrite.")
++        }
++        // Persist the key before the server request, so a lost response does not lose it.
++        try key.data.write(to: keyPath, options: .atomic)
++        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: keyPath.path)
++        let csr = try keypair.generateCSR()
++        let response = try await client.certificatesCreateInstance(body: .json(.init(data: .init(_type: .certificates, attributes: .init(csrContent: csr.pemString, certificateType: .init(.development))))))
++        guard let content = try response.created.body.json.data.attributes?.certificateContent,
++              let data = Data(base64Encoded: content) else {
++            throw Console.Error("No certificate in server response; retain the key for recovery.")
++        }
++        try data.write(to: directory.appendingPathComponent("development.cer"), options: .atomic)
++        let certificate = try Certificate(data: data)
++        print("Certificate created: \(try certificate.developerIdentity())")
++        print("Team: \(try certificate.teamID())")
++        print("Saved in protected local directory; no private key printed.")
++    }
++}
++
+ struct DSCertificatesListCommand: AsyncParsableCommand {
+     static let configuration = CommandConfiguration(
+         commandName: "list",
+diff --git a/Sources/xtool/XTool.swift b/Sources/xtool/XTool.swift
+index 6557740..5009f7e 100644
+--- a/Sources/xtool/XTool.swift
++++ b/Sources/xtool/XTool.swift
+@@ -13,6 +13,14 @@ enum XToolMain {
+             // for Linux, maybe use libsecret?
+             // see https://github.com/atom/node-keytar
+         }
+-        try await XTool.run()
++        try await withDependencies {
++            let directory = FileManager.default.homeDirectoryForCurrentUser
++                .appendingPathComponent("Library/Application Support/FolioSigningExperiment", isDirectory: true)
++            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
++            $0.persistentDirectory = directory
++            $0.keyValueStorage = DirectoryStorage()
++        } operation: {
++            try await XTool.run()
++        }
+     }
+ }
