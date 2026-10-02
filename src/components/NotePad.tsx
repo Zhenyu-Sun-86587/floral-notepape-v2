@@ -61,6 +61,7 @@ import {
   surfaceModeFromEvent,
 } from "../features/windows/surfaceMode";
 import type { NoteSurfaceMode } from "../features/windows/surfaceMode";
+import { useInitialWindowReveal } from "../features/windows/useInitialWindowReveal";
 import {
   emitTileWindowUnpinned,
   tileSurfaceModeUnpinNoteId,
@@ -389,44 +390,37 @@ export function NotePad({
     };
   }, [refreshNotes]);
 
-  useEffect(() => {
-    if (isStandby.current) return;
-    if (hasEnteredOnce.current) return;
-    const silentRestore = new URLSearchParams(window.location.search).has("silentRestore");
-    if (silentRestore && !bootstrapReady) return;
-    let cancelled = false;
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (!cancelled) {
-          hasEnteredOnce.current = true;
-          void (async () => {
-            const key = initialBindingId
-              ? `linked:${initialBindingId}`
-              : initialNoteId
-                ? `note:${initialNoteId}`
-                : null;
-            const session = key ? await getSurfaceSession(key).catch(() => null) : null;
-            const attached = session?.windowMode === "desktopAttached";
-            setDesktopAttached(attached);
-            setTileLocked(session?.locked ?? false);
-            document.documentElement.setAttribute(
-              "data-desktop-attached",
-              String(attached && !session?.locked),
-            );
-            if (silentRestore || attached || session?.locked) {
-              await invoke("show_silent_surface");
-            } else {
-              await showCurrentWindow();
-              contentRef.current?.focus();
-            }
-          })().catch(() => undefined);
-        }
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [bootstrapReady, initialBindingId, initialNoteId]);
+  const revealInitialWindow = useCallback(
+    async (isCancelled: () => boolean) => {
+      const key = initialBindingId
+        ? `linked:${initialBindingId}`
+        : initialNoteId
+          ? `note:${initialNoteId}`
+          : null;
+      const session = key ? await getSurfaceSession(key).catch(() => null) : null;
+      if (isCancelled()) return;
+      hasEnteredOnce.current = true;
+      const attached = session?.windowMode === "desktopAttached";
+      setDesktopAttached(attached);
+      setTileLocked(session?.locked ?? false);
+      document.documentElement.setAttribute(
+        "data-desktop-attached",
+        String(attached && !session?.locked),
+      );
+      const silentRestore = new URLSearchParams(window.location.search).has("silentRestore");
+      if (silentRestore || attached || session?.locked) {
+        await invoke("show_silent_surface");
+      } else {
+        await showCurrentWindow();
+        if (!isCancelled()) contentRef.current?.focus();
+      }
+    },
+    [initialBindingId, initialNoteId],
+  );
+  const reportRevealError = useCallback((error: unknown) => {
+    showToast(`显示便签失败：${getErrorMessage(error)}`);
+  }, []);
+  useInitialWindowReveal(bootstrapReady, isStandby.current, revealInitialWindow, reportRevealError);
 
   useEffect(() => {
     const ownKey = initialBindingId

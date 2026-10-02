@@ -23,6 +23,10 @@ macOS 26.7.1 (25G241)，arm64；Node 26.10.0、npm 11.19.1、Rust 1.98.1，Xcode
 
 默认配置：`~/Library/Application Support/hermes-surface-dev`；默认内部数据：`~/Library/Application Support/Hermes Surface Dev`。已有配置中的自定义 dataDir 可覆盖默认数据位置。开发环境变量不由 Finder/登录项自动继承。
 
+## 用户反馈与修复
+
+用户反馈 1.7.10 基础使用大体正常，但独立便签无法出现；M0 尚未通过。1.7.11 修复隐藏窗口等待动画帧的显示链路，见 [Mac 修复说明](RELEASE_1.7.11_MAC.md)，图钉闭环仍待复测。
+
 ## 用户人工验收（待测）
 
 1. 安装并正常打开，确认标题为 Hermes Surface Dev，主窗红绿灯正常，菜单栏入口可找回主窗。
