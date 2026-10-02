@@ -154,7 +154,7 @@ struct NoteWidgetView: View {
                 HStack(alignment: .top, spacing: 16) {
                     page(entry.lines)
                     if entry.spread { page(entry.rightLines) }
-                }
+                }.frame(maxHeight: .infinity, alignment: .topLeading).clipped()
             } else {
                 Text("在笺影设置中选择便签，再编辑小组件。")
                     .font(.body).foregroundStyle(.secondary)
@@ -179,7 +179,7 @@ struct NoteWidgetView: View {
                     .disabled(visibleText.isEmpty).accessibilityLabel("复制当前页文字").help("复制当前页纯文本")
                   Button(intent: CopySharedNote(noteKey: entry.note?.key ?? "")) { Image(systemName: "doc.text") }
                     .accessibilityLabel("复制便签 Markdown 正文（共享内容最多四千字）").help("复制 Markdown 正文（共享内容最多4000字符）")
-                }.buttonStyle(.plain)
+                }.buttonStyle(.plain).fixedSize(horizontal: false, vertical: true).layoutPriority(1)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
