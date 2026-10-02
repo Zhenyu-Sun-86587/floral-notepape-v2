@@ -192,9 +192,9 @@ export function SurfaceSessionControls({ sessionKey }: { sessionKey: string }) {
               清除
             </button>
           </div>
-          {error && (
+          {(error || recorder.error) && (
             <p role="alert" className="mt-2 text-red-500 text-xs">
-              {error}
+              {error || recorder.error}
             </p>
           )}
           <button

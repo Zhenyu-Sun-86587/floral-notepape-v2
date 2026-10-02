@@ -2,11 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
+// Serialize native hook lifecycle across recorder instances and StrictMode cleanup.
+let nativeRecordingQueue: Promise<void> = Promise.resolve();
+
 interface UseShortcutRecorderOptions {
   onRecord: (shortcut: string) => void;
 }
 
 export interface ShortcutRecorderHandle {
+  error: string;
   isRecording: boolean;
   heldKeys: string[];
   startRecording: () => void;
@@ -38,6 +42,10 @@ const CODE_TO_KEY: Record<string, string> = {
 };
 
 function normalizeKey(key: string, code?: string): string {
+  // macOS Option can produce Dead/Unicode characters; global shortcuts use physical keys.
+  if (code && /^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (code && /^Digit[0-9]$/.test(code)) return code.slice(5);
+  if (code && CODE_TO_KEY[code]) return CODE_TO_KEY[code];
   if (key === " ") return "Space";
   if (key.length === 1 && key.charCodeAt(0) < 0x20 && code) {
     return CODE_TO_KEY[code] ?? code;
@@ -69,14 +77,22 @@ export function useShortcutRecorder({
   onRecordRef.current = onRecord;
   const [isRecording, setIsRecording] = useState(false);
   const [heldKeys, setHeldKeys] = useState<string[]>([]);
+  const [error, setError] = useState("");
+  const recording = useRef(false);
+  const stopNative = useRef<() => Promise<void>>(() => Promise.resolve());
 
   const finishRecording = useCallback((shortcut: string) => {
+    if (!recording.current) return;
+    recording.current = false;
+    const onRecord = onRecordRef.current;
+    const stopped = stopNative.current();
     setIsRecording(false);
     setHeldKeys([]);
-    onRecordRef.current(shortcut);
+    void stopped.then(() => onRecord(shortcut)).catch((cause) => setError(String(cause)));
   }, []);
 
   const cancelRecording = useCallback(() => {
+    recording.current = false;
     setIsRecording(false);
     setHeldKeys([]);
   }, []);
@@ -100,7 +116,9 @@ export function useShortcutRecorder({
         return;
       }
 
+      if (e.repeat || e.isComposing) return;
       e.preventDefault();
+      e.stopImmediatePropagation();
       finishRecording(
         buildShortcutString(
           e.ctrlKey,
@@ -121,36 +139,58 @@ export function useShortcutRecorder({
     if (!isRecording) return;
 
     let cancelled = false;
+    let started = false;
     let unlisten: (() => void) | null = null;
-
-    listen<HookKeyEvent>("shortcut-hook-key", (event) => {
-      if (cancelled) return;
-      const { key, ctrl, alt, shift, meta } = event.payload;
-
-      if (key === "Escape") {
-        cancelRecording();
-        return;
-      }
-
-      if (key === "Delete" || key === "Backspace") {
-        finishRecording("");
-        return;
-      }
-
-      finishRecording(buildShortcutString(ctrl, alt, shift, meta, key));
-    }).then((fn) => {
-      if (cancelled) {
-        fn();
-      } else {
-        unlisten = fn;
-        invoke("start_shortcut_recording").catch(console.error);
-      }
-    });
-
-    return () => {
+    let stopping: Promise<void> | null = null;
+    const ready = nativeRecordingQueue
+      .catch(() => {})
+      .then(async () => {
+        if (cancelled) return;
+        const dispose = await listen<HookKeyEvent>("shortcut-hook-key", (event) => {
+          if (cancelled) return;
+          const { key, ctrl, alt, shift, meta } = event.payload;
+          if (key === "Escape") {
+            cancelRecording();
+            return;
+          }
+          if (key === "Delete" || key === "Backspace") {
+            finishRecording("");
+            return;
+          }
+          finishRecording(buildShortcutString(ctrl, alt, shift, meta, key));
+        });
+        if (cancelled) {
+          dispose();
+          return;
+        }
+        unlisten = dispose;
+        started = true;
+        await invoke("start_shortcut_recording");
+      });
+    nativeRecordingQueue = ready;
+    const stop = () => {
       cancelled = true;
-      unlisten?.();
-      invoke("stop_shortcut_recording").catch(console.error);
+      if (!stopping) {
+        stopping = ready
+          .catch((cause) => {
+            setError(String(cause));
+          })
+          .then(async () => {
+            unlisten?.();
+            if (started) await invoke("stop_shortcut_recording");
+          });
+        nativeRecordingQueue = stopping;
+      }
+      return stopping;
+    };
+    stopNative.current = stop;
+    void ready.catch((cause) => {
+      setError(String(cause));
+      recording.current = false;
+      setIsRecording(false);
+    });
+    return () => {
+      void stop().catch((cause) => setError(String(cause)));
     };
   }, [isRecording, finishRecording, cancelRecording]);
 
@@ -191,7 +231,11 @@ export function useShortcutRecorder({
     };
   }, [isRecording]);
 
-  const startRecording = useCallback(() => setIsRecording(true), []);
+  const startRecording = useCallback(() => {
+    recording.current = true;
+    setError("");
+    setIsRecording(true);
+  }, []);
 
-  return { isRecording, heldKeys, startRecording, cancelRecording };
+  return { error, isRecording, heldKeys, startRecording, cancelRecording };
 }
