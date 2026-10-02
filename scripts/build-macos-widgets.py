@@ -66,10 +66,40 @@ def project(directory, source):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--app', type=Path, required=True)
-    parser.add_argument('--team', required=True)
-    parser.add_argument('--identity', required=True)
+    parser.add_argument('--app', type=Path)
+    parser.add_argument('--team')
+    parser.add_argument('--identity')
+    parser.add_argument('--compile-only', action='store_true', help='Build an unsigned extension for CI validation only; do not install or enable it.')
+    parser.add_argument('--output', type=Path, default=Path('local-build/widget-ci'))
     args = parser.parse_args()
+    if args.compile_only:
+        run('xcodebuild', '-version')
+        source = Path(__file__).resolve().parent.parent / 'src-tauri/native/widgets'
+        output = args.output.resolve()
+        output.mkdir(parents=True, exist_ok=True)
+        version = json.loads((source.parents[1] / 'tauri.conf.json').read_text())['version']
+        with tempfile.TemporaryDirectory(prefix='folio-widget-check-') as tmp:
+            proj = Path(tmp) / 'FolioWidgets.xcodeproj'
+            project(proj, source)
+            run('xcodebuild', '-project', str(proj), '-target', 'FolioWidgets',
+                '-configuration', 'Release', 'build',
+                'CONFIGURATION_BUILD_DIR=' + str(output),
+                'CODE_SIGNING_ALLOWED=NO', 'CODE_SIGNING_REQUIRED=NO',
+                'FOLIO_APP_GROUP=buildcheck.folio.widgets', 'MARKETING_VERSION=' + version)
+        extension = output / 'FolioWidgets.appex'
+        info = plistlib.loads((extension / 'Contents/Info.plist').read_bytes())
+        assert info['NSExtension']['NSExtensionPointIdentifier'] == 'com.apple.widgetkit-extension'
+        assert (extension / 'Contents/MacOS' / info['CFBundleExecutable']).is_file()
+        metadata = [str(p.relative_to(extension)) for p in extension.rglob('*')
+                    if p.is_file() and '.appintents/' in str(p)]
+        if not metadata:
+            raise RuntimeError('Xcode built the binary but did not extract App Intents metadata.')
+        report = dict(version=version, mode='unsigned-build-check', installable=False, metadata=metadata)
+        (output / 'BUILD_REPORT.json').write_text(json.dumps(report, indent=2) + '\n')
+        print(json.dumps(report))
+        return
+    if not args.app or not args.team or not args.identity:
+        parser.error('Signed embedding requires --app, --team and --identity.')
     if args.identity == '-' or len(args.team) != 10 or not args.team.isalnum():
         parser.error('Use an Apple signing identity and its 10-character team identifier.')
     run('xcodebuild', '-version')

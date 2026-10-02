@@ -1,0 +1,34 @@
+name: macOS WidgetKit Build Check
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/macos-stage-baseline]
+    paths:
+      - .github/workflows/macos-widget-check.yml
+      - scripts/build-macos-widgets.py
+      - src-tauri/native/widgets/**
+
+permissions:
+  contents: read
+
+jobs:
+  widget-build:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Record toolchain
+        run: |
+          xcode-select -p
+          xcodebuild -version
+          xcrun --find appintentsmetadataprocessor
+          security find-identity -v -p codesigning
+      - name: Build unsigned extension and validate metadata
+        run: python3 scripts/build-macos-widgets.py --compile-only
+      - name: Upload build-check artifacts (not an installable widget)
+        uses: actions/upload-artifact@v4
+        with:
+          name: FolioWidgets-unsigned-build-check
+          path: local-build/widget-ci/
+          if-no-files-found: error
