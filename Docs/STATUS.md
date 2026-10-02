@@ -1,4 +1,6 @@
-# Hermes Surface Dev：Windows 阶段状态
+# Hermes Surface Dev：平台状态
+
+Mac 开发版 **1.7.10 / M0** 已进入身份隔离与启动基线阶段，详情见 [MAC_M0](MAC_M0.md)。Windows 发布基线仍为 1.7.9；Mac 原生材质、桌面层、原位解锁和胶囊拖动尚未完成，GUI 由用户人工验收。
 
 当前 Windows 源码版本为 **1.7.9**；历史 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
 
@@ -87,7 +89,7 @@
 
 - P0–P2 的新建、撤销/重做、拖拽缩放、托盘找回、导入副本等完整人工回归仍待验收；P3 GUI 仅验证了上述隔离闭环。
 - 运行时 Working Set、Private Bytes、WebView2 子进程、隐藏窗口数及首次呼出延迟未取得可信数据。P2 资源和交互验收尚未通过。
-- macOS 平台配置、构建工作流和 GUI 验证交由 Mac 协作者处理，交接见 [MAC_HANDOFF.md](MAC_HANDOFF.md)。当前 macOS 覆盖配置仍使用原版 identifier，不能把 Windows 隔离结果套用到 Mac。
+- macOS 平台配置、构建工作流和 GUI 验证交由 Mac 协作者处理，交接见 [MAC_HANDOFF.md](MAC_HANDOFF.md)。1.7.10 已修正 macOS 覆盖配置的 identifier 与静态主窗；不能把 Windows 验收结果套用到 Mac。
 - 主界面关闭到托盘时仍保留隐藏 WebView。此路径涉及现有保存与外部文件监听，本轮没有在缺少 GUI 验证时进一步销毁。
 - P3 尚未实现应用内重命名、缺失文件重新关联和可靠识别外部改名；目录断连恢复、冲突交互、托盘退出时的未保存草稿需进一步 GUI 验收。文件 revision 比较与替换不是跨应用事务锁。
 - P4 第二批的 GUI 项按用户决定跳过，后续如发现回归再针对性处理。

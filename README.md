@@ -2,11 +2,11 @@
 
 **简体中文** · [繁體中文](README_zh-HK.md) · [English](README_en-US.md)
 
-把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.9**。
+把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.10（Mac M0）**，Windows 发布版本为 **1.7.9**。
 
 [下载 Windows 1.7.9](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.9) · [反馈问题](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [Mac 开发交接](Docs/MAC_HANDOFF.md)
 
-> **平台状态**：Windows x64 已提供 NSIS 安装包。macOS 正由协作者适配，当前没有本项目的 Mac 安装包。1.7.5 的 Editor 点击定位、滚动和 IME 仍待人工 GUI 验收，详情见 [项目状态](Docs/STATUS.md)。
+> **平台状态**：Windows x64 已提供 NSIS 安装包。macOS 正由协作者适配，Mac M0 的构建与人工验收见 [阶段记录](Docs/MAC_M0.md)。1.7.5 的 Editor 点击定位、滚动和 IME 仍待人工 GUI 验收，详情见 [项目状态](Docs/STATUS.md)。
 
 ## 能做什么
 
@@ -29,7 +29,7 @@
 71A6A819DD8067EF9D06D18D6A39257441D5E0627B8BCD464D3C866CD67C4BB1
 ```
 
-安装包未签名，且不内嵌完整 WebView2 Runtime；若电脑尚未安装 Runtime，安装过程需要联网下载。当前没有本 fork 的 Microsoft Store、Mirror 酱、Windows ARM64 或 macOS 产物，请以本仓库的 Release 为准。
+安装包未签名，且不内嵌完整 WebView2 Runtime；若电脑尚未安装 Runtime，安装过程需要联网下载。当前没有本 fork 的 Microsoft Store、Mirror 酱、Windows ARM64 产物，请以本仓库的 Release 为准。
 
 ## 快速上手
 

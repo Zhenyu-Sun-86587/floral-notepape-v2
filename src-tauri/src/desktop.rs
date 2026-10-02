@@ -1569,8 +1569,8 @@ pub fn show_main_window(app: &AppHandle) -> Result<(), AppError> {
                 min_width: 900.0,
                 min_height: 620.0,
             },
-            // On macOS, tauri.macos.conf.json sets titleBarStyle: "Overlay"
-            // with native traffic lights; decorations: false would conflict.
+            // macOS 主窗按需创建；原生红绿灯和 Overlay 样式由建窗入口配置，
+            // 不依赖静态窗口清单，静默启动时也不会提前创建 WebView。
             decorations: cfg!(target_os = "macos"),
             always_on_top: false,
             shadow: true,
