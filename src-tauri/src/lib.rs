@@ -924,7 +924,7 @@ pub fn try_exit_for_cli_version_or_help() {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut app = tauri::Builder::default()
         .plugin(tauri_plugin_cli::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -950,11 +950,6 @@ pub fn run() {
             });
         }))
         .setup(|app| {
-            #[cfg(target_os = "macos")]
-            if std::env::args().any(|arg| arg == "--silent") {
-                // Tao 在 launched 中主动激活；先禁止，Ready 后恢复 Dock 身份。
-                app.set_activation_policy(tauri::ActivationPolicy::Prohibited);
-            }
             if let Ok(store) = default_store() {
                 let data = store.data_dir();
                 let scope = app.asset_protocol_scope();
@@ -1052,52 +1047,55 @@ pub fn run() {
             take_startup_file
         ])
         .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(move |_app_handle, _event| {
-            if let tauri::RunEvent::ExitRequested { code, api, .. } = &_event {
-                #[cfg(any(target_os = "windows", target_os = "macos"))]
-                if desktop::should_prevent_windowless_exit(
-                    *code,
-                    desktop::app_is_exiting(_app_handle),
-                ) {
-                    api.prevent_exit();
-                } else {
-                    desktop::mark_app_exiting(_app_handle);
-                }
-                #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        .expect("error while building tauri application");
+    #[cfg(target_os = "macos")]
+    if std::env::args().any(|arg| arg == "--silent") {
+        // setup 在 Ready 才执行；启动策略必须在 run/DidFinishLaunching 之前设置。
+        app.set_activation_policy(tauri::ActivationPolicy::Prohibited);
+    }
+    app.run(move |_app_handle, _event| {
+        if let tauri::RunEvent::ExitRequested { code, api, .. } = &_event {
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
+            if desktop::should_prevent_windowless_exit(*code, desktop::app_is_exiting(_app_handle))
+            {
+                api.prevent_exit();
+            } else {
                 desktop::mark_app_exiting(_app_handle);
             }
-            #[cfg(target_os = "macos")]
-            if matches!(&_event, tauri::RunEvent::Ready) {
-                let _ = _app_handle.set_activation_policy(tauri::ActivationPolicy::Regular);
-            }
-            #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Opened { urls } = &_event {
-                if let Some(path) = urls
-                    .iter()
-                    .filter_map(|url| url.to_file_path().ok())
-                    .map(|path| path.to_string_lossy().into_owned())
-                    .find(|path| desktop::extract_file_arg(&[path.clone()]).is_some())
-                {
-                    if _app_handle.get_webview_window("main").is_some() {
-                        let _ = _app_handle.emit("open-external-file", path);
-                    } else {
-                        desktop::set_startup_file(path);
+            #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+            desktop::mark_app_exiting(_app_handle);
+        }
+        #[cfg(target_os = "macos")]
+        if matches!(&_event, tauri::RunEvent::Ready) {
+            let _ = _app_handle.set_activation_policy(tauri::ActivationPolicy::Regular);
+        }
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Opened { urls } = &_event {
+            if let Some(path) = urls
+                .iter()
+                .filter_map(|url| url.to_file_path().ok())
+                .map(|path| path.to_string_lossy().into_owned())
+                .find(|path| desktop::extract_file_arg(&[path.clone()]).is_some())
+            {
+                if _app_handle.get_webview_window("main").is_some() {
+                    let _ = _app_handle.emit("open-external-file", path);
+                } else {
+                    desktop::set_startup_file(path);
+                }
+                let app = _app_handle.clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    if let Err(error) = desktop::show_main_window(&app) {
+                        eprintln!("Finder 打开文件失败: {error}");
                     }
-                    let app = _app_handle.clone();
-                    tauri::async_runtime::spawn_blocking(move || {
-                        if let Err(error) = desktop::show_main_window(&app) {
-                            eprintln!("Finder 打开文件失败: {error}");
-                        }
-                    });
-                }
+                });
             }
-            #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Reopen { .. } = _event {
-                // 用户点 Dock 是主动找回列表；桌面便签可见不能阻止主窗重开。
-                if let Err(error) = desktop::show_main_window(_app_handle) {
-                    eprintln!("failed to show main window on dock click: {error}");
-                }
+        }
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Reopen { .. } = _event {
+            // 用户点 Dock 是主动找回列表；桌面便签可见不能阻止主窗重开。
+            if let Err(error) = desktop::show_main_window(_app_handle) {
+                eprintln!("failed to show main window on dock click: {error}");
             }
-        });
+        }
+    });
 }

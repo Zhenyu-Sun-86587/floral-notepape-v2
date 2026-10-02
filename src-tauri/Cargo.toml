@@ -1,6 +1,6 @@
 [package]
 name = "hermes-surface-dev"
-version = "1.7.13"
+version = "1.7.14"
 description = "A lightweight cross-platform desktop note app"
 authors = ["Achilng"]
 edition = "2021"
@@ -67,6 +67,11 @@ windows-sys = { version = "0.59", features = [
 block2 = "0.6"
 objc2 = "0.6"
 objc2-app-kit = "0.3"
-objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGWindowLevel"] }
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGWindowLevel", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
 objc2-foundation = "0.3"
 raw-window-handle = "0.6"
+
+# Pin the existing Wry release with one macOS focus fix; see vendor/WRY_PATCH.md.
+[patch.crates-io]
+wry = { path = "vendor/wry" }
+tao = { path = "vendor/tao" }
