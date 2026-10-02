@@ -48,6 +48,9 @@ pub struct MacosConfig {
     pub capsule_liquid_motion: bool,
     pub capsule_dynamics: CapsuleDynamics,
     pub note_dynamics: CapsuleDynamics,
+    pub note_spring: Option<bool>,
+    pub refraction_strength: u8,
+    pub fluid_low_power: bool,
     pub notes_on_all_spaces: bool,
     pub capsules_on_all_spaces: bool,
 }
@@ -65,9 +68,18 @@ impl Default for MacosConfig {
             capsule_liquid_motion: true,
             capsule_dynamics: CapsuleDynamics::Lightweight,
             note_dynamics: CapsuleDynamics::Lightweight,
+            note_spring: None,
+            refraction_strength: 100,
+            fluid_low_power: false,
             notes_on_all_spaces: true,
             capsules_on_all_spaces: true,
         }
+    }
+}
+impl MacosConfig {
+    pub fn note_spring_enabled(&self) -> bool {
+        self.note_spring
+            .unwrap_or(self.note_dynamics != CapsuleDynamics::Lightweight)
     }
 }
 #[cfg(test)]
@@ -103,6 +115,13 @@ mod tests {
         assert_eq!(defaults, MacosConfig::default());
         assert_eq!(defaults.capsule_dynamics, CapsuleDynamics::Lightweight);
         assert_eq!(defaults.note_dynamics, CapsuleDynamics::Lightweight);
+        assert!(!defaults.note_spring_enabled());
+        let legacy: MacosConfig = serde_json::from_str(r#"{"noteDynamics":"elastic"}"#).unwrap();
+        assert!(legacy.note_spring_enabled());
+        let disabled: MacosConfig = serde_json::from_str(r#"{"noteDynamics":"fluid","noteSpring":false,"fluidLowPower":true,"refractionStrength":40}"#).unwrap();
+        assert!(!disabled.note_spring_enabled());
+        assert!(disabled.fluid_low_power);
+        assert_eq!(disabled.refraction_strength, 40);
         let config = MacosConfig {
             notes_on_all_spaces: false,
             capsules_on_all_spaces: true,

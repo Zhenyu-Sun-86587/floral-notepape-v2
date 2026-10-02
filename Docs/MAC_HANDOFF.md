@@ -1,4 +1,4 @@
-当前阶段：[Mac 1.7.25 便签三档玻璃](MAC_NOTE_GLASS_1.7.25.md)。便签独立档位，使用 AppKit/Core Animation 与共享 ScreenCaptureKit/Metal 背景；Windows 编译隔离。
+当前基线：[笺影 Mac 1.8.0 阶段封盘](MAC_BASELINE_1.8.0.md)。后续从本基线推进；保留英文底层身份和 Windows 平台隔离，交互与效果验收以人工为主。
 
 上一阶段：[Mac 1.7.18 胶囊重构与原生玻璃](MAC_CAPSULES_1.7.18.md)。Windows 胶囊保持原实现，基础检查与人工验收见文档。
 

@@ -193,12 +193,24 @@ pub fn refresh_config(
     app: &tauri::AppHandle,
     config: &crate::platform::macos::MacosConfig,
 ) -> tauri::Result<()> {
+    let previous = crate::macos_material::current_config();
+    let refresh_capsules = previous.as_ref().is_none_or(|old| {
+        old.material_enabled != config.material_enabled
+            || old.material_effect != config.material_effect
+            || old.capsule_opacity != config.capsule_opacity
+            || old.capsule_dynamics != config.capsule_dynamics
+            || old.capsule_liquid_motion != config.capsule_liquid_motion
+    });
     configure(config);
+    let config = config.clone();
     let app = app.clone();
     let handle = app.clone();
     handle.run_on_main_thread(move || {
-        crate::macos_motion::cancel();
-        crate::macos_rail::refresh(&app);
+        crate::macos_fluid::configure(&config);
+        if refresh_capsules {
+            crate::macos_motion::cancel();
+            crate::macos_rail::refresh(&app);
+        }
         for (label, window) in app.webview_windows() {
             let _ = crate::macos_material::refresh(&window);
             if label.starts_with("capsule-") {

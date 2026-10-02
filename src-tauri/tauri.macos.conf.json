@@ -1,4 +1,6 @@
 {
+  "productName": "Jianying",
+  "bundle": { "macOS": { "infoPlist": "native/Info.plist" } },
   "identifier": "dev.hermes.surface",
   "app": {
     "macOSPrivateApi": true,

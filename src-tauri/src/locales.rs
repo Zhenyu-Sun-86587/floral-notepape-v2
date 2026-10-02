@@ -17,6 +17,9 @@ impl Locale {
 }
 
 pub fn app_name(locale: Locale) -> &'static str {
+    if cfg!(target_os = "macos") {
+        return "笺影";
+    }
     match locale {
         Locale::ZhCn | Locale::EnUs | Locale::ZhHk => "Hermes Surface Dev",
     }
@@ -27,12 +30,18 @@ pub fn main_window_title(locale: Locale) -> &'static str {
 }
 
 pub fn notepad_window_title(locale: Locale) -> &'static str {
+    if cfg!(target_os = "macos") {
+        return "笺影 · 编辑";
+    }
     match locale {
         Locale::ZhCn | Locale::EnUs | Locale::ZhHk => "Hermes Surface Dev Note",
     }
 }
 
 pub fn tile_window_title(locale: Locale) -> &'static str {
+    if cfg!(target_os = "macos") {
+        return "笺影 · 便签";
+    }
     match locale {
         Locale::ZhCn | Locale::EnUs | Locale::ZhHk => "Hermes Surface Dev Tile",
     }
@@ -257,16 +266,32 @@ mod tests {
 
     #[test]
     fn localizes_native_shell_strings_for_supported_locales() {
-        assert_eq!(app_name(Locale::ZhCn), "Hermes Surface Dev");
-        assert_eq!(app_name(Locale::EnUs), "Hermes Surface Dev");
-        assert_eq!(app_name(Locale::ZhHk), "Hermes Surface Dev");
+        let name = if cfg!(target_os = "macos") {
+            "笺影"
+        } else {
+            "Hermes Surface Dev"
+        };
+        assert_eq!(app_name(Locale::ZhCn), name);
+        assert_eq!(app_name(Locale::EnUs), name);
+        assert_eq!(app_name(Locale::ZhHk), name);
 
         assert_eq!(
             notepad_window_title(Locale::EnUs),
-            "Hermes Surface Dev Note"
+            if cfg!(target_os = "macos") {
+                "笺影 · 编辑"
+            } else {
+                "Hermes Surface Dev Note"
+            }
         );
-        assert_eq!(tile_window_title(Locale::ZhHk), "Hermes Surface Dev Tile");
-        assert_eq!(tray_tooltip(Locale::EnUs), "Hermes Surface Dev");
+        assert_eq!(
+            tile_window_title(Locale::ZhHk),
+            if cfg!(target_os = "macos") {
+                "笺影 · 便签"
+            } else {
+                "Hermes Surface Dev Tile"
+            }
+        );
+        assert_eq!(tray_tooltip(Locale::EnUs), name);
         assert_eq!(tray_show_main_label(Locale::EnUs), "Open Main Window");
         assert_eq!(tray_quick_note_label(Locale::ZhHk), "快速便箋");
         assert_eq!(
@@ -286,21 +311,37 @@ mod tests {
         assert_eq!(macos_menu_help_label(Locale::ZhCn), "帮助");
         assert_eq!(
             macos_menu_about_label(Locale::ZhCn),
-            "关于Hermes Surface Dev"
+            if cfg!(target_os = "macos") {
+                "关于笺影"
+            } else {
+                "关于Hermes Surface Dev"
+            }
         );
         assert_eq!(
             macos_menu_about_label(Locale::EnUs),
-            "About Hermes Surface Dev"
+            if cfg!(target_os = "macos") {
+                "About 笺影"
+            } else {
+                "About Hermes Surface Dev"
+            }
         );
         assert_eq!(macos_menu_services_label(Locale::ZhHk), "服務");
         assert_eq!(
             macos_menu_hide_app_label(Locale::ZhCn),
-            "隐藏Hermes Surface Dev"
+            if cfg!(target_os = "macos") {
+                "隐藏笺影"
+            } else {
+                "隐藏Hermes Surface Dev"
+            }
         );
         assert_eq!(macos_menu_hide_others_label(Locale::EnUs), "Hide Others");
         assert_eq!(
             macos_menu_quit_app_label(Locale::EnUs),
-            "Quit Hermes Surface Dev"
+            if cfg!(target_os = "macos") {
+                "Quit 笺影"
+            } else {
+                "Quit Hermes Surface Dev"
+            }
         );
         assert_eq!(macos_menu_close_window_label(Locale::ZhHk), "關閉視窗");
         assert_eq!(macos_menu_minimize_label(Locale::EnUs), "Minimize");
