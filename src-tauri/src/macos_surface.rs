@@ -10,6 +10,12 @@ use std::{
 };
 static NOTES_ALL_SPACES: AtomicBool = AtomicBool::new(true);
 static CAPSULES_ALL_SPACES: AtomicBool = AtomicBool::new(true);
+pub fn hide_main_to_menu_bar(window: &tauri::Window) -> tauri::Result<()> {
+    window.hide()?;
+    window
+        .app_handle()
+        .set_activation_policy(tauri::ActivationPolicy::Accessory)
+}
 thread_local! { static NOTE_MODES: RefCell<HashMap<String, (WindowMode, bool)>> = RefCell::new(HashMap::new()); }
 pub fn configure(config: &crate::platform::macos::MacosConfig) {
     crate::macos_material::configure(config);

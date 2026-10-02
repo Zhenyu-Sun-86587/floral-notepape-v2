@@ -1375,7 +1375,11 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
                 hide_fullscreen_window(window);
                 return;
             }
-            if let Err(error) = window.hide() {
+            #[cfg(target_os = "macos")]
+            let hidden = crate::macos_surface::hide_main_to_menu_bar(window);
+            #[cfg(not(target_os = "macos"))]
+            let hidden = window.hide();
+            if let Err(error) = hidden {
                 eprintln!("failed to hide main window to tray: {error}");
             }
         }
@@ -1397,11 +1401,11 @@ fn hide_fullscreen_window(window: &Window) {
     use std::rc::Rc;
 
     let Ok(handle) = window.window_handle() else {
-        let _ = window.hide();
+        let _ = crate::macos_surface::hide_main_to_menu_bar(window);
         return;
     };
     let RawWindowHandle::AppKit(app_kit) = handle.as_raw() else {
-        let _ = window.hide();
+        let _ = crate::macos_surface::hide_main_to_menu_bar(window);
         return;
     };
 
@@ -1410,7 +1414,7 @@ fn hide_fullscreen_window(window: &Window) {
         unsafe { objc2::rc::Retained::retain(app_kit.ns_view.as_ptr().cast()) }
             .expect("failed to retain NSView");
     let Some(ns_window) = ns_view.window() else {
-        let _ = window.hide();
+        let _ = crate::macos_surface::hide_main_to_menu_bar(window);
         return;
     };
 
@@ -1422,7 +1426,9 @@ fn hide_fullscreen_window(window: &Window) {
     let block = RcBlock::new(move |_notification: std::ptr::NonNull<_>| {
         if FULLSCREEN_HIDING.swap(false, Ordering::SeqCst) {
             if let Some(w) = retained.get_webview_window(&label) {
-                let _ = w.hide();
+                if w.hide().is_ok() {
+                    let _ = retained.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                }
             }
         }
         if let Some(obs) = observer_ref.get() {
@@ -1605,6 +1611,8 @@ fn toggle_close_to_tray(_app: &AppHandle) -> Result<AppConfig, Box<dyn Error>> {
 }
 
 pub fn show_main_window(app: &AppHandle) -> Result<(), AppError> {
+    #[cfg(target_os = "macos")]
+    app.set_activation_policy(tauri::ActivationPolicy::Regular)?;
     clear_hidden_window_state(app);
     let locale = configured_locale();
 

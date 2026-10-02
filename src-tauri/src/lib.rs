@@ -1124,7 +1124,7 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     if std::env::args().any(|arg| arg == "--silent") {
         // setup 在 Ready 才执行；启动策略必须在 run/DidFinishLaunching 之前设置。
-        app.set_activation_policy(tauri::ActivationPolicy::Prohibited);
+        app.set_activation_policy(tauri::ActivationPolicy::Accessory);
     }
     app.run(move |_app_handle, _event| {
         if let tauri::RunEvent::ExitRequested { code, api, .. } = &_event {
@@ -1140,7 +1140,14 @@ pub fn run() {
         }
         #[cfg(target_os = "macos")]
         if matches!(&_event, tauri::RunEvent::Ready) {
-            let _ = _app_handle.set_activation_policy(tauri::ActivationPolicy::Regular);
+            let visible = _app_handle
+                .get_webview_window("main")
+                .is_some_and(|w| w.is_visible().unwrap_or(false));
+            let _ = _app_handle.set_activation_policy(if visible {
+                tauri::ActivationPolicy::Regular
+            } else {
+                tauri::ActivationPolicy::Accessory
+            });
         }
         #[cfg(target_os = "macos")]
         if let tauri::RunEvent::Opened { urls } = &_event {

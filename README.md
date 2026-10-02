@@ -1,4 +1,4 @@
-当前阶段：[笺影 Mac 1.8.0 阶段封盘](Docs/MAC_BASELINE_1.8.0.md)。背景、动画和桌面折射预算分开设置，保留旧配置与数据；Windows 实现保持不变。
+当前阶段：[笺影 Mac 1.8.1 阶段封盘](Docs/MAC_BASELINE_1.8.0.md)。背景、动画和桌面折射预算分开设置，关闭主窗后仅菜单栏驻留；Windows 实现保持不变。
 
 上一阶段：[Mac 1.7.18 胶囊重构与原生玻璃](Docs/MAC_CAPSULES_1.7.18.md)。Windows 胶囊保持原实现，基础检查与人工验收见文档。
 
@@ -10,7 +10,7 @@
 
 **简体中文** · [繁體中文](README_zh-HK.md) · [English](README_en-US.md)
 
-把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.8.0（笺影 Mac 阶段基线）**，Windows 发布版本为 **1.7.9**。
+把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.8.1（笺影 Mac 阶段基线）**，Windows 发布版本为 **1.7.9**。
 
 [下载 Windows 1.7.9](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.9) · [反馈问题](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [Mac 开发交接](Docs/MAC_HANDOFF.md)
 
