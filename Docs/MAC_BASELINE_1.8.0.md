@@ -1,12 +1,16 @@
 # 笺影 Mac 1.8.0 阶段封盘
 
-最终封盘包为1.8.1：追加主窗口关闭后的 Dock 隐藏。Mac 关闭到托盘时先隐藏主窗，再使用 AppKit Accessory 策略；全屏退出完成后执行同一切换。菜单栏状态图标、便签与胶囊继续保留。重新打开主窗恢复 Regular 策略；静默启动不再强制恢复 Dock。若用户关闭“关闭到托盘”，仍按既有配置退出应用。人工检查普通/全屏主窗关闭、菜单栏重新打开、便签编辑和静默启动。
+1.8.1 追加主窗口关闭后的 Dock 隐藏。Mac 关闭到托盘时先隐藏主窗，再使用 AppKit Accessory 策略；全屏退出完成后执行同一切换。菜单栏状态图标、便签与胶囊继续保留。重新打开主窗恢复 Regular 策略；静默启动不再强制恢复 Dock。若用户关闭“关闭到托盘”，仍按既有配置退出应用。人工检查普通/全屏主窗关闭、菜单栏重新打开、便签编辑和静默启动。
+
+最终命名包为1.8.2：Mac 应用包、可执行文件、安装包和启动项采用英文名 Folio，显示名继续为笺影。
 
 本轮为 Mac 原生交互与材质阶段的基线，不代表所有视觉问题已被人工验收。后续开发以此版本为起点。
 
 ## 身份与数据
 
-Mac 显示名为「笺影」，底层产品/安装文件名为 Jianying，包为 Jianying.app。Rust 可执行文件 hermes-surface-dev、bundle ID dev.hermes.surface、英文配置与数据目录继续保留，避免改变存储与权限身份。Windows 产品名与实现不变。Mac 产品名通过 tauri.macos.conf.json 覆盖，CFBundleDisplayName 使用独立 Info.plist。
+Mac 显示名为「笺影」，底层产品/安装文件名为 Folio，包为 Folio.app，可执行文件为 folio，启动项为 Folio.plist。Rust Cargo 包名、bundle ID dev.hermes.surface、现有英文配置与数据目录保留，避免改变存储与权限身份。Windows 产品名与实现不变。Mac 产品名与可执行文件名通过 tauri.macos.conf.json 覆盖，CFBundleDisplayName 使用独立 Info.plist。
+
+本机安装替换时仅移除已核对属于本项目的旧启动 plist，并将旧应用、local-build 中1.8.2之前的 Mac 阶段产物移入废纸篓。后台登记不执行全局重置；无关应用不清理。
 
 ## 设置的明确含义
 
