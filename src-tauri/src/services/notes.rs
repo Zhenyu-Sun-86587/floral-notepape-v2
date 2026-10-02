@@ -705,6 +705,15 @@ impl NoteStore {
 
         let mut config: AppConfig = serde_json::from_str(&fs::read_to_string(&path)?)?;
         let previous = config.clone();
+        // Mac 早期版本默认纯文本，升级时只迁移一次；此后尊重设置中的开关。
+        #[cfg(target_os = "macos")]
+        let markdown_marker = self.config_dir.join(".macos-markdown-default-v1");
+        #[cfg(target_os = "macos")]
+        let migrate_markdown = !markdown_marker.exists();
+        #[cfg(target_os = "macos")]
+        if migrate_markdown {
+            config.tile_render_markdown = true;
+        }
         // config 中记录的 dataDir 是上次运行时数据所在位置；若本次 resolve 出的
         // self.data_dir 与之不同（如 FLORAL_NOTEPAPER_DATA_DIR 被改），尝试搬运旧数据
         self.migrate_data_dir_if_relocated(&mut config);
@@ -713,6 +722,10 @@ impl NoteStore {
         // 常规读取不落盘，避免多窗口展开时重复写配置及覆盖并发设置。
         if config != previous {
             write_json_atomic(&path, &config)?;
+        }
+        #[cfg(target_os = "macos")]
+        if migrate_markdown {
+            fs::write(markdown_marker, b"1")?;
         }
         fs::create_dir_all(self.data_dir.join("notes"))?;
         if self.migrate_macos_shortcut_default(&mut config)? {
@@ -1153,7 +1166,7 @@ impl NoteStore {
             tile_ctrl_close: default_tile_ctrl_close(),
             tile_double_click_to_edit: false,
             tile_save_returns_to_pin: false,
-            tile_render_markdown: false,
+            tile_render_markdown: cfg!(target_os = "macos"),
             render_html_markdown: false,
             allow_remote_images: false,
             split_scroll_sync: true,
@@ -1764,6 +1777,26 @@ mod tests {
         write_json_atomic(&store.config_path(), &store.default_config())
             .expect("seed isolated test config");
         store
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn mac_markdown_default_migrates_once_and_respects_later_choice() {
+        let store = test_store("mac-markdown-default");
+        assert!(store.default_config().tile_render_markdown);
+        let mut config = store.default_config();
+        config.tile_render_markdown = false;
+        write_json_atomic(&store.config_path(), &config).expect("seed old Mac config");
+        assert!(store.load_config().expect("upgrade").tile_render_markdown);
+        let mut config = store.load_config().expect("read upgraded");
+        config.tile_render_markdown = false;
+        store.save_config(config).expect("user chooses plain text");
+        assert!(
+            !store
+                .load_config()
+                .expect("subsequent read")
+                .tile_render_markdown
+        );
     }
 
     #[test]

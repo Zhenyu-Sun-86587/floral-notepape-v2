@@ -1272,6 +1272,8 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
     if matches!(event, WindowEvent::Destroyed) {
         #[cfg(target_os = "windows")]
         crate::lock_overlay::hide_label(window.app_handle(), window.label());
+        #[cfg(target_os = "macos")]
+        crate::macos_lock_overlay::hide_label(window.app_handle(), window.label());
         if let Some(note_id) = closed_tile_id(window.label()) {
             let _ = window
                 .app_handle()
@@ -1280,6 +1282,12 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
         return;
     }
 
+    #[cfg(target_os = "macos")]
+    if matches!(event, WindowEvent::Moved(_) | WindowEvent::Resized(_)) {
+        if let Some(webview) = window.app_handle().get_webview_window(window.label()) {
+            crate::macos_lock_overlay::reposition(&webview);
+        }
+    }
     #[cfg(target_os = "windows")]
     if matches!(event, WindowEvent::Moved(_) | WindowEvent::Resized(_)) {
         if let Some(webview) = window.app_handle().get_webview_window(window.label()) {
@@ -1785,6 +1793,7 @@ fn prewarm_notepad(app: &AppHandle) -> Result<(), AppError> {
     .resizable(true)
     .decorations(false)
     .transparent(visual_options.transparent)
+    .background_color(tauri::window::Color(0, 0, 0, 0))
     .always_on_top(true)
     .shadow(false)
     .skip_taskbar(true)
@@ -3145,6 +3154,12 @@ pub fn show_silent_surface(window: &tauri::WebviewWindow) -> Result<(), AppError
     }
     #[cfg(not(target_os = "windows"))]
     window.show()?;
+    #[cfg(target_os = "macos")]
+    if let Some(key) = session_key_from_label(window.label()) {
+        if crate::surface_sessions::get(&key).is_ok_and(|s| s.locked) {
+            crate::macos_lock_overlay::show(window, key);
+        }
+    }
     Ok(())
 }
 
@@ -3286,6 +3301,10 @@ fn apply_surface_window_mode(
     if !locked {
         crate::lock_overlay::hide(window);
     }
+    #[cfg(target_os = "macos")]
+    if !locked {
+        crate::macos_lock_overlay::hide(window);
+    }
     window.set_ignore_cursor_events(false)?;
     #[cfg(target_os = "windows")]
     if !locked
@@ -3302,7 +3321,12 @@ fn apply_surface_window_mode(
     if locked {
         // 锁定保留原层级设置；仅当前窗口临时置顶并允许鼠标穿透。
         window.set_always_on_top(true)?;
+        #[cfg(not(target_os = "macos"))]
         window.set_ignore_cursor_events(true)?;
+        #[cfg(target_os = "macos")]
+        if let Some(key) = session_key_from_label(window.label()) {
+            crate::macos_lock_overlay::show(window, key);
+        }
         #[cfg(target_os = "windows")]
         if let Some(key) = session_key_from_label(window.label()) {
             crate::lock_overlay::show(window, key);
