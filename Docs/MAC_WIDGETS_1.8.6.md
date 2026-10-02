@@ -7,3 +7,5 @@
 参考：https://developer.apple.com/documentation/appintents/openurlintent
 
 基本检查包含Swift类型检查、完整扩展编译、Mac构建、签名和版本核对；独立Link的系统点击仍需人工确认，不能以Intent日志成功代替打开成功。
+
+本机已安装1.8.6，结束旧扩展进程后核对主应用、扩展和系统登记版本一致；运行扩展映射来自安装目录。原Markdown哈希未变，个人DMG签名及版本核对通过。云端构建run 37047809154通过。用户确认过1.8.4普通点击不展开；本版右上角Link展开仍待人工确认。
