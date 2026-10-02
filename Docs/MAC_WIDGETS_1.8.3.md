@@ -6,7 +6,11 @@
 
 原生小组件代码独立位于 `src-tauri/native/widgets/`，提供小、中、大、特大系统尺寸，桌面与通知中心共用 WidgetKit。系统管理背景、尺寸和玻璃/着色外观；不做自定义屏幕捕获。小组件不能直接输入正文或任意拉伸；点击通过经过UUID校验的 `folio://note/...` 或 `folio://linked/...` 打开对应便签。正文展示基础 Markdown 行与行内样式，公式、Mermaid、HTML和图片仍需在便签查看。
 
-**普通1.8.3安装包尚未包含可加载的小组件扩展。** 本机构建环境只有 Command Line Tools，无 Xcode 的 `appintentsmetadataprocessor`，也没有 Apple 签名身份。Swift扩展和桥接完成类型检查；真正的 WidgetKit 扩展构建、签名、系统加载及交互仍待这些条件补齐。设置明确显示不可用，不提供无效启用开关。不能把类型检查通过当作系统小组件验收通过。
+**普通1.8.3安装包尚未包含可加载的小组件扩展。** 本机构建环境只有 Command Line Tools，无 Xcode 的 `appintentsmetadataprocessor`，也没有 Apple 签名身份。Swift扩展和桥接完成类型检查；云端完整扩展构建已验证，签名、系统加载及交互仍待验证。设置明确显示不可用，不提供无效启用开关。不能把编译通过当作系统小组件验收通过。
+
+2026-10-03 已实际运行 [GitHub Actions 构建检查](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/37037576845)：macOS runner使用Xcode26.6，56秒完成构建，生成包含arm64/x86_64的`FolioWidgets.appex`，`Metadata.appintents/extract.actionsdata`中存在SelectNote配置元数据。产物已下载并核对扩展点`com.apple.widgetkit-extension`。二进制只有linker临时签名，TeamIdentifier未设置，Info.plist未绑定；本机与runner均有0个有效签名身份。这证明完整Xcode无需安装在本机，但不能证明免费Personal Team签名、App Group访问或小组件系统加载成功。
+
+工作流位于`.github/workflows/macos-widget-check.yml`，只读仓库权限，不使用签名Secrets。运行`python3 scripts/build-macos-widgets.py --compile-only`可生成构建检查产物和`BUILD_REPORT.json`；该产物不作为可安装包发布，也未替换本机应用。免费签名验证仍需可用的Personal Team开发身份。
 
 ## 数据与性能
 
