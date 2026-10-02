@@ -1,10 +1,12 @@
+当前阶段：[Mac 1.7.18 胶囊重构与原生玻璃](MAC_CAPSULES_1.7.18.md)。Windows 胶囊保持原实现，基础检查与人工验收见文档。
+
 当前修复：[Mac 1.7.17 快捷键录制死锁](MAC_SHORTCUT_1.7.17.md)。基础检查与人工复测见文档。
 
 前轮 1.7.16：便签/胶囊独立跨桌面开关，全屏置顶层级修复，Rust cfg 与前端目标模块隔离。人工检查见 [MAC_SETTINGS_1.7.16.md](MAC_SETTINGS_1.7.16.md)。
 
 # Hermes Surface Dev：平台状态
 
-当前 Mac 开发版 **1.7.17 / 快捷键录制修复**，已安装、基础录制检查通过。上一轮 Spaces 修复：用户明确需要跨多个桌面与全屏空间显示；本次便签加入所有 Spaces 与 Mission Control，置顶/锁定便签和胶囊申请加入其他应用全屏空间。记录与人工清单见 [MAC_SPACES_1.7.15](MAC_SPACES_1.7.15.md)。M3 胶囊拖动和编辑优化保留，真实跨 Spaces/全屏显示待用户验收，Windows 发布基线仍为 1.7.9。
+当前 Mac 开发版 **1.7.18 / 胶囊重构**，已安装、基础录制检查通过。上一轮 Spaces 修复：用户明确需要跨多个桌面与全屏空间显示；本次便签加入所有 Spaces 与 Mission Control，置顶/锁定便签和胶囊申请加入其他应用全屏空间。记录与人工清单见 [MAC_SPACES_1.7.15](MAC_SPACES_1.7.15.md)。M3 胶囊拖动和编辑优化保留，真实跨 Spaces/全屏显示待用户验收，Windows 发布基线仍为 1.7.9。
 
 当前 Windows 源码版本为 **1.7.9**；历史 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
 

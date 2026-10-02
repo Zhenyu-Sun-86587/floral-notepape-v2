@@ -1,0 +1,356 @@
+:root {
+  font:
+    13px/1.55 -apple-system,
+    BlinkMacSystemFont,
+    "PingFang SC",
+    sans-serif;
+  color: #24302c;
+  --surface: rgba(250, 251, 249, 0.96);
+  --chrome: rgba(247, 250, 247, 0.84);
+  --line: rgba(49, 68, 57, 0.12);
+  --muted: #737f78;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color: #edf2ee;
+    color-scheme: dark;
+    --surface: rgba(32, 39, 35, 0.97);
+    --chrome: rgba(38, 46, 41, 0.86);
+    --line: rgba(230, 244, 233, 0.14);
+    --muted: #a8b4ab;
+  }
+}
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+}
+* {
+  box-sizing: border-box;
+}
+button {
+  appearance: none;
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+}
+button:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.8);
+  outline-offset: -3px;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.mac-rail {
+  width: 100%;
+  height: 100%;
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--chrome);
+  box-shadow: inset 0 0 0 1px var(--line);
+  user-select: none;
+}
+:root[data-material="glass"] .mac-rail,
+:root[data-material="vibrancy"] .mac-rail {
+  background: rgba(255, 255, 255, 0.015);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.28);
+}
+.mac-rail-strip {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+.mac-rail-strip::-webkit-scrollbar {
+  display: none;
+}
+.side-top .mac-rail-strip {
+  flex-direction: row;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.mac-capsule {
+  position: relative;
+  flex: 0 0 var(--slot);
+  width: 100%;
+  display: grid;
+  place-content: center;
+  border-radius: 16px;
+  transition: background 120ms ease;
+}
+.side-top .mac-capsule {
+  width: var(--slot);
+  height: 100%;
+}
+.mac-capsule:hover,
+.mac-capsule:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+}
+.mac-capsule[data-pressed] {
+  background: rgba(255, 255, 255, 0.2);
+}
+.mac-note-glyph {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 30px;
+  color: rgba(255, 255, 255, 0.94);
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+}
+.mac-note-glyph svg {
+  width: 19px;
+  height: 22px;
+  fill: rgba(255, 255, 255, 0.06);
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.mac-state-dot {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  bottom: 4px;
+  left: calc(50% - 2px);
+  background: var(--note-color);
+  opacity: 0;
+}
+.mac-capsule[data-expanded] .mac-state-dot {
+  opacity: 1;
+}
+.mac-capsule[data-expanded] .mac-note-glyph svg {
+  fill: rgba(255, 255, 255, 0.2);
+}
+.mac-grip {
+  flex: 0 0 var(--grip);
+  width: 100%;
+  display: grid;
+  place-items: center;
+  cursor: grab;
+}
+.mac-grip span {
+  width: 12px;
+  height: 3px;
+  border-radius: 3px;
+  background: currentColor;
+  opacity: 0.3;
+}
+.side-top .mac-grip {
+  width: var(--grip);
+  height: 100%;
+}
+.side-top .mac-grip span {
+  width: 3px;
+  height: 12px;
+}
+.mac-preview {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background: var(--chrome);
+}
+.mac-preview[data-visible="false"] {
+  visibility: hidden;
+}
+:root[data-material="glass"] .mac-preview,
+:root[data-material="vibrancy"] .mac-preview {
+  background: transparent;
+}
+.mac-preview header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 13px 12px 12px 17px;
+  min-height: 55px;
+}
+.preview-mark {
+  flex: 0 0 5px;
+  width: 5px;
+  height: 22px;
+  border-radius: 4px;
+  background: var(--note-color);
+  margin-right: 4px;
+}
+.preview-title {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+.preview-icon {
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  flex: 0 0 27px;
+  border-radius: 9px;
+  color: var(--muted);
+}
+.preview-icon:hover {
+  background: var(--line);
+  color: inherit;
+}
+.preview-icon svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.preview-body {
+  flex: 1;
+  min-height: 0;
+  margin: 0 7px;
+  padding: 14px 15px;
+  border-radius: 15px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  overflow: auto;
+  scrollbar-width: thin;
+  cursor: text;
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+.mac-preview footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 9px 17px 10px;
+  font-size: 10px;
+  color: var(--muted);
+  user-select: none;
+}
+.preview-body h1 {
+  font-size: 1.3em;
+  margin: 0 0 12px;
+}
+.preview-body h2 {
+  font-size: 1.16em;
+  margin: 14px 0 8px;
+}
+.preview-body h3 {
+  font-size: 1.07em;
+  margin: 12px 0 7px;
+}
+.preview-body h4,
+.preview-body h5,
+.preview-body h6 {
+  font-size: 1em;
+  margin: 10px 0 6px;
+}
+.preview-body p {
+  margin: 6px 0;
+}
+.preview-body ul,
+.preview-body ol {
+  padding-left: 1.35em;
+  margin: 8px 0;
+}
+.preview-body ul {
+  list-style: disc;
+}
+.preview-body ol {
+  list-style: decimal;
+}
+.preview-body li {
+  margin: 4px 0;
+}
+.preview-body input[type="checkbox"] {
+  accent-color: var(--note-color);
+  margin-right: 7px;
+}
+.preview-body blockquote {
+  border-left: 3px solid var(--note-color);
+  margin: 12px 0;
+  padding-left: 12px;
+  color: var(--muted);
+}
+.preview-body a {
+  color: var(--note-color);
+  text-decoration: underline;
+}
+.preview-body pre {
+  padding: 10px;
+  border-radius: 9px;
+  background: var(--line);
+  overflow-x: auto;
+  white-space: pre;
+}
+.preview-body code {
+  font:
+    0.9em/1.6 ui-monospace,
+    "SFMono-Regular",
+    monospace;
+}
+.preview-body img {
+  max-width: 100%;
+  height: auto;
+}
+.preview-body table {
+  border-collapse: collapse;
+  max-width: 100%;
+}
+.preview-body td,
+.preview-body th {
+  border: 1px solid var(--line);
+  padding: 6px;
+}
+.preview-body hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 14px 0;
+}
+.preview-empty {
+  color: var(--muted);
+}
+.preview-error {
+  font-size: 12px;
+  color: #b65e45;
+  margin: 0;
+  padding: 5px 17px 10px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .mac-rail,
+  .mac-preview {
+    background: var(--surface) !important;
+  }
+}
+
+/* Clear glass follows the wallpaper; neutral chrome has no accent-colored ring. */
+:root[data-material="glass"] .mac-rail {
+  color: #fff;
+}
+:root[data-material="solid"] .mac-note-glyph {
+  color: #667279;
+  filter: none;
+}

@@ -1,6 +1,9 @@
 {
   "compilerOptions": {
-    "paths": { "#platform-settings": ["./src/platform/macos/settings.tsx"] },
+    "paths": {
+      "#platform-settings": ["./src/platform/macos/settings.tsx"],
+      "#platform-capsules": ["./src/platform/macos/capsules/index.tsx"]
+    },
     "target": "ES2020",
     "useDefineForClassFields": true,
     "lib": ["ES2020", "DOM", "DOM.Iterable"],

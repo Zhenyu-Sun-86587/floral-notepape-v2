@@ -9,6 +9,8 @@ pub mod locales;
 #[cfg(target_os = "windows")]
 pub mod lock_overlay;
 #[cfg(target_os = "macos")]
+pub mod macos_capsule;
+#[cfg(target_os = "macos")]
 pub mod macos_lock_overlay;
 #[cfg(target_os = "macos")]
 pub mod macos_surface;
@@ -185,6 +187,12 @@ async fn surface_capsule_dismiss(app: AppHandle) -> Result<(), AppError> {
     // 预览窗的隐藏也交给工作线程，避免 WebView2 在同步 IPC 回调里处理窗口消息。
     desktop::advance_capsule_preview();
     desktop::run_capsule_task(move || desktop::dismiss_capsule_preview(&app)).await
+}
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+async fn surface_capsule_material(window: tauri::WebviewWindow) -> Result<String, AppError> {
+    run_settings_task(move || crate::macos_capsule::material(&window)).await
 }
 
 #[tauri::command]
@@ -1017,6 +1025,8 @@ pub fn run() {
             surface_capsule_menu,
             surface_capsule_dismiss,
             surface_capsule_preview_state,
+            #[cfg(target_os = "macos")]
+            surface_capsule_material,
             surface_capsule_present,
             surface_capsule_hide,
             surface_capsule_drag,
