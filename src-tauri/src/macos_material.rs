@@ -1,7 +1,7 @@
 //! One reusable, clipped AppKit material host per window. Mode changes rebuild
 //! only the effect views; the original Tao/Wry root and responder chain survive.
 use crate::{
-    platform::macos::{MacosConfig, MaterialEffect},
+    platform::macos::{CapsuleDynamics, MacosConfig, MaterialEffect},
     services::notes::AppError,
 };
 use objc2::{
@@ -40,6 +40,16 @@ pub fn glass_motion_enabled() -> bool {
                 && c.material_effect == MaterialEffect::LiquidGlass
                 && c.capsule_liquid_motion
         })
+}
+pub fn elastic_capsules() -> bool {
+    CONFIG
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .is_some_and(|c| c.capsule_dynamics == CapsuleDynamics::Elastic)
+}
+pub fn capsule_tint(opacity: f64) -> f64 {
+    opacity * if elastic_capsules() { 0.025 } else { 0.12 }
 }
 pub fn opacity(label: &str, glass: bool) -> f64 {
     let config = CONFIG.read().unwrap_or_else(|e| e.into_inner());

@@ -120,6 +120,7 @@ define_class!(
 struct Rail {
     group: GroupSurface,
     epoch: Arc<AtomicU64>,
+    material: Option<Retained<NSView>>,
 }
 thread_local! { static RAILS: RefCell<HashMap<String, Rail>> = RefCell::new(HashMap::new()); }
 fn view(class: &AnyClass, frame: NSRect) -> Retained<NSView> {
@@ -207,6 +208,13 @@ fn render(window: &Window, group: GroupSurface) -> Result<(), crate::services::n
     }
     let state = macos_material::state(window.label());
     let glass = state.kind == "glass" && AnyClass::get(c"NSGlassEffectView").is_some();
+    let mut material = None;
+    if glass && macos_material::elastic_capsules() {
+        // Let the native glass outline describe the merged shape.
+        if let Some(layer) = root.layer() {
+            layer.setMasksToBounds(false);
+        }
+    }
     // One material for the whole group. Controls live above this decorative
     // surface; no glass cell competes with a button for hit testing or emphasis.
     if glass {
@@ -240,13 +248,15 @@ fn render(window: &Window, group: GroupSurface) -> Result<(), crate::services::n
             unsafe {
                 let _: () = msg_send![&*effect,setStyle:1_isize];
                 let _: () = msg_send![&*effect,setCornerRadius:frame.size.height/2.0];
-                let tint = NSColor::colorWithWhite_alpha(1.0, state.opacity * 0.12);
+                let tint =
+                    NSColor::colorWithWhite_alpha(1.0, macos_material::capsule_tint(state.opacity));
                 let _: () = msg_send![&*effect,setTintColor:&*tint];
                 let _: () = msg_send![&*effect,setContentView:&*content];
             }
             bubbles.addSubview(&effect);
         }
         root.addSubview(&container);
+        material = Some(container);
     } else if state.kind == "frosted" {
         let effect = view(AnyClass::get(c"NSVisualEffectView").unwrap(), root.bounds());
         effect.setAutoresizingMask(Sizing::ViewWidthSizable | Sizing::ViewHeightSizable);
@@ -339,9 +349,27 @@ fn render(window: &Window, group: GroupSurface) -> Result<(), crate::services::n
         if let Some(old) = rails.remove(window.label()) {
             old.epoch.fetch_add(1, Ordering::SeqCst);
         }
-        rails.insert(window.label().into(), Rail { group, epoch });
+        rails.insert(
+            window.label().into(),
+            Rail {
+                group,
+                epoch,
+                material,
+            },
+        );
     });
     Ok(())
+}
+/// Suspend only decorative glass; the live window and all input controls remain.
+pub fn material_visible(labels: &[String], visible: bool) {
+    RAILS.with(|rails| {
+        let rails = rails.borrow();
+        for label in labels {
+            if let Some(view) = rails.get(label).and_then(|r| r.material.as_ref()) {
+                view.setAlphaValue(if visible { 1.0 } else { 0.0 });
+            }
+        }
+    });
 }
 pub fn prepare(
     window: &Window,

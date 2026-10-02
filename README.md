@@ -1,4 +1,4 @@
-当前阶段：[Mac 1.7.21 紧凑泡泡与鼠标事件修复](Docs/MAC_DROPLET_1.7.21.md)。原生玻璃泡泡、直接单击/拖动链路与预览材质一致性修复；Windows 实现保持不变。
+当前阶段：[Mac 1.7.22 可选弹性玻璃](Docs/MAC_ELASTIC_1.7.22.md)。保留轻量效果，增加低染色的原生玻璃融合与短时回弹；Windows 实现保持不变。
 
 上一阶段：[Mac 1.7.18 胶囊重构与原生玻璃](Docs/MAC_CAPSULES_1.7.18.md)。Windows 胶囊保持原实现，基础检查与人工验收见文档。
 
@@ -10,7 +10,7 @@
 
 **简体中文** · [繁體中文](README_zh-HK.md) · [English](README_en-US.md)
 
-把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.21（Mac 原生泡泡）**，Windows 发布版本为 **1.7.9**。
+把 Markdown 笔记固定在桌面，需要时直接写，暂时不用时收纳到屏幕边缘。当前开发版本为 **1.7.22（Mac 可选弹性玻璃）**，Windows 发布版本为 **1.7.9**。
 
 [下载 Windows 1.7.9](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/v1.7.9) · [反馈问题](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/issues) · [Mac 开发交接](Docs/MAC_HANDOFF.md)
 
