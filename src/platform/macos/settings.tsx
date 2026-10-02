@@ -12,6 +12,7 @@ export interface PlatformConfig {
     capsuleOpacity?: { glass: number; frosted: number };
     capsuleLiquidMotion?: boolean;
     capsuleDynamics?: "lightweight" | "elastic" | "fluid";
+    noteDynamics?: "lightweight" | "elastic" | "fluid";
   };
 }
 export function PlatformSettings({
@@ -69,7 +70,7 @@ export function MaterialSettings({
   const settings = config.macos ?? { notesOnAllSpaces: true, capsulesOnAllSpaces: true };
   const [fluidStatus, setFluidStatus] = useState("");
   useEffect(() => {
-    if (settings.capsuleDynamics !== "fluid") return;
+    if (settings.capsuleDynamics !== "fluid" && settings.noteDynamics !== "fluid") return;
     let active = true;
     const refresh = () =>
       void invoke<string>("macos_fluid_status").then(
@@ -86,7 +87,7 @@ export function MaterialSettings({
       active = false;
       window.clearInterval(timer);
     };
-  }, [settings.capsuleDynamics]);
+  }, [settings.capsuleDynamics, settings.noteDynamics]);
   return (
     <div className="space-y-2">
       <label className="flex items-center justify-between text-[12px] text-ink-soft">
@@ -189,7 +190,31 @@ export function MaterialSettings({
           <option value="fluid">流体玻璃（最高 · 实验）</option>
         </select>
       </label>
-      {settings.capsuleDynamics === "fluid" && (
+      <label className="flex justify-between items-center text-[11px] text-ink-soft">
+        便签背景效果
+        <select
+          aria-label="便签背景效果"
+          value={settings.noteDynamics ?? "lightweight"}
+          className="rounded-lg px-3 py-2 bg-paper-warm"
+          onChange={(event) =>
+            onChange({
+              ...config,
+              macos: {
+                ...settings,
+                noteDynamics: event.target.value as "lightweight" | "elastic" | "fluid",
+              },
+            })
+          }
+        >
+          <option value="lightweight">轻量（当前效果）</option>
+          <option value="elastic">弹性玻璃</option>
+          <option value="fluid">流体玻璃（最高 · 实验）</option>
+        </select>
+      </label>
+      <p className="text-[10px] text-ink-faint">
+        便签档位独立于胶囊。最高档只绘制背景，正文保持完整分辨率；背景上限12fps、最长边768像素，正文区域弱折射，边缘更明显。
+      </p>
+      {(settings.capsuleDynamics === "fluid" || settings.noteDynamics === "fluid") && (
         <div className="space-y-2 text-[11px] text-ink-soft">
           <p>
             最高档采样真实桌面并用 GPU
@@ -209,7 +234,7 @@ export function MaterialSettings({
           >
             授权 / 重试背景采样
           </button>
-          <p>如系统要求，授权后重启应用。切回轻量或弹性档会停止采样。</p>
+          <p>如系统要求，授权后重启应用。便签与胶囊都切回低档后停止采样。</p>
         </div>
       )}
       <p className="text-[10px] text-ink-faint">
