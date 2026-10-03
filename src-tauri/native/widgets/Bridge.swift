@@ -48,6 +48,9 @@ func folioWidgetsPublish(_ json: UnsafePointer<CChar>) -> Bool {
             try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
         }
         try data.write(to: destination, options: .atomic)
+        if FolioWidgetStore.privateContainerIdentifier != nil {
+            FolioWidgetStore.experimentLog.notice("WRITE_OK bytes=\(data.count)")
+        }
         WidgetCenter.shared.reloadTimelines(ofKind: "FolioNote")
         return true
     } catch { return false }

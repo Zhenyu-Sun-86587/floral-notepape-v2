@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 struct FolioWidgetNote: Codable, Identifiable, Hashable {
     let key: String
@@ -18,6 +19,7 @@ struct FolioWidgetSnapshot: Codable {
 }
 
 enum FolioWidgetStore {
+    static let experimentLog = Logger(subsystem: "dev.folio.widget-container", category: "snapshot")
     // Opt-in local experiment only. Normal signed builds keep the App Group
     // path; the experiment writes snapshots into the extension's own sandbox.
     static var privateContainerIdentifier: String? {
@@ -65,6 +67,9 @@ enum FolioWidgetStore {
               let bytes = try? Data(contentsOf: url), bytes.count <= 1_048_576,
               let snapshot = try? JSONDecoder().decode(FolioWidgetSnapshot.self, from: bytes)
         else { return .empty }
+        if privateContainerIdentifier != nil {
+            experimentLog.notice("READ_OK bundle=\(Bundle.main.bundleIdentifier ?? "unknown", privacy: .public) notes=\(snapshot.notes.count) bytes=\(bytes.count)")
+        }
         return snapshot
     }
 }
