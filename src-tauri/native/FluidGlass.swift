@@ -137,6 +137,8 @@ private final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
         stream = nil
         texture = nil
         pixel = nil
+        if let cache { CVMetalTextureCacheFlush(cache, 0) }
+        cache = nil
     }
 }
 
@@ -293,15 +295,28 @@ private enum Fluid {
     static var status = "未启用流体玻璃"
     static var monitor: Timer?
     static var observers: [NSObjectProtocol] = []
+    static var workspaceObservers: [NSObjectProtocol] = []
+    static var sleeping = false
     static var retryAfter = 0.0
     static func needed() -> Set<CGDirectDisplayID> {
-        Set(views.values.compactMap {
-            guard let window=$0.window, window.isVisible, window.isOnActiveSpace, !window.isMiniaturized else { return nil }
+        if sleeping { return [] }
+        return Set(views.values.compactMap {
+            guard $0.renderable, let window=$0.window else { return nil }
             return (window.screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
         })
     }
     static func watch() {
         guard monitor == nil else { return }
+        workspaceObservers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { _ in
+            sleeping = true
+            generation += 1; starting = false
+            prune()
+        })
+        workspaceObservers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in
+            sleeping = false
+            retryAfter = 0
+            start()
+        })
         for name in [NSWindow.didMoveNotification,NSWindow.didResizeNotification] {
             observers.append(NotificationCenter.default.addObserver(forName:name,object:nil,queue:.main) { note in
                 guard let window=note.object as? NSWindow else { return }
@@ -323,7 +338,7 @@ private enum Fluid {
         guard !starting, !views.isEmpty, !required.isEmpty,
               required.contains(where: { captures[$0]?.active != true }),
               ProcessInfo.processInfo.systemUptime>=retryAfter else { return }
-        guard CGPreflightScreenCaptureAccess() else { status = "需要屏幕录制权限，当前使用弹性玻璃"; return }
+        guard CGPreflightScreenCaptureAccess() else { status = "需要屏幕录制权限，当前使用弹性玻璃"; retryAfter=ProcessInfo.processInfo.systemUptime+15; return }
         guard pipeline != nil else { status = "Metal 不可用，当前使用弹性玻璃"; return }
         starting = true
         let token = generation
@@ -349,6 +364,8 @@ private enum Fluid {
         }
         if views.isEmpty { generation += 1; starting = false; status = "未启用流体玻璃"; monitor?.invalidate(); monitor=nil
             for token in observers { NotificationCenter.default.removeObserver(token) }; observers.removeAll()
+            for token in workspaceObservers { NSWorkspace.shared.notificationCenter.removeObserver(token) }; workspaceObservers.removeAll()
+            sleeping = false
         }
     }
 }

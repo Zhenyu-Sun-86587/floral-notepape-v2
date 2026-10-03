@@ -23,7 +23,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   animateCurrentWindowBounds,
-  closeCurrentWindow,
   destroyCurrentWindow,
   getCurrentWindowBounds,
   recycleCurrentNotepad,
@@ -261,7 +260,15 @@ export function NotePad({
     return loadedNotes;
   }, []);
 
+  const loadedNoteVersion = useRef<string | undefined>(undefined);
+  const noteLoadEpoch = useRef(0);
   const applyNote = useCallback((note: Note) => {
+    noteLoadEpoch.current += 1;
+    loadedNoteVersion.current = note.updatedAt;
+    editingNoteIdRef.current = note.id;
+    contentValueRef.current = note.content;
+    titleValueRef.current = note.title;
+    statusRef.current = "opened";
     setEditingNoteId(note.id);
     setTitle(note.title);
     setContent(note.content);
@@ -348,9 +355,15 @@ export function NotePad({
     if (!initialBindingId) return undefined;
     let active = true;
     const refresh = () => {
+      const versionAtRead = linkedRevisionRef.current;
       void readLinkedFile(initialBindingId)
         .then((latest) => {
-          if (!active || latest.revision === linkedRevisionRef.current) return;
+          if (
+            !active ||
+            linkedRevisionRef.current !== versionAtRead ||
+            latest.revision === linkedRevisionRef.current
+          )
+            return;
           if (statusRef.current === "dirty" || statusRef.current === "saveFailed") {
             setLinkedConflict(latest);
             return;
@@ -571,7 +584,10 @@ export function NotePad({
     };
   }, [refreshNotes]);
 
-  const saveNote = useCallback(async () => {
+  const performSaveNote = useCallback(async () => {
+    const content = contentValueRef.current;
+    const title = titleValueRef.current;
+    const editingNoteId = editingNoteIdRef.current;
     if (initialBindingId) {
       const contentSnapshot = content;
       const nextRevision = await saveLinkedFile(
@@ -582,15 +598,18 @@ export function NotePad({
       linkedRevisionRef.current = nextRevision;
       void writeLinkedDraft(initialBindingId, null, nextRevision).catch(() => undefined);
       setLinkedConflict(null);
-      setStatus(contentValueRef.current === contentSnapshot ? "saved" : "dirty");
+      statusRef.current = contentValueRef.current === contentSnapshot ? "saved" : "dirty";
+      setStatus(statusRef.current);
       return { id: initialBindingId };
     }
     const existingCategory = notes.find((n) => n.id === editingNoteId)?.category ?? "";
     const request = { title, content, category: existingCategory };
     const note = editingNoteId
-      ? await updateNote(editingNoteId, request)
+      ? await updateNote(editingNoteId, request, loadedNoteVersion.current)
       : await createNote(request);
 
+    loadedNoteVersion.current = note.updatedAt;
+    editingNoteIdRef.current = note.id;
     setEditingNoteId(note.id);
     setNotes((current) => {
       const metadata = metadataFromNote(note);
@@ -601,9 +620,19 @@ export function NotePad({
       return [...next].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
     });
     const contentChanged = contentValueRef.current !== content || titleValueRef.current !== title;
-    setStatus(contentChanged ? "dirty" : "saved");
+    statusRef.current = contentChanged ? "dirty" : "saved";
+    setStatus(statusRef.current);
     return note;
   }, [content, editingNoteId, initialBindingId, notes, title]);
+
+  const saveWorkerRef = useRef(performSaveNote);
+  saveWorkerRef.current = performSaveNote;
+  const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const saveNote = useCallback(() => {
+    const run = saveQueueRef.current.then(() => saveWorkerRef.current());
+    saveQueueRef.current = run.catch(() => undefined);
+    return run;
+  }, []);
 
   // 通过 ref 持有最新的 saveNote，让下方的 Tauri 监听只注册一次，
   // 避免每次输入（content 变化）都注销再重注册事件监听
@@ -639,7 +668,9 @@ export function NotePad({
     if (!initialBindingId || linkedClosingRef.current) return;
     linkedClosingRef.current = true;
     try {
-      if (statusRef.current === "dirty") await saveNoteRef.current();
+      await saveQueueRef.current;
+      if (statusRef.current === "dirty" || statusRef.current === "saveFailed")
+        await saveNoteRef.current();
       // 外部文件窗口必须销毁原生窗口；close() 会再次触发关闭监听，失败时还会留下透明遮挡层。
       await invoke("surface_session_close_current");
       await destroyCurrentWindow();
@@ -665,7 +696,8 @@ export function NotePad({
     const unlisten = listen<UpdateInstallPrepareRequest>("update://prepare-install", (event) => {
       const respond = async () => {
         const windowLabel = windowLabelRef.current || "notepad";
-        if (statusRef.current !== "dirty") {
+        await saveQueueRef.current;
+        if (statusRef.current !== "dirty" && statusRef.current !== "saveFailed") {
           await reportInstallPreparation(event.payload.requestId, windowLabel, "ready");
           return;
         }
@@ -873,7 +905,8 @@ export function NotePad({
       ? `linked:${initialBindingId}`
       : `note:${editingNoteId ?? initialNoteId ?? ""}`;
     try {
-      if (statusRef.current === "dirty") await saveNote();
+      await saveQueueRef.current;
+      if (statusRef.current === "dirty" || statusRef.current === "saveFailed") await saveNote();
       await reportLockButtonBounds();
       const session = await getSurfaceSession(key);
       await saveSurfaceSession({ ...session, locked: true });
@@ -1010,7 +1043,18 @@ export function NotePad({
 
   const handleOpenNote = async (noteId: string) => {
     try {
+      await saveQueueRef.current;
+      if (statusRef.current === "dirty" || statusRef.current === "saveFailed") await saveNote();
+      const epoch = ++noteLoadEpoch.current;
+      const contentAtRead = contentValueRef.current;
+      const titleAtRead = titleValueRef.current;
       const note = await getNote(noteId);
+      if (
+        epoch !== noteLoadEpoch.current ||
+        contentValueRef.current !== contentAtRead ||
+        titleValueRef.current !== titleAtRead
+      )
+        return;
       applyNote(note);
       await switchSurfaceMode("pad");
     } catch (error) {
@@ -1029,7 +1073,7 @@ export function NotePad({
     }
   };
 
-  const handleClose = useCallback(() => {
+  const closeSavedWindow = useCallback(() => {
     if (initialBindingId) {
       void closeLinkedWindow();
       return;
@@ -1037,7 +1081,8 @@ export function NotePad({
     setIsExiting(true);
     if (surfaceMode === "tile") {
       void (async () => {
-        await closeCurrentWindow();
+        await invoke("surface_session_close_current");
+        await destroyCurrentWindow();
       })().catch((error) => {
         setIsExiting(false);
         setStatus("saveFailed");
@@ -1066,6 +1111,29 @@ export function NotePad({
       });
   }, [closeLinkedWindow, initialBindingId, surfaceMode]);
 
+  const handleClose = useCallback(async () => {
+    try {
+      await saveQueueRef.current;
+      if (statusRef.current === "dirty" || statusRef.current === "saveFailed") await saveNote();
+      closeSavedWindow();
+    } catch (error) {
+      statusRef.current = "saveFailed";
+      setStatus("saveFailed");
+      showToast(getErrorMessage(error));
+    }
+  }, [closeSavedWindow, saveNote]);
+
+  useEffect(() => {
+    if (initialBindingId) return;
+    const off = getCurrentWindow().onCloseRequested((event) => {
+      event.preventDefault();
+      void handleClose();
+    });
+    return () => {
+      void off.then((dispose) => dispose());
+    };
+  }, [handleClose, initialBindingId]);
+
   const copyTileContent = useCallback(async () => {
     try {
       const clipboard = navigator.clipboard;
@@ -1073,7 +1141,8 @@ export function NotePad({
         throw new Error(t("notepad.error.copyUnsupported", { defaultValue: "当前环境不支持复制" }));
       }
       await clipboard.writeText(content);
-      setStatus("copied");
+      // Copying is not a save: retain dirty/error state and its close protection.
+      showToast(t("notepad.status.copied", { defaultValue: "已复制" }));
     } catch (error) {
       showToast(getErrorMessage(error));
     }
@@ -1222,6 +1291,7 @@ export function NotePad({
         return;
       setContent(note.content);
       setTitle(note.title);
+      loadedNoteVersion.current = note.updatedAt;
       setStatus("saved");
     },
     actions: {
@@ -1230,7 +1300,7 @@ export function NotePad({
       store: () => storeTile(),
       pin: () => handlePin(),
       close: async () => {
-        if (statusRef.current === "dirty") await saveNote();
+        if (statusRef.current === "dirty" || statusRef.current === "saveFailed") await saveNote();
         handleClose();
       },
     },
@@ -1599,6 +1669,7 @@ export function NotePad({
                             initialBindingId,
                             null,
                             linkedConflict.revision,
+                            content,
                           ).catch(() => undefined);
                         }}
                       >

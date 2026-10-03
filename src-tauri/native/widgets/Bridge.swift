@@ -18,8 +18,10 @@ private enum FolioWidgetActionInbox {
             let watcher = DispatchSource.makeFileSystemObjectSource(fileDescriptor: descriptor, eventMask: [.write, .delete, .rename], queue: queue)
             watcher.setEventHandler {
                 if !watcher.data.intersection([.delete, .rename]).isEmpty {
+                    watcher.setEventHandler(handler: nil)
                     watcher.cancel()
                     source = nil
+                    watch(container)
                     return
                 }
                 drain(inbox)
@@ -32,11 +34,14 @@ private enum FolioWidgetActionInbox {
     }
     static func drain(_ inbox: URL) {
         guard let files = try? FileManager.default.contentsOfDirectory(at: inbox, includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey]) else { return }
-        for file in files.filter({ $0.pathExtension == "json" }).prefix(64) {
-            guard UUID(uuidString: file.deletingPathExtension().lastPathComponent) != nil else { continue }
+        let pending = files.compactMap { file -> (URL, URLResourceValues)? in
+            guard file.pathExtension == "json", UUID(uuidString: file.deletingPathExtension().lastPathComponent) != nil,
+                  let values = try? file.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]) else { return nil }
+            return (file, values)
+        }.sorted { ($0.1.contentModificationDate ?? .distantPast) < ($1.1.contentModificationDate ?? .distantPast) }
+        for (file, values) in pending.prefix(64) {
             defer { try? FileManager.default.removeItem(at: file) }
-            guard let values = try? file.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]),
-                  let date = values.contentModificationDate, Date().timeIntervalSince(date) < 86400,
+            guard let date = values.contentModificationDate, Date().timeIntervalSince(date) < 86400,
                   let size = values.fileSize, size <= 32768,
                   let data = try? Data(contentsOf: file), data.count <= 32768,
                   let json = String(data: data, encoding: .utf8) else { continue }
@@ -50,7 +55,7 @@ private final class FolioURLHandler: NSObject {
     @objc func handle(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
         // Consume legacy widget links without opening any note. Old archived
         // timelines can retain folio://note/... until WidgetKit refreshes them.
-        let scheme = FolioWidgetStore.privateContainerIdentifier == nil ? "folio" : "folio-private"
+        let scheme = FolioWidgetStore.urlScheme
         guard let url = event.paramDescriptor(forKeyword: 0x2D2D2D2D)?.stringValue,
               url.hasPrefix(scheme + "://widget-open/") else { return }
         url.withCString { callback?($0) }

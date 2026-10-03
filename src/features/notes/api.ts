@@ -35,8 +35,12 @@ export function createNote(request: SaveNoteRequest): Promise<Note> {
   return invoke("notes_create", { request });
 }
 
-export function updateNote(id: string, request: SaveNoteRequest): Promise<Note> {
-  return invoke("notes_update", { id, request });
+export function updateNote(
+  id: string,
+  request: SaveNoteRequest,
+  expectedUpdatedAt?: string,
+): Promise<Note> {
+  return invoke("notes_update", { id, request, expectedUpdatedAt });
 }
 
 export function deleteNote(id: string): Promise<void> {
@@ -67,8 +71,13 @@ export function readExternalFile(path: string): Promise<string> {
   return invoke("read_external_file", { path });
 }
 
-export function saveExternalFile(path: string, content: string): Promise<void> {
-  return invoke("save_external_file", { path, content });
+export function saveExternalFile(
+  path: string,
+  content: string,
+  expectedContent: string,
+  expectedRevision?: string,
+): Promise<string> {
+  return invoke("save_external_file", { path, content, expectedContent, expectedRevision });
 }
 
 export function getFileModifiedTime(path: string): Promise<number> {

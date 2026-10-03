@@ -288,6 +288,9 @@ pub fn apply(window: &WebviewWindow, radius: f64) -> Result<MaterialState, AppEr
         return Err(error("圆角数值无效"));
     }
     let radius = radius.clamp(0.0, 40.0);
+    if MainThreadMarker::new().is_some() {
+        return install(window, radius);
+    }
     let (tx, rx) = std::sync::mpsc::sync_channel(1);
     let w = window.clone();
     window.app_handle().run_on_main_thread(move || {

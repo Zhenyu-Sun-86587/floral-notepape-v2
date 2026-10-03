@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+import platform
 
 ROOT = Path(__file__).resolve().parent.parent
 HARNESS = r'''
@@ -74,9 +75,12 @@ def main():
             directory = Path(temporary) / mode
             directory.mkdir()
             files = []
+            has_snapshot_cache = False
             for name in ['Shared.swift', 'Markdown.swift']:
                 relative = 'src-tauri/native/widgets/' + name
                 source = subprocess.check_output(['git', 'show', f'{args.baseline}:{relative}'], cwd=ROOT, text=True) if mode == 'before' else (ROOT / relative).read_text()
+                if name == 'Shared.swift':
+                    has_snapshot_cache = 'func readSnapshot(at' in source
                 path = directory / name
                 path.write_text(source)
                 files.append(str(path))
@@ -84,7 +88,7 @@ def main():
             harness.write_text(HARNESS)
             binary = directory / 'benchmark'
             command = ['swiftc', '-O', '-framework', 'AppKit', *files, str(harness), '-o', str(binary)]
-            if mode == 'after':
+            if has_snapshot_cache:
                 command += ['-D', 'OPTIMIZED']
             subprocess.run(command, check=True)
             samples = [json.loads(subprocess.check_output([str(binary), str(directory)], text=True)) for _ in range(3)]
@@ -94,6 +98,8 @@ def main():
     results['identical_rendering'] = True
     results['baseline'] = args.baseline
     results['scope'] = '32 synthetic notes; median of 3 warm-process samples; native hot paths only'
+    results['machine'] = {'architecture': platform.machine(), 'macOS': platform.mac_ver()[0]}
+    results['swift'] = subprocess.check_output(['swiftc', '--version'], text=True).strip()
     result = json.dumps(results, indent=2) + '\n'
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

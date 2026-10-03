@@ -38,8 +38,33 @@ const aliases: Record<string, string> = {
   yml: "yaml",
 };
 
+// Preview trees can remount unchanged code blocks while surrounding text is
+// edited. Bound both entry count and retained UTF-16 text, per webview.
+const highlights = new Map<string, string>();
+let retainedCharacters = 0;
+const maxRetainedCharacters = 512 * 1024;
+
 export function highlightCode(source: string, language: string): string | null {
   const resolved = aliases[language.toLowerCase()] ?? language.toLowerCase();
   if (!hljs.getLanguage(resolved)) return null;
-  return hljs.highlight(source, { language: resolved, ignoreIllegals: true }).value;
+  const key = `${resolved}\0${source}`;
+  const cached = highlights.get(key);
+  if (cached !== undefined) {
+    highlights.delete(key);
+    highlights.set(key, cached);
+    return cached;
+  }
+  const html = hljs.highlight(source, { language: resolved, ignoreIllegals: true }).value;
+  const size = key.length + html.length;
+  if (size <= maxRetainedCharacters) {
+    while (highlights.size >= 64 || retainedCharacters + size > maxRetainedCharacters) {
+      const oldest = highlights.entries().next().value;
+      if (!oldest) break;
+      retainedCharacters -= oldest[0].length + oldest[1].length;
+      highlights.delete(oldest[0]);
+    }
+    highlights.set(key, html);
+    retainedCharacters += size;
+  }
+  return html;
 }

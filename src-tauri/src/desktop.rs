@@ -1349,13 +1349,8 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
             save_surface_size(&webview);
             save_session_bounds(&webview);
         }
-        if !app_is_exiting(window.app_handle()) {
-            if let Some(key) = session_key_from_label(window.label()) {
-                let _ = crate::surface_sessions::mutate(&key, |session| {
-                    session.presentation = crate::surface_sessions::Presentation::Hidden;
-                });
-            }
-        }
+        // CloseRequested can be cancelled when saving fails. Presentation is
+        // committed by record_surface_close/recycle only after the editor saves.
     }
 
     if window.label() != MAIN_WINDOW_LABEL {
@@ -1385,8 +1380,13 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
         }
         MainWindowCloseAction::ExitApp => {
             api.prevent_close();
-            mark_app_exiting(window.app_handle());
-            window.app_handle().exit(0);
+            #[cfg(target_os = "macos")]
+            crate::macos_lifecycle::request_quit(window.app_handle());
+            #[cfg(not(target_os = "macos"))]
+            {
+                mark_app_exiting(window.app_handle());
+                window.app_handle().exit(0);
+            }
         }
     }
 }
@@ -1536,8 +1536,13 @@ fn handle_tray_menu_event(app: &AppHandle, id: &str) -> Result<(), Box<dyn Error
             let _ = app.emit("config-changed", &config);
         }
         Some(TrayMenuAction::Quit) => {
-            mark_app_exiting(app);
-            app.exit(0);
+            #[cfg(target_os = "macos")]
+            crate::macos_lifecycle::request_quit(app);
+            #[cfg(not(target_os = "macos"))]
+            {
+                mark_app_exiting(app);
+                app.exit(0);
+            }
         }
         None => {}
     }
@@ -1577,8 +1582,13 @@ fn handle_app_menu_event(app: &AppHandle, id: &str) -> Result<(), Box<dyn Error>
     match app_menu_action(id) {
         Some(AppMenuAction::ShowAboutPanel) => open_about_panel(app)?,
         Some(AppMenuAction::Quit) => {
-            mark_app_exiting(app);
-            app.exit(0);
+            #[cfg(target_os = "macos")]
+            crate::macos_lifecycle::request_quit(app);
+            #[cfg(not(target_os = "macos"))]
+            {
+                mark_app_exiting(app);
+                app.exit(0);
+            }
         }
         None => {}
     }
@@ -1606,7 +1616,7 @@ fn toggle_close_to_tray(_app: &AppHandle) -> Result<AppConfig, Box<dyn Error>> {
     let store = default_store()?;
     let mut config = store.load_config()?;
     config.close_to_tray = !config.close_to_tray;
-    store.save_config(config.clone())?;
+    store.save_current_config(config.clone())?;
     Ok(config)
 }
 
@@ -1765,7 +1775,9 @@ pub fn recycle_notepad_window(app: &AppHandle, label: &str) -> Result<(), AppErr
         .unwrap_or(false);
 
     if !recycled {
-        window.close()?;
+        // The frontend has completed its save handshake. Do not re-enter its
+        // CloseRequested handler recursively.
+        window.destroy()?;
     } else {
         set_webview_memory_usage_level(&window, true);
     }
@@ -1798,7 +1810,7 @@ fn save_surface_size(window: &tauri::WebviewWindow) {
     }
     config.surface_width = Some(w);
     config.surface_height = Some(h);
-    let _ = store.save_config(config);
+    let _ = store.save_current_config(config);
 }
 
 fn should_save_surface_size_before_close(label: &str) -> bool {
@@ -2610,38 +2622,32 @@ pub async fn run_capsule_task<T: Send + 'static>(
 
 #[cfg(target_os = "macos")]
 fn watch_capsule_screens(app: &AppHandle) {
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let mut previous = String::new();
-        while !app_is_exiting(&app) {
-            let handle = app.clone();
-            let signature = tauri::async_runtime::spawn_blocking(move || {
-                handle.available_monitors().map(|monitors| {
-                    monitors
-                        .iter()
-                        .map(|m| {
-                            format!(
-                                "{:?}:{:?}:{:?}:{:?}:{}",
-                                m.name(),
-                                m.position(),
-                                m.size(),
-                                m.work_area(),
-                                m.scale_factor()
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join("|")
-                })
-            })
-            .await;
-            if let Ok(Ok(signature)) = signature {
-                if !previous.is_empty() && signature != previous {
-                    queue_capsule_sync(&app);
-                }
-                previous = signature;
-            }
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    use objc2_foundation::{NSNotificationCenter, NSString};
+    use std::cell::RefCell;
+    thread_local! {
+        static OBSERVER: RefCell<Option<objc2::rc::Retained<objc2::runtime::AnyObject>>> = const { RefCell::new(None) };
+    }
+    OBSERVER.with(|slot| {
+        if slot.borrow().is_some() {
+            return;
         }
+        let app = app.clone();
+        let block = block2::RcBlock::new(
+            move |_: std::ptr::NonNull<objc2_foundation::NSNotification>| {
+                queue_capsule_sync(&app);
+            },
+        );
+        // AppKit announces screen/usable-area changes. No idle screen polling.
+        let name = NSString::from_str("NSApplicationDidChangeScreenParametersNotification");
+        let observer = unsafe {
+            NSNotificationCenter::defaultCenter().addObserverForName_object_queue_usingBlock(
+                Some(&name),
+                None,
+                None,
+                &block,
+            )
+        };
+        *slot.borrow_mut() = Some(observer.into());
     });
 }
 
@@ -4074,7 +4080,7 @@ fn toggle_autostart(app: &AppHandle) -> Result<AppConfig, Box<dyn Error>> {
     let next_enabled = !config.autostart;
     apply_autostart(app, next_enabled)?;
     config.autostart = next_enabled;
-    store.save_config(config.clone())?;
+    store.save_current_config(config.clone())?;
     Ok(config)
 }
 

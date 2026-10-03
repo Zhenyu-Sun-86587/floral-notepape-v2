@@ -15,6 +15,8 @@ pub mod macos_droplet;
 #[cfg(target_os = "macos")]
 pub mod macos_fluid;
 #[cfg(target_os = "macos")]
+pub mod macos_lifecycle;
+#[cfg(target_os = "macos")]
 pub mod macos_lock_overlay;
 #[cfg(target_os = "macos")]
 pub mod macos_material;
@@ -374,17 +376,23 @@ async fn linked_read(app: AppHandle, id: String) -> Result<linked::LinkedContent
 }
 
 #[tauri::command]
-fn linked_read_draft(id: String) -> Result<Option<linked::LinkedDraft>, AppError> {
-    linked::read_draft(&id)
+async fn linked_read_draft(id: String) -> Result<Option<linked::LinkedDraft>, AppError> {
+    run_store_task(move || linked::read_draft(&id)).await
 }
 
 #[tauri::command]
-fn linked_write_draft(
+async fn linked_write_draft(
+    window: tauri::WebviewWindow,
     id: String,
     content: Option<String>,
     base_revision: String,
+    discarded_content: Option<String>,
 ) -> Result<(), AppError> {
-    linked::write_draft(&id, content, base_revision)
+    let owner = window.label().to_owned();
+    run_store_task(move || {
+        linked::write_draft(&id, content, base_revision, discarded_content, owner)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -421,25 +429,33 @@ fn app_name() -> Result<String, AppError> {
 }
 
 #[tauri::command]
-fn notes_list() -> Result<Vec<NoteMetadata>, AppError> {
-    default_store()?.list_notes()
+async fn notes_list() -> Result<Vec<NoteMetadata>, AppError> {
+    run_store_task(|| default_store()?.list_notes()).await
 }
 
 #[tauri::command]
-fn notes_get(id: String) -> Result<Note, AppError> {
-    default_store()?.read_note(&id)
+async fn notes_get(id: String) -> Result<Note, AppError> {
+    run_store_task(move || default_store()?.read_note(&id)).await
 }
 
 #[tauri::command]
-fn notes_create(app: AppHandle, request: SaveNoteRequest) -> Result<Note, AppError> {
-    let note = default_store()?.create_note(request)?;
+async fn notes_create(app: AppHandle, request: SaveNoteRequest) -> Result<Note, AppError> {
+    let note = run_store_task(move || default_store()?.create_note(request)).await?;
     let _ = app.emit("notes-changed", ());
     Ok(note)
 }
 
 #[tauri::command]
-fn notes_update(app: AppHandle, id: String, request: SaveNoteRequest) -> Result<Note, AppError> {
-    let note = default_store()?.update_note(&id, request)?;
+async fn notes_update(
+    app: AppHandle,
+    id: String,
+    request: SaveNoteRequest,
+    expected_updated_at: Option<String>,
+) -> Result<Note, AppError> {
+    let note = run_store_task(move || {
+        default_store()?.update_note_checked(&id, request, expected_updated_at.as_deref())
+    })
+    .await?;
     let _ = app.emit("notes-changed", ());
     Ok(note)
 }
@@ -498,19 +514,18 @@ fn get_file_modified_time(path: String) -> Result<f64, AppError> {
 }
 
 #[tauri::command]
-fn save_external_file(path: String, content: String) -> Result<(), AppError> {
-    if let Some(parent) = PathBuf::from(&path).parent() {
-        std::fs::create_dir_all(parent).map_err(|e| AppError {
-            code: "io".into(),
-            message: e.to_string(),
-            details: Default::default(),
-        })?;
-    }
-    std::fs::write(&path, content).map_err(|e| AppError {
-        code: "io".into(),
-        message: e.to_string(),
-        details: Default::default(),
-    })
+fn save_external_file(
+    path: String,
+    content: String,
+    expected_content: String,
+    expected_revision: Option<String>,
+) -> Result<String, AppError> {
+    linked::save_unbound(
+        std::path::Path::new(&path),
+        &content,
+        &expected_content,
+        expected_revision.as_deref(),
+    )
 }
 
 #[tauri::command]
@@ -669,7 +684,7 @@ fn config_save_blocking(app: AppHandle, config: AppConfig) -> Result<AppConfig, 
             },
         }
     })?;
-    let saved = store.save_config(config)?;
+    let saved = store.save_current_config(config)?;
     #[cfg(target_os = "macos")]
     crate::macos_surface::refresh_config(&app, &saved.macos)?;
     if let Err(error) = desktop::refresh_shell_state(&app, &saved) {
@@ -843,6 +858,19 @@ fn config_migrate_data_dir(app: AppHandle, new_data_dir: String) -> Result<AppCo
     let config = new_store.load_config()?;
     let _ = app.emit("config-changed", &config);
     Ok(config)
+}
+
+// Filesystem operations can block on fsync or a storage lock.
+async fn run_store_task<T: Send + 'static>(
+    task: impl FnOnce() -> Result<T, AppError> + Send + 'static,
+) -> Result<T, AppError> {
+    tauri::async_runtime::spawn_blocking(task)
+        .await
+        .map_err(|error| AppError {
+            code: "storageTask".into(),
+            message: error.to_string(),
+            details: Default::default(),
+        })?
 }
 
 // Native shortcut operations wait for AppKit work; never run them on the IPC/UI thread.

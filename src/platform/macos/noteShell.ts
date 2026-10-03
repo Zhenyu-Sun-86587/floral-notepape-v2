@@ -14,6 +14,7 @@ export function useNativeNoteShell(props: NoteShellProps) {
   actions.current = props.actions;
   useEffect(() => {
     const off = listen<string>("native-note-action", ({ payload }) => {
+      if (document.body.inert) return;
       void Promise.resolve(actions.current[payload]?.()).catch(console.error);
     });
     return () => {
