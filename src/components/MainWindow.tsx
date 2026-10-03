@@ -1029,9 +1029,11 @@ export function MainWindow({
           const stillExists = loaded.some((n) => n.id === currentId);
           if (stillExists) {
             if (saveStateRef.current === "saved") {
+              const versionAtRead = loadedNoteVersion.current;
               void getNote(currentId)
                 .then((note) => {
                   if (isStale()) return;
+                  if (loadedNoteVersion.current !== versionAtRead) return;
                   if (selectedIdRef.current !== currentId) return;
                   if (saveStateRef.current !== "saved") {
                     return;
@@ -1188,10 +1190,12 @@ export function MainWindow({
       const bindingId = selectedExternalFile.bindingId;
       let active = true;
       const refresh = async () => {
+        const versionAtRead = externalRevisionRef.current;
         try {
           const linked = await readLinkedFile(bindingId);
           if (
             !active ||
+            externalRevisionRef.current !== versionAtRead ||
             selectedIdRef.current !== selectedExternalFile.id ||
             linked.revision === externalRevisionRef.current
           )

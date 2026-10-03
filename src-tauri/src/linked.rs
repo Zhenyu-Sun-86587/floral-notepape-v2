@@ -77,6 +77,8 @@ pub struct LinkedContent {
 pub struct LinkedDraft {
     pub content: Option<String>,
     pub base_revision: String,
+    #[serde(default)]
+    pub owner: String,
 }
 
 fn draft_path(id: &str) -> Result<PathBuf, AppError> {
@@ -117,11 +119,24 @@ pub fn write_draft(
     content: Option<String>,
     base_revision: String,
     discarded_content: Option<String>,
+    owner: String,
 ) -> Result<(), AppError> {
     let _guard = operation_lock()
         .lock()
         .map_err(|_| error("io", "外部文件绑定锁不可用"))?;
     let binding = lookup(&load_index(&index_path()?)?, id)?;
+    if let Some(previous) = read_draft(id)? {
+        if previous.owner != owner && previous.content.is_some() && previous.content != content {
+            // Keep the last draft of every editing window when another window
+            // takes over the shared recovery slot. No user text is discarded.
+            let path = draft_path(id)?;
+            let backup = path.with_file_name(format!(
+                "{id}.{}.recovery.json",
+                revision(previous.owner.as_bytes())
+            ));
+            write_linked_json(&backup, &previous)?;
+        }
+    }
     if content.is_none() {
         if let Some(draft) = read_draft(id)? {
             // A save completion from another window must not erase a newer
@@ -142,6 +157,7 @@ pub fn write_draft(
         &LinkedDraft {
             content,
             base_revision,
+            owner,
         },
     )
 }
@@ -595,6 +611,14 @@ fn save_file(
         file.write_all(&bytes)?;
         file.sync_all()?;
         drop(file);
+        // A slow disk or sync provider may change the original while the temp
+        // file is being flushed. Recheck immediately before replacement.
+        if !overwrite && revision(&read_external_bytes(path)?) != expected_revision {
+            return Err(error(
+                "externalConflict",
+                "原文件在保存期间发生变化，当前编辑已保留",
+            ));
+        }
         replace_file(&temp, path)?;
         Ok(())
     })();

@@ -353,9 +353,15 @@ export function NotePad({
     if (!initialBindingId) return undefined;
     let active = true;
     const refresh = () => {
+      const versionAtRead = linkedRevisionRef.current;
       void readLinkedFile(initialBindingId)
         .then((latest) => {
-          if (!active || latest.revision === linkedRevisionRef.current) return;
+          if (
+            !active ||
+            linkedRevisionRef.current !== versionAtRead ||
+            latest.revision === linkedRevisionRef.current
+          )
+            return;
           if (statusRef.current === "dirty" || statusRef.current === "saveFailed") {
             setLinkedConflict(latest);
             return;
@@ -660,6 +666,7 @@ export function NotePad({
     if (!initialBindingId || linkedClosingRef.current) return;
     linkedClosingRef.current = true;
     try {
+      await saveQueueRef.current;
       if (statusRef.current === "dirty" || statusRef.current === "saveFailed")
         await saveNoteRef.current();
       // 外部文件窗口必须销毁原生窗口；close() 会再次触发关闭监听，失败时还会留下透明遮挡层。
@@ -896,7 +903,8 @@ export function NotePad({
       ? `linked:${initialBindingId}`
       : `note:${editingNoteId ?? initialNoteId ?? ""}`;
     try {
-      if (statusRef.current === "dirty") await saveNote();
+      await saveQueueRef.current;
+      if (statusRef.current === "dirty" || statusRef.current === "saveFailed") await saveNote();
       await reportLockButtonBounds();
       const session = await getSurfaceSession(key);
       await saveSurfaceSession({ ...session, locked: true });

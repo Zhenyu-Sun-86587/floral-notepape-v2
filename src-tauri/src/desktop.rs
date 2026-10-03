@@ -1349,13 +1349,8 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
             save_surface_size(&webview);
             save_session_bounds(&webview);
         }
-        if !app_is_exiting(window.app_handle()) {
-            if let Some(key) = session_key_from_label(window.label()) {
-                let _ = crate::surface_sessions::mutate(&key, |session| {
-                    session.presentation = crate::surface_sessions::Presentation::Hidden;
-                });
-            }
-        }
+        // CloseRequested can be cancelled when saving fails. Presentation is
+        // committed by record_surface_close/recycle only after the editor saves.
     }
 
     if window.label() != MAIN_WINDOW_LABEL {
@@ -1780,7 +1775,9 @@ pub fn recycle_notepad_window(app: &AppHandle, label: &str) -> Result<(), AppErr
         .unwrap_or(false);
 
     if !recycled {
-        window.close()?;
+        // The frontend has completed its save handshake. Do not re-enter its
+        // CloseRequested handler recursively.
+        window.destroy()?;
     } else {
         set_webview_memory_usage_level(&window, true);
     }

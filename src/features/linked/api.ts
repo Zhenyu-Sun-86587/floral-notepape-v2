@@ -63,13 +63,27 @@ export function readLinkedDraft(id: string): Promise<LinkedDraft | null> {
   return invoke("linked_read_draft", { id });
 }
 
+const draftWrites = new Map<string, Promise<void>>();
+
 export function writeLinkedDraft(
   id: string,
   content: string | null,
   baseRevision: string,
   discardedContent?: string,
 ): Promise<void> {
-  return invoke("linked_write_draft", { id, content, baseRevision, discardedContent });
+  // Keep a window's edits and save-completion clears in submission order even
+  // when native storage work runs on different blocking-pool threads.
+  const write = (draftWrites.get(id) ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(() =>
+      invoke<void>("linked_write_draft", { id, content, baseRevision, discardedContent }),
+    );
+  draftWrites.set(id, write);
+  const release = () => {
+    if (draftWrites.get(id) === write) draftWrites.delete(id);
+  };
+  void write.then(release, release);
+  return write;
 }
 
 export function saveLinkedFile(

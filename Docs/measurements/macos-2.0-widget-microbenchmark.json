@@ -1,0 +1,22 @@
+{
+  "before": {
+    "warm_layout_ms": 0.02096416,
+    "page_count": 15,
+    "cold_layout_ms": 57.319292,
+    "read_ms": 0.033498582
+  },
+  "after": {
+    "page_count": 15,
+    "warm_layout_ms": 0.02078,
+    "cold_layout_ms": 59.401,
+    "read_ms": 0.033690416
+  },
+  "identical_rendering": true,
+  "baseline": "aab1a79",
+  "scope": "32 synthetic notes; median of 3 warm-process samples; native hot paths only",
+  "machine": {
+    "architecture": "arm64",
+    "macOS": "26.7.1"
+  },
+  "swift": "Apple Swift version 6.3.3 (swiftlang-6.3.3.1.3 clang-2100.1.1.101)\nTarget: arm64-apple-macosx26.0"
+}

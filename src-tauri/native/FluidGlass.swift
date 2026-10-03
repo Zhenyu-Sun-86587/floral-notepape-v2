@@ -293,15 +293,28 @@ private enum Fluid {
     static var status = "未启用流体玻璃"
     static var monitor: Timer?
     static var observers: [NSObjectProtocol] = []
+    static var workspaceObservers: [NSObjectProtocol] = []
+    static var sleeping = false
     static var retryAfter = 0.0
     static func needed() -> Set<CGDirectDisplayID> {
-        Set(views.values.compactMap {
+        if sleeping { return [] }
+        return Set(views.values.compactMap {
             guard $0.renderable, let window=$0.window else { return nil }
             return (window.screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
         })
     }
     static func watch() {
         guard monitor == nil else { return }
+        workspaceObservers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { _ in
+            sleeping = true
+            generation += 1; starting = false
+            prune()
+        })
+        workspaceObservers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in
+            sleeping = false
+            retryAfter = 0
+            start()
+        })
         for name in [NSWindow.didMoveNotification,NSWindow.didResizeNotification] {
             observers.append(NotificationCenter.default.addObserver(forName:name,object:nil,queue:.main) { note in
                 guard let window=note.object as? NSWindow else { return }
@@ -349,6 +362,8 @@ private enum Fluid {
         }
         if views.isEmpty { generation += 1; starting = false; status = "未启用流体玻璃"; monitor?.invalidate(); monitor=nil
             for token in observers { NotificationCenter.default.removeObserver(token) }; observers.removeAll()
+            for token in workspaceObservers { NSWorkspace.shared.notificationCenter.removeObserver(token) }; workspaceObservers.removeAll()
+            sleeping = false
         }
     }
 }
