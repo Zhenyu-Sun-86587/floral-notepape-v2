@@ -199,8 +199,19 @@ pub fn start(app: AppHandle) -> Result<(), AppError> {
                 )
             };
             match event {
-                Ok(Ok(event)) => {
+                Ok(Ok(mut event)) => {
                     if matches!(event.kind, EventKind::Access(_)) {
+                        continue;
+                    }
+                    let had_paths = !event.paths.is_empty();
+                    event.paths.retain(|path| {
+                        !path
+                            .file_name()
+                            .is_some_and(|name| name.to_string_lossy().starts_with(".hermes-"))
+                    });
+                    // Our atomic-write temp files must not trigger a complete
+                    // root scan. A rename containing the real destination stays.
+                    if had_paths && event.paths.is_empty() {
                         continue;
                     }
                     if matches!(
@@ -213,12 +224,6 @@ pub fn start(app: AppHandle) -> Result<(), AppError> {
                         rescan = true;
                     }
                     for path in event.paths {
-                        if path
-                            .file_name()
-                            .is_some_and(|name| name.to_string_lossy().starts_with(".hermes-"))
-                        {
-                            continue;
-                        }
                         if paths.len() < 4096 {
                             paths.insert(path);
                         } else {
