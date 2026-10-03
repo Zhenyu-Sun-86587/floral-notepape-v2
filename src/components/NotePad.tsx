@@ -178,6 +178,8 @@ export function NotePad({
   const [mode, setMode] = useState<OpenMode>("new");
   const [notes, setNotes] = useState<NoteMetadata[]>([]);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const editingNoteIdRef = useRef(editingNoteId);
+  editingNoteIdRef.current = editingNoteId;
   const linkedRevisionRef = useRef("");
   const linkedClosingRef = useRef(false);
   const [linkedConflict, setLinkedConflict] = useState<LinkedContent | null>(null);
@@ -1212,6 +1214,7 @@ export function NotePad({
       const previousTitle = titleValueRef.current;
       const note = await getNote(id);
       if (
+        (editingNoteIdRef.current ?? initialNoteId) !== id ||
         hasDraft() ||
         contentValueRef.current !== previousContent ||
         titleValueRef.current !== previousTitle
