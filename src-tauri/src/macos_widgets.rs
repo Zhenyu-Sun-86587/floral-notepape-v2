@@ -319,10 +319,36 @@ pub fn setup(app: &tauri::AppHandle) {
         });
     }
     std::thread::spawn(move || {
-        let _ = refresh();
-        while rx.recv().is_ok() {
+        let mut failed = refresh().is_err();
+        let mut retries = 0u32;
+        loop {
+            // Container creation or authorization may lag launch. Retry only
+            // after failure, with a bounded backoff; healthy idle apps sleep.
+            let event = if failed && retries < 5 {
+                match rx.recv_timeout(Duration::from_secs((2u64 << retries).min(30))) {
+                    Ok(()) => true,
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        retries += 1;
+                        false
+                    }
+                    Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                }
+            } else {
+                if rx.recv().is_err() {
+                    break;
+                }
+                true
+            };
+            if event {
+                retries = 0;
+            }
             // Coalesce bursts but still publish during continuous typing.
-            let deadline = Instant::now() + Duration::from_secs(2);
+            let deadline = Instant::now()
+                + if event {
+                    Duration::from_secs(2)
+                } else {
+                    Duration::ZERO
+                };
             while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
                 if rx
                     .recv_timeout(remaining.min(Duration::from_millis(500)))
@@ -331,9 +357,13 @@ pub fn setup(app: &tauri::AppHandle) {
                     break;
                 }
             }
-            if let Err(e) = refresh() {
-                eprintln!("widget snapshot: {e}");
-            }
+            failed = match refresh() {
+                Ok(()) => false,
+                Err(e) => {
+                    eprintln!("widget snapshot: {e}");
+                    true
+                }
+            };
         }
     });
 }

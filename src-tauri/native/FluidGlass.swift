@@ -137,6 +137,8 @@ private final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
         stream = nil
         texture = nil
         pixel = nil
+        if let cache { CVMetalTextureCacheFlush(cache, 0) }
+        cache = nil
     }
 }
 
@@ -336,7 +338,7 @@ private enum Fluid {
         guard !starting, !views.isEmpty, !required.isEmpty,
               required.contains(where: { captures[$0]?.active != true }),
               ProcessInfo.processInfo.systemUptime>=retryAfter else { return }
-        guard CGPreflightScreenCaptureAccess() else { status = "需要屏幕录制权限，当前使用弹性玻璃"; return }
+        guard CGPreflightScreenCaptureAccess() else { status = "需要屏幕录制权限，当前使用弹性玻璃"; retryAfter=ProcessInfo.processInfo.systemUptime+15; return }
         guard pipeline != nil else { status = "Metal 不可用，当前使用弹性玻璃"; return }
         starting = true
         let token = generation

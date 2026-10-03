@@ -842,7 +842,13 @@ impl NoteStore {
             if let Ok(content) =
                 fs::read_to_string(self.note_path_in_category(&note.file_name, &note.category))
             {
-                result.insert(note.id.clone(), (note.title.clone(), content));
+                result.insert(
+                    note.id.clone(),
+                    (
+                        note.title.chars().take(160).collect(),
+                        content.chars().take(4000).collect(),
+                    ),
+                );
             }
         }
         Ok(result)

@@ -34,15 +34,14 @@ private enum FolioWidgetActionInbox {
     }
     static func drain(_ inbox: URL) {
         guard let files = try? FileManager.default.contentsOfDirectory(at: inbox, includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey]) else { return }
-        for file in files.filter({ $0.pathExtension == "json" }).sorted(by: {
-            let left = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            let right = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-            return left < right
-        }).prefix(64) {
-            guard UUID(uuidString: file.deletingPathExtension().lastPathComponent) != nil else { continue }
+        let pending = files.compactMap { file -> (URL, URLResourceValues)? in
+            guard file.pathExtension == "json", UUID(uuidString: file.deletingPathExtension().lastPathComponent) != nil,
+                  let values = try? file.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]) else { return nil }
+            return (file, values)
+        }.sorted { ($0.1.contentModificationDate ?? .distantPast) < ($1.1.contentModificationDate ?? .distantPast) }
+        for (file, values) in pending.prefix(64) {
             defer { try? FileManager.default.removeItem(at: file) }
-            guard let values = try? file.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]),
-                  let date = values.contentModificationDate, Date().timeIntervalSince(date) < 86400,
+            guard let date = values.contentModificationDate, Date().timeIntervalSince(date) < 86400,
                   let size = values.fileSize, size <= 32768,
                   let data = try? Data(contentsOf: file), data.count <= 32768,
                   let json = String(data: data, encoding: .utf8) else { continue }
