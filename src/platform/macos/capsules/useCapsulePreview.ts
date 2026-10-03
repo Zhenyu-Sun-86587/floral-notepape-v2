@@ -216,7 +216,11 @@ export function useCapsulePreview() {
           throw new Error("便签已变化，请等待预览更新后重试");
         const next = toggleTaskMarker(latest.content, offset, checked);
         if (next == null) return;
-        await updateNote(id, { title: latest.title, category: latest.category, content: next });
+        await updateNote(
+          id,
+          { title: latest.title, category: latest.category, content: next },
+          latest.updatedAt,
+        );
       }
     } catch (cause) {
       setError(String(cause));

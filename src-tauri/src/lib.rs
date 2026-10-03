@@ -684,7 +684,7 @@ fn config_save_blocking(app: AppHandle, config: AppConfig) -> Result<AppConfig, 
             },
         }
     })?;
-    let saved = store.save_config(config)?;
+    let saved = store.save_current_config(config)?;
     #[cfg(target_os = "macos")]
     crate::macos_surface::refresh_config(&app, &saved.macos)?;
     if let Err(error) = desktop::refresh_shell_state(&app, &saved) {

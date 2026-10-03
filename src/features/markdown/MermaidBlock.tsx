@@ -33,6 +33,7 @@ export function MermaidBlock({ source }: { source: string }) {
     setResult({ source });
     void loadMermaid()
       .then(async (mermaid) => {
+        if (!active) return;
         const root = getComputedStyle(document.documentElement);
         const color = (key: string) => root.getPropertyValue(key).trim();
         mermaid.initialize({

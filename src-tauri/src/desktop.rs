@@ -1616,7 +1616,7 @@ fn toggle_close_to_tray(_app: &AppHandle) -> Result<AppConfig, Box<dyn Error>> {
     let store = default_store()?;
     let mut config = store.load_config()?;
     config.close_to_tray = !config.close_to_tray;
-    store.save_config(config.clone())?;
+    store.save_current_config(config.clone())?;
     Ok(config)
 }
 
@@ -1810,7 +1810,7 @@ fn save_surface_size(window: &tauri::WebviewWindow) {
     }
     config.surface_width = Some(w);
     config.surface_height = Some(h);
-    let _ = store.save_config(config);
+    let _ = store.save_current_config(config);
 }
 
 fn should_save_surface_size_before_close(label: &str) -> bool {
@@ -4080,7 +4080,7 @@ fn toggle_autostart(app: &AppHandle) -> Result<AppConfig, Box<dyn Error>> {
     let next_enabled = !config.autostart;
     apply_autostart(app, next_enabled)?;
     config.autostart = next_enabled;
-    store.save_config(config.clone())?;
+    store.save_current_config(config.clone())?;
     Ok(config)
 }
 

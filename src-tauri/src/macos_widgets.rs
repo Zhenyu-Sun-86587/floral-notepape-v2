@@ -115,7 +115,13 @@ fn refresh() -> Result<(), AppError> {
     }
     let store = default_store()?;
     let mut notes = Vec::new();
-    for key in selected()?.into_iter().take(32) {
+    let selection: Vec<_> = selected()?.into_iter().take(32).collect();
+    let ids: Vec<_> = selection
+        .iter()
+        .filter_map(|key| key.strip_prefix("note:"))
+        .collect();
+    let mut internal = store.widget_note_contents(&ids)?;
+    for key in selection {
         let Some((kind, id)) = key.split_once(':') else {
             continue;
         };
@@ -124,7 +130,7 @@ fn refresh() -> Result<(), AppError> {
             continue;
         }
         let note = match kind {
-            "note" => store.read_note(id).ok().map(|n| (n.title, n.content)),
+            "note" => internal.remove(id),
             "linked" => crate::linked::read(id).ok().map(|n| {
                 (
                     std::path::Path::new(&n.binding.path)

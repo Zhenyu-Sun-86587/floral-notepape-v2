@@ -261,7 +261,9 @@ export function NotePad({
   }, []);
 
   const loadedNoteVersion = useRef<string | undefined>(undefined);
+  const noteLoadEpoch = useRef(0);
   const applyNote = useCallback((note: Note) => {
+    noteLoadEpoch.current += 1;
     loadedNoteVersion.current = note.updatedAt;
     editingNoteIdRef.current = note.id;
     contentValueRef.current = note.content;
@@ -1043,7 +1045,16 @@ export function NotePad({
     try {
       await saveQueueRef.current;
       if (statusRef.current === "dirty" || statusRef.current === "saveFailed") await saveNote();
+      const epoch = ++noteLoadEpoch.current;
+      const contentAtRead = contentValueRef.current;
+      const titleAtRead = titleValueRef.current;
       const note = await getNote(noteId);
+      if (
+        epoch !== noteLoadEpoch.current ||
+        contentValueRef.current !== contentAtRead ||
+        titleValueRef.current !== titleAtRead
+      )
+        return;
       applyNote(note);
       await switchSurfaceMode("pad");
     } catch (error) {

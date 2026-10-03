@@ -691,9 +691,16 @@ export function MainWindow({
   const loadNote = useCallback(
     async (id: string) => {
       const epoch = loadEpoch.bump();
+      const contentAtRead = contentValueRef.current;
+      const titleAtRead = titleValueRef.current;
       const note = await getNote(id);
       // 加载期间用户又切换/加载了别的笔记，丢弃本次结果
-      if (!loadEpoch.isCurrent(epoch)) return;
+      if (
+        !loadEpoch.isCurrent(epoch) ||
+        contentValueRef.current !== contentAtRead ||
+        titleValueRef.current !== titleAtRead
+      )
+        return;
       applyNote(note);
       replaceNoteMetadata(note);
     },
@@ -782,7 +789,13 @@ export function MainWindow({
 
   const loadExternalFile = useCallback(
     async (filePath: string) => {
+      if (["dirty", "error", "saving"].includes(saveStateRef.current)) {
+        showToast("当前编辑尚未保存，请先保存后再打开外部文件", "warning");
+        return;
+      }
       const epoch = loadEpoch.bump();
+      const contentAtRead = contentValueRef.current;
+      const titleAtRead = titleValueRef.current;
       try {
         const binding = /\.(md|markdown)$/i.test(filePath) ? await bindLinkedFile(filePath) : null;
         const actualPath = binding?.path ?? filePath;
@@ -813,7 +826,12 @@ export function MainWindow({
           ];
         });
 
-        if (!loadEpoch.isCurrent(epoch)) return;
+        if (
+          !loadEpoch.isCurrent(epoch) ||
+          contentValueRef.current !== contentAtRead ||
+          titleValueRef.current !== titleAtRead
+        )
+          return;
         selectedIdRef.current = actualPath;
         titleValueRef.current = displayTitle;
         contentValueRef.current = fileContent;
@@ -1228,17 +1246,21 @@ export function MainWindow({
       };
     }
 
+    let polling = false;
+    let disposed = false;
     const interval = window.setInterval(async () => {
       // 窗口隐藏（托盘/最小化）时跳过探测，恢复可见后 1s 内自动追上
-      if (document.visibilityState === "hidden") return;
+      if (document.visibilityState === "hidden" || polling) return;
       if (Date.now() - lastExternalSaveRef.current < 2000) return;
+      if (saveStateRef.current !== "saved" && saveStateRef.current !== "idle") return;
+      polling = true;
       try {
         const mtime = await getFileModifiedTime(selectedExternalFile.filePath);
-        if (selectedIdRef.current !== selectedExternalFile.id) return;
+        if (disposed || selectedIdRef.current !== selectedExternalFile.id) return;
         if (mtime !== externalFileMtimeRef.current) {
           if (saveStateRef.current !== "saved" && saveStateRef.current !== "idle") return;
           const fileContent = await readExternalFile(selectedExternalFile.filePath);
-          if (selectedIdRef.current !== selectedExternalFile.id) return;
+          if (disposed || selectedIdRef.current !== selectedExternalFile.id) return;
           if (saveStateRef.current !== "saved" && saveStateRef.current !== "idle") return;
           externalFileMtimeRef.current = mtime;
           externalBaselineRef.current = fileContent;
@@ -1250,10 +1272,15 @@ export function MainWindow({
         }
       } catch {
         // file may have been deleted or become inaccessible
+      } finally {
+        polling = false;
       }
     }, 1000);
 
-    return () => window.clearInterval(interval);
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+    };
   }, [selectedExternalFile]);
 
   useEffect(() => {
@@ -1535,6 +1562,8 @@ export function MainWindow({
         }),
       );
       if (!confirmed) return;
+      await flushSettingsRef.current();
+      if (!(await saveCurrentNote())) return;
       const savedConfig = await migrateDataDir(dir);
       setSettingsConfig(savedConfig);
       setSavedDataDir(savedConfig.dataDir);
@@ -1674,6 +1703,8 @@ export function MainWindow({
 
     setIsLoading(true);
     const epoch = loadEpoch.bump();
+    const contentAtRead = contentValueRef.current;
+    const titleAtRead = titleValueRef.current;
     try {
       const linked = file.bindingId ? await readLinkedFile(file.bindingId) : null;
       const draft = file.bindingId ? await readLinkedDraft(file.bindingId) : null;
@@ -1684,7 +1715,12 @@ export function MainWindow({
         ? draft!.content!
         : (linked?.content ?? (await readExternalFile(file.filePath)));
       const mtime = linked ? 0 : await getFileModifiedTime(file.filePath);
-      if (!loadEpoch.isCurrent(epoch)) return;
+      if (
+        !loadEpoch.isCurrent(epoch) ||
+        contentValueRef.current !== contentAtRead ||
+        titleValueRef.current !== titleAtRead
+      )
+        return;
       selectedIdRef.current = id;
       titleValueRef.current = file.title;
       contentValueRef.current = fileContent;

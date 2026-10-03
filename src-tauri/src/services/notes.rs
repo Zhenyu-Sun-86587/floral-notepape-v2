@@ -761,6 +761,14 @@ impl NoteStore {
         Ok(config)
     }
 
+    pub fn save_current_config(&self, config: AppConfig) -> Result<AppConfig, AppError> {
+        let _guard = NOTE_STORE_LOCK
+            .lock()
+            .map_err(|_| AppError::new("io", "笔记保存锁不可用"))?;
+        self.ensure_current_data_dir()?;
+        self.save_config(config)
+    }
+
     pub fn save_config(&self, mut config: AppConfig) -> Result<AppConfig, AppError> {
         self.ensure_config_dir()?;
         config.data_dir = Some(self.data_dir.to_string_lossy().to_string());
@@ -808,6 +816,36 @@ impl NoteStore {
             word_count: metadata.word_count,
             content,
         })
+    }
+
+    /// Widget publication reads one consistent index rather than reparsing
+    /// configuration and metadata for every selected note.
+    #[cfg(target_os = "macos")]
+    pub fn widget_note_contents(
+        &self,
+        ids: &[&str],
+    ) -> Result<std::collections::HashMap<String, (String, String)>, AppError> {
+        if ids.is_empty() {
+            return Ok(Default::default());
+        }
+        let _guard = NOTE_STORE_LOCK
+            .lock()
+            .map_err(|_| AppError::new("io", "笔记保存锁不可用"))?;
+        self.ensure_storage()?;
+        let metadata = self.load_metadata()?;
+        let mut result = std::collections::HashMap::new();
+        for note in metadata
+            .notes
+            .iter()
+            .filter(|note| ids.contains(&note.id.as_str()))
+        {
+            if let Ok(content) =
+                fs::read_to_string(self.note_path_in_category(&note.file_name, &note.category))
+            {
+                result.insert(note.id.clone(), (note.title.clone(), content));
+            }
+        }
+        Ok(result)
     }
 
     pub fn create_note(&self, request: SaveNoteRequest) -> Result<Note, AppError> {
@@ -2520,6 +2558,7 @@ mod tests {
         let target = root.join("empty");
         let migrated = store.migrate_data_to(&target).unwrap();
         store.tracks_config = true; // Simulate an IPC store resolved before migration.
+        assert!(store.save_current_config(store.default_config()).is_err());
         let result = store.update_note(
             &note.id,
             SaveNoteRequest {
