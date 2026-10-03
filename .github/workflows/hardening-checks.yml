@@ -1,6 +1,8 @@
 name: Windows compatibility checks
 on:
   workflow_dispatch:
+  push:
+    branches: [codex/macos-2.0-hardening]
 permissions:
   contents: read
 jobs:
