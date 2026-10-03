@@ -240,11 +240,20 @@ struct FolioNoteWidget: Widget {
     let slot: Int
     init() { self.slot = 1 }
     init(slot: Int) { self.slot = slot }
+    private var displayName: LocalizedStringKey {
+        // WidgetKit rejects formatted/interpolated configuration labels at runtime.
+        switch slot {
+        case 2: return "笺影便签 2"
+        case 3: return "笺影便签 3"
+        case 4: return "笺影便签 4"
+        default: return "笺影便签 1"
+        }
+    }
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: slot == 1 ? "FolioNote" : "FolioNote\(slot)", provider: NoteProvider(slot: slot)) { entry in
             NoteWidgetView(entry: entry)
         }
-        .configurationDisplayName("笺影便签 \(slot)")
+        .configurationDisplayName(displayName)
         .description("显示 Markdown 便签；点击段落复制文字，支持翻页和复制当前页。尺寸由系统管理。")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge])
     }
