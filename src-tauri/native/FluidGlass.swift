@@ -296,7 +296,7 @@ private enum Fluid {
     static var retryAfter = 0.0
     static func needed() -> Set<CGDirectDisplayID> {
         Set(views.values.compactMap {
-            guard let window=$0.window, window.isVisible, window.isOnActiveSpace, !window.isMiniaturized else { return nil }
+            guard $0.renderable, let window=$0.window else { return nil }
             return (window.screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
         })
     }

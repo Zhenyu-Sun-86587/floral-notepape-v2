@@ -18,8 +18,10 @@ private enum FolioWidgetActionInbox {
             let watcher = DispatchSource.makeFileSystemObjectSource(fileDescriptor: descriptor, eventMask: [.write, .delete, .rename], queue: queue)
             watcher.setEventHandler {
                 if !watcher.data.intersection([.delete, .rename]).isEmpty {
+                    watcher.setEventHandler(handler: nil)
                     watcher.cancel()
                     source = nil
+                    watch(container)
                     return
                 }
                 drain(inbox)
@@ -50,7 +52,7 @@ private final class FolioURLHandler: NSObject {
     @objc func handle(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
         // Consume legacy widget links without opening any note. Old archived
         // timelines can retain folio://note/... until WidgetKit refreshes them.
-        let scheme = FolioWidgetStore.privateContainerIdentifier == nil ? "folio" : "folio-private"
+        let scheme = FolioWidgetStore.urlScheme
         guard let url = event.paramDescriptor(forKeyword: 0x2D2D2D2D)?.stringValue,
               url.hasPrefix(scheme + "://widget-open/") else { return }
         url.withCString { callback?($0) }

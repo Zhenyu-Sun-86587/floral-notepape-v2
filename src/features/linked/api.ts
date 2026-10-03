@@ -67,8 +67,9 @@ export function writeLinkedDraft(
   id: string,
   content: string | null,
   baseRevision: string,
+  discardedContent?: string,
 ): Promise<void> {
-  return invoke("linked_write_draft", { id, content, baseRevision });
+  return invoke("linked_write_draft", { id, content, baseRevision, discardedContent });
 }
 
 export function saveLinkedFile(

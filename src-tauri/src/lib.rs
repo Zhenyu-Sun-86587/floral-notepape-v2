@@ -15,6 +15,8 @@ pub mod macos_droplet;
 #[cfg(target_os = "macos")]
 pub mod macos_fluid;
 #[cfg(target_os = "macos")]
+pub mod macos_lifecycle;
+#[cfg(target_os = "macos")]
 pub mod macos_lock_overlay;
 #[cfg(target_os = "macos")]
 pub mod macos_material;
@@ -383,8 +385,9 @@ fn linked_write_draft(
     id: String,
     content: Option<String>,
     base_revision: String,
+    discarded_content: Option<String>,
 ) -> Result<(), AppError> {
-    linked::write_draft(&id, content, base_revision)
+    linked::write_draft(&id, content, base_revision, discarded_content)
 }
 
 #[tauri::command]
@@ -438,8 +441,14 @@ fn notes_create(app: AppHandle, request: SaveNoteRequest) -> Result<Note, AppErr
 }
 
 #[tauri::command]
-fn notes_update(app: AppHandle, id: String, request: SaveNoteRequest) -> Result<Note, AppError> {
-    let note = default_store()?.update_note(&id, request)?;
+fn notes_update(
+    app: AppHandle,
+    id: String,
+    request: SaveNoteRequest,
+    expected_updated_at: Option<String>,
+) -> Result<Note, AppError> {
+    let note =
+        default_store()?.update_note_checked(&id, request, expected_updated_at.as_deref())?;
     let _ = app.emit("notes-changed", ());
     Ok(note)
 }
@@ -498,19 +507,18 @@ fn get_file_modified_time(path: String) -> Result<f64, AppError> {
 }
 
 #[tauri::command]
-fn save_external_file(path: String, content: String) -> Result<(), AppError> {
-    if let Some(parent) = PathBuf::from(&path).parent() {
-        std::fs::create_dir_all(parent).map_err(|e| AppError {
-            code: "io".into(),
-            message: e.to_string(),
-            details: Default::default(),
-        })?;
-    }
-    std::fs::write(&path, content).map_err(|e| AppError {
-        code: "io".into(),
-        message: e.to_string(),
-        details: Default::default(),
-    })
+fn save_external_file(
+    path: String,
+    content: String,
+    expected_content: String,
+    expected_revision: Option<String>,
+) -> Result<String, AppError> {
+    linked::save_unbound(
+        std::path::Path::new(&path),
+        &content,
+        &expected_content,
+        expected_revision.as_deref(),
+    )
 }
 
 #[tauri::command]

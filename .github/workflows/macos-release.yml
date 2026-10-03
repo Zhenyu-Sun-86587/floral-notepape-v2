@@ -36,7 +36,10 @@ jobs:
         run: |
           xcodebuild -version
           npm ci
-          cargo test --manifest-path src-tauri/Cargo.toml macos_widgets::tests --lib
+          npm test
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
+          swiftc -O src-tauri/native/widgets/Shared.swift src-tauri/native/widgets/Markdown.swift src-tauri/native/tests/WidgetMarkdown.swift -o "$RUNNER_TEMP/widget-regression"
+          "$RUNNER_TEMP/widget-regression"
           npm run tauri build -- --config src-tauri/tauri.macos.conf.json --bundles app
           python3 scripts/build-macos-widgets.py --compile-only
           python3 scripts/build-private-container-widgets.py --production --app src-tauri/target/release/bundle/macos/Folio.app --prebuilt-extension local-build/widget-ci/FolioWidgets.appex

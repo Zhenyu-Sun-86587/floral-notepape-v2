@@ -78,6 +78,9 @@ pub fn status() -> Result<Status, AppError> {
     })
 }
 pub fn select(keys: Vec<String>) -> Result<Status, AppError> {
+    let guard = SNAPSHOT_WRITE_LOCK
+        .lock()
+        .map_err(|_| error("小组件快照锁不可用"))?;
     let s = status()?;
     if !s.available {
         return Err(error("当前安装包尚未配置 WidgetKit 扩展与数据容器"));
@@ -92,6 +95,7 @@ pub fn select(keys: Vec<String>) -> Result<Status, AppError> {
         &default_store()?.config_dir().join("widget-selection.json"),
         &keys,
     )?;
+    drop(guard);
     refresh()?;
     status()
 }
@@ -176,16 +180,27 @@ fn apply_task(content: &str, change: &TaskChange) -> Result<String, AppError> {
     if content.chars().take(4000).collect::<String>() != change.expected_content {
         return Err(error("便签已变化，请刷新小组件后重试"));
     }
+    if change.line >= change.expected_content.split_inclusive('\n').count() {
+        return Err(error("待办不在已发布快照内"));
+    }
     let mut offset = 0;
-    let mut fenced = false;
+    let mut fence: Option<(u8, usize)> = None;
     for (index, raw) in content.split_inclusive('\n').enumerate() {
         let trimmed = raw.trim_start();
-        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
-            fenced = !fenced;
+        let bytes = trimmed.as_bytes();
+        if let Some(&marker @ (b'`' | b'~')) = bytes.first() {
+            let length = bytes.iter().take_while(|&&b| b == marker).count();
+            if let Some((open, count)) = fence {
+                if marker == open && length >= count && trimmed[length..].trim().is_empty() {
+                    fence = None;
+                }
+            } else if length >= 3 {
+                fence = Some((marker, length));
+            }
         }
         if index == change.line {
             let marker = trimmed.as_bytes();
-            if fenced
+            if fence.is_some()
                 || marker.len() < 6
                 || !matches!(marker[0], b'-' | b'*' | b'+')
                 || marker[1..3] != *b" ["
@@ -213,6 +228,10 @@ extern "C" fn task_change(pointer: *const std::ffi::c_char) {
     }
     let bytes = unsafe { CStr::from_ptr(pointer) }.to_bytes();
     let result = (|| -> Result<(), AppError> {
+        // Selection revocation and task application are one ordered boundary.
+        let _guard = SNAPSHOT_WRITE_LOCK
+            .lock()
+            .map_err(|_| error("小组件快照锁不可用"))?;
         if bytes.len() > 32768 {
             return Err(error("小组件操作过大"));
         }
@@ -315,6 +334,25 @@ pub fn setup(app: &tauri::AppHandle) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn tasks_reject_mixed_fences_and_lines_outside_published_prefix() {
+        let content = "````\n```\n- [ ] code\n````\n- [ ] real";
+        let mut change = super::TaskChange {
+            note_key: String::new(),
+            expected_content: content.into(),
+            line: 2,
+            checked: true,
+        };
+        assert!(super::apply_task(content, &change).is_err());
+        change.line = 4;
+        assert!(super::apply_task(content, &change)
+            .unwrap()
+            .ends_with("- [x] real"));
+        let long = format!("{}\n- [ ] unpublished", "a".repeat(4000));
+        change.expected_content = "a".repeat(4000);
+        change.line = 1;
+        assert!(super::apply_task(&long, &change).is_err());
+    }
     #[test]
     fn task_update_preserves_other_content_and_rejects_stale_or_code_lines() {
         let content = "# 中文\r\n- [ ] 重复\r\n- [ ] 重复\r\n尾部";

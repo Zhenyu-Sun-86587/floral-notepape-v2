@@ -1385,8 +1385,13 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
         }
         MainWindowCloseAction::ExitApp => {
             api.prevent_close();
-            mark_app_exiting(window.app_handle());
-            window.app_handle().exit(0);
+            #[cfg(target_os = "macos")]
+            crate::macos_lifecycle::request_quit(window.app_handle());
+            #[cfg(not(target_os = "macos"))]
+            {
+                mark_app_exiting(window.app_handle());
+                window.app_handle().exit(0);
+            }
         }
     }
 }
@@ -1536,8 +1541,13 @@ fn handle_tray_menu_event(app: &AppHandle, id: &str) -> Result<(), Box<dyn Error
             let _ = app.emit("config-changed", &config);
         }
         Some(TrayMenuAction::Quit) => {
-            mark_app_exiting(app);
-            app.exit(0);
+            #[cfg(target_os = "macos")]
+            crate::macos_lifecycle::request_quit(app);
+            #[cfg(not(target_os = "macos"))]
+            {
+                mark_app_exiting(app);
+                app.exit(0);
+            }
         }
         None => {}
     }
@@ -1577,8 +1587,13 @@ fn handle_app_menu_event(app: &AppHandle, id: &str) -> Result<(), Box<dyn Error>
     match app_menu_action(id) {
         Some(AppMenuAction::ShowAboutPanel) => open_about_panel(app)?,
         Some(AppMenuAction::Quit) => {
-            mark_app_exiting(app);
-            app.exit(0);
+            #[cfg(target_os = "macos")]
+            crate::macos_lifecycle::request_quit(app);
+            #[cfg(not(target_os = "macos"))]
+            {
+                mark_app_exiting(app);
+                app.exit(0);
+            }
         }
         None => {}
     }
@@ -2610,38 +2625,32 @@ pub async fn run_capsule_task<T: Send + 'static>(
 
 #[cfg(target_os = "macos")]
 fn watch_capsule_screens(app: &AppHandle) {
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let mut previous = String::new();
-        while !app_is_exiting(&app) {
-            let handle = app.clone();
-            let signature = tauri::async_runtime::spawn_blocking(move || {
-                handle.available_monitors().map(|monitors| {
-                    monitors
-                        .iter()
-                        .map(|m| {
-                            format!(
-                                "{:?}:{:?}:{:?}:{:?}:{}",
-                                m.name(),
-                                m.position(),
-                                m.size(),
-                                m.work_area(),
-                                m.scale_factor()
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join("|")
-                })
-            })
-            .await;
-            if let Ok(Ok(signature)) = signature {
-                if !previous.is_empty() && signature != previous {
-                    queue_capsule_sync(&app);
-                }
-                previous = signature;
-            }
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    use objc2_foundation::{NSNotificationCenter, NSString};
+    use std::cell::RefCell;
+    thread_local! {
+        static OBSERVER: RefCell<Option<objc2::rc::Retained<objc2::runtime::AnyObject>>> = const { RefCell::new(None) };
+    }
+    OBSERVER.with(|slot| {
+        if slot.borrow().is_some() {
+            return;
         }
+        let app = app.clone();
+        let block = block2::RcBlock::new(
+            move |_: std::ptr::NonNull<objc2_foundation::NSNotification>| {
+                queue_capsule_sync(&app);
+            },
+        );
+        // AppKit announces screen/usable-area changes. No idle screen polling.
+        let name = NSString::from_str("NSApplicationDidChangeScreenParametersNotification");
+        let observer = unsafe {
+            NSNotificationCenter::defaultCenter().addObserverForName_object_queue_usingBlock(
+                Some(&name),
+                None,
+                None,
+                &block,
+            )
+        };
+        *slot.borrow_mut() = Some(observer.into());
     });
 }
 

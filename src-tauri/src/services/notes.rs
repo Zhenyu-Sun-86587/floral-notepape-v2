@@ -1,4 +1,4 @@
-use crate::json_io::write_json_atomic;
+use crate::json_io::{write_bytes_atomic, write_json_atomic};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -798,6 +798,7 @@ impl NoteStore {
     }
 
     pub fn create_note(&self, request: SaveNoteRequest) -> Result<Note, AppError> {
+        self.validate_category_path(&request.category)?;
         #[cfg(target_os = "macos")]
         let _guard = MAC_NOTE_UPDATE_LOCK
             .lock()
@@ -823,7 +824,7 @@ impl NoteStore {
             preview: preview(&request.content),
         };
 
-        fs::write(&note_path, &request.content)?;
+        write_bytes_atomic(&note_path, request.content.as_bytes())?;
         let mut metadata_file = self.load_metadata()?;
         metadata_file.notes.push(metadata.clone());
         self.save_metadata(&metadata_file)?;
@@ -841,10 +842,32 @@ impl NoteStore {
     }
 
     pub fn update_note(&self, id: &str, request: SaveNoteRequest) -> Result<Note, AppError> {
+        self.update_note_checked(id, request, None)
+    }
+
+    pub fn update_note_checked(
+        &self,
+        id: &str,
+        request: SaveNoteRequest,
+        expected_updated_at: Option<&str>,
+    ) -> Result<Note, AppError> {
         #[cfg(target_os = "macos")]
         let _guard = MAC_NOTE_UPDATE_LOCK
             .lock()
             .map_err(|_| AppError::new("io", "笔记保存锁不可用"))?;
+        if let Some(expected) = expected_updated_at {
+            let current = self.read_note(id)?;
+            if chrono::DateTime::parse_from_rfc3339(expected)
+                .ok()
+                .map(|date| date.with_timezone(&Utc))
+                != Some(current.updated_at)
+            {
+                return Err(AppError::new(
+                    "noteConflict",
+                    "笔记已在其他窗口或小组件中变化，当前编辑已保留；请复制草稿后重新加载笔记",
+                ));
+            }
+        }
         self.update_note_inner(id, request)
     }
 
@@ -870,6 +893,7 @@ impl NoteStore {
     }
 
     fn update_note_inner(&self, id: &str, request: SaveNoteRequest) -> Result<Note, AppError> {
+        self.validate_category_path(&request.category)?;
         self.ensure_storage()?;
         let mut metadata_file = self.load_metadata()?;
         let note = metadata_file
@@ -889,7 +913,7 @@ impl NoteStore {
         if let Some(parent) = new_path.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::write(&new_path, &request.content)?;
+        write_bytes_atomic(&new_path, request.content.as_bytes())?;
         let old_path = self.note_path_in_category(&old_file_name, &old_category);
         let replaced_path =
             (old_file_name != new_file_name || old_category != new_category).then_some(old_path);
@@ -1061,6 +1085,7 @@ impl NoteStore {
     }
 
     pub fn create_category(&self, name: &str) -> Result<(), AppError> {
+        self.validate_category_path(name)?;
         let name = name.trim();
         if name.is_empty() {
             return Err(AppError::category_name_empty());
@@ -1075,6 +1100,15 @@ impl NoteStore {
     }
 
     pub fn rename_category(&self, old_name: &str, new_name: &str) -> Result<(), AppError> {
+        if old_name.is_empty() || new_name.is_empty() {
+            return Err(AppError::category_name_empty());
+        }
+        self.validate_category_path(old_name)?;
+        self.validate_category_path(new_name)?;
+        #[cfg(target_os = "macos")]
+        let _guard = MAC_NOTE_UPDATE_LOCK
+            .lock()
+            .map_err(|_| AppError::new("io", "笔记保存锁不可用"))?;
         let new_name = new_name.trim();
         if new_name.is_empty() {
             return Err(AppError::category_name_empty());
@@ -1108,6 +1142,14 @@ impl NoteStore {
     }
 
     pub fn delete_category(&self, name: &str) -> Result<(), AppError> {
+        if name.is_empty() {
+            return Err(AppError::category_name_empty());
+        }
+        self.validate_category_path(name)?;
+        #[cfg(target_os = "macos")]
+        let _guard = MAC_NOTE_UPDATE_LOCK
+            .lock()
+            .map_err(|_| AppError::new("io", "笔记保存锁不可用"))?;
         let notes_dir = self.notes_dir();
         let category_path = notes_dir.join(name);
         let dir_exists = category_path.exists();
@@ -1166,6 +1208,11 @@ impl NoteStore {
         id: &str,
         new_category: &str,
     ) -> Result<NoteMetadata, AppError> {
+        self.validate_category_path(new_category)?;
+        #[cfg(target_os = "macos")]
+        let _guard = MAC_NOTE_UPDATE_LOCK
+            .lock()
+            .map_err(|_| AppError::new("io", "笔记保存锁不可用"))?;
         self.ensure_storage()?;
         let mut metadata_file = self.load_metadata()?;
         let note = metadata_file
@@ -1362,6 +1409,22 @@ impl NoteStore {
 
     fn notes_dir(&self) -> PathBuf {
         self.data_dir.join("notes")
+    }
+
+    fn validate_category_path(&self, category: &str) -> Result<(), AppError> {
+        if category.is_empty() {
+            return Ok(());
+        }
+        if category == "." || category == ".." || category.contains(['/', '\\', ':']) {
+            return Err(AppError::category_name_invalid_chars());
+        }
+        let path = self.notes_dir().join(category);
+        if path.exists()
+            && !fs::canonicalize(&path)?.starts_with(fs::canonicalize(self.notes_dir())?)
+        {
+            return Err(AppError::new("unsafePath", "分类不能指向笔记目录之外"));
+        }
+        Ok(())
     }
 
     fn note_path_in_category(&self, file_name: &str, category: &str) -> PathBuf {
@@ -1860,6 +1923,45 @@ mod tests {
                 .expect("subsequent read")
                 .tile_render_markdown
         );
+    }
+
+    #[test]
+    fn category_inputs_cannot_escape_note_storage() {
+        let store = test_store("category-boundary");
+        for category in ["..", ".", "../other", "/tmp/other", "x\\y"] {
+            assert!(store
+                .create_note(SaveNoteRequest {
+                    title: "safe".into(),
+                    content: "text".into(),
+                    category: category.into()
+                })
+                .is_err());
+            assert!(store.rename_category(category, "safe").is_err());
+        }
+    }
+
+    #[test]
+    fn stale_editor_cannot_overwrite_a_newer_note() {
+        let store = test_store("stale-editor");
+        let request = SaveNoteRequest {
+            title: "原文".into(),
+            content: "- [ ] 待办".into(),
+            category: String::new(),
+        };
+        let first = store.create_note(request.clone()).unwrap();
+        let version = first.updated_at.to_rfc3339();
+        let mut updated = request.clone();
+        updated.content = "- [x] 待办".into();
+        let second = store
+            .update_note_checked(&first.id, updated.clone(), Some(&version))
+            .unwrap();
+        assert!(store
+            .update_note_checked(&first.id, request, Some(&version))
+            .is_err());
+        assert_eq!(store.read_note(&first.id).unwrap().content, updated.content);
+        assert!(store
+            .update_note_checked(&first.id, updated, Some(&second.updated_at.to_rfc3339()))
+            .is_ok());
     }
 
     #[test]

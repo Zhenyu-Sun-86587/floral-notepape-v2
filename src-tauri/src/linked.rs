@@ -116,11 +116,27 @@ pub fn write_draft(
     id: &str,
     content: Option<String>,
     base_revision: String,
+    discarded_content: Option<String>,
 ) -> Result<(), AppError> {
     let _guard = operation_lock()
         .lock()
         .map_err(|_| error("io", "外部文件绑定锁不可用"))?;
-    lookup(&load_index(&index_path()?)?, id)?;
+    let binding = lookup(&load_index(&index_path()?)?, id)?;
+    if content.is_none() {
+        if let Some(draft) = read_draft(id)? {
+            // A save completion from another window must not erase a newer
+            // draft. Clear only text already present in the original file.
+            let disk = read_external_bytes(Path::new(&binding.path))?;
+            let disk = std::str::from_utf8(&disk)
+                .map_err(|_| error("invalidEncoding", "外部文件必须使用 UTF-8 编码"))?;
+            let explicitly_discarded = discarded_content
+                .as_deref()
+                .is_some_and(|text| draft.content.as_deref() == Some(text));
+            if !explicitly_discarded && !draft_matches_saved(draft.content.as_deref(), disk) {
+                return Ok(());
+            }
+        }
+    }
     write_linked_json(
         &draft_path(id)?,
         &LinkedDraft {
@@ -128,6 +144,11 @@ pub fn write_draft(
             base_revision,
         },
     )
+}
+
+fn draft_matches_saved(draft: Option<&str>, saved: &str) -> bool {
+    let normalize = |text: &str| text.trim_start_matches('\u{feff}').replace("\r\n", "\n");
+    draft.is_none_or(|text| normalize(text) == normalize(saved))
 }
 
 pub(crate) fn write_linked_json<T: Serialize>(path: &Path, value: &T) -> Result<(), AppError> {
@@ -195,6 +216,17 @@ fn lookup(index: &LinkedIndex, id: &str) -> Result<LinkedBinding, AppError> {
         .ok_or_else(|| error("bindingNotFound", "找不到外部文件绑定"))
 }
 
+fn same_path(left: &str, right: &str) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        left.eq_ignore_ascii_case(right)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        left == right
+    }
+}
+
 pub fn bind(path: &str) -> Result<LinkedBinding, AppError> {
     let canonical = fs::canonicalize(path)?;
     if !canonical.is_file()
@@ -218,7 +250,7 @@ pub fn bind(path: &str) -> Result<LinkedBinding, AppError> {
     if let Some(found) = index
         .bindings
         .iter()
-        .find(|item| item.path.eq_ignore_ascii_case(&canonical))
+        .find(|item| same_path(&item.path, &canonical))
     {
         return Ok(found.clone());
     }
@@ -259,7 +291,7 @@ pub fn bind_root(path: &str, recursive: bool) -> Result<LinkedRoot, AppError> {
     if let Some(found) = index
         .roots
         .iter_mut()
-        .find(|item| item.path.eq_ignore_ascii_case(&canonical))
+        .find(|item| same_path(&item.path, &canonical))
     {
         if found.recursive != recursive {
             found.recursive = recursive;
@@ -362,11 +394,11 @@ pub fn scan_roots() -> Result<Vec<LinkedBinding>, AppError> {
             if index
                 .excluded_paths
                 .iter()
-                .any(|item| item.eq_ignore_ascii_case(&file))
+                .any(|item| same_path(item, &file))
                 || index
                     .bindings
                     .iter()
-                    .any(|item| item.path.eq_ignore_ascii_case(&file))
+                    .any(|item| same_path(&item.path, &file))
             {
                 continue;
             }
@@ -495,6 +527,24 @@ pub fn save(
     )
 }
 
+pub(crate) fn save_unbound(
+    path: &Path,
+    content: &str,
+    expected: &str,
+    expected_revision: Option<&str>,
+) -> Result<String, AppError> {
+    let _guard = operation_lock()
+        .lock()
+        .map_err(|_| error("io", "外部文件绑定锁不可用"))?;
+    let path = fs::canonicalize(path)?;
+    save_file(
+        &path,
+        content,
+        expected_revision.unwrap_or(&revision(expected.as_bytes())),
+        false,
+    )
+}
+
 fn save_file(
     path: &Path,
     content: &str,
@@ -538,6 +588,7 @@ fn save_file(
             .write(true)
             .create_new(true)
             .open(&temp)?;
+        file.set_permissions(fs::metadata(path)?.permissions())?;
         file.write_all(&bytes)?;
         file.sync_all()?;
         drop(file);
@@ -554,6 +605,13 @@ fn save_file(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clearing_saved_draft_preserves_newer_or_other_window_edits() {
+        assert!(draft_matches_saved(Some("原文\n"), "\u{feff}原文\r\n"));
+        assert!(!draft_matches_saved(Some("新草稿"), "原文"));
+        assert!(!draft_matches_saved(Some(""), "原文"));
+    }
 
     #[test]
     fn transient_read_retries_but_permanent_errors_stop() {
@@ -588,6 +646,33 @@ mod tests {
             |_| panic!("权限错误不应重试"),
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn missing_external_file_is_not_recreated_by_a_stale_save() {
+        let dir = std::env::temp_dir().join(format!("folio-missing-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("Missing.md");
+        assert!(save_file(&path, "local", &revision(b"old"), false).is_err());
+        assert!(!path.exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn external_atomic_save_preserves_file_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("folio-mode-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("Private.md");
+        fs::write(&path, "old").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        save_file(&path, "new", &revision(b"old"), false).unwrap();
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

@@ -48,11 +48,23 @@ enum WidgetMarkdown {
         let height = max(24, height)
         var pages: [[WidgetMarkdownLine]] = [[]]
         var used: CGFloat = 0
-        var fenced = false
+        var fence: (marker: Character, count: Int)?
         var nextID = 0
         for (lineIndex, raw) in content.prefix(4000).replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n").enumerated() {
             var line = raw.trimmingCharacters(in: .whitespaces)
-            if line.hasPrefix("```") || line.hasPrefix("~~~") { fenced.toggle(); continue }
+            if let marker = line.first, marker == "`" || marker == "~" {
+                let count = line.prefix(while: { $0 == marker }).count
+                if let open = fence {
+                    if marker == open.marker && count >= open.count && line.dropFirst(count).trimmingCharacters(in: .whitespaces).isEmpty {
+                        fence = nil
+                        continue
+                    }
+                } else if count >= 3 {
+                    fence = (marker, count)
+                    continue
+                }
+            }
+            let fenced = fence != nil
             let headingPrefix = line.prefix(while: { $0 == "#" }).count
             let heading = !fenced && (1...6).contains(headingPrefix) && line.dropFirst(headingPrefix).hasPrefix(" ")
             let quote = !fenced && line.hasPrefix(">")

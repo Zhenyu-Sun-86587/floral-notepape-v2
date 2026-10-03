@@ -24,6 +24,15 @@ function App() {
   const activeView = route.view;
 
   useEffect(() => {
+    const off = listen<boolean>("app://exit-freeze", ({ payload }) => {
+      document.body.inert = payload;
+    });
+    return () => {
+      void off.then((dispose) => dispose());
+    };
+  }, []);
+
+  useEffect(() => {
     let cleanup = () => {};
     getConfig()
       .then((config) => {

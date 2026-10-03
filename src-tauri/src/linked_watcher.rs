@@ -59,7 +59,7 @@ fn watch(path: &Path, mode: RecursiveMode) -> Result<(), AppError> {
         details: Default::default(),
     })?;
     if let Some(previous) = state.watched.get(path) {
-        if *previous == mode {
+        if *previous == mode || *previous == RecursiveMode::Recursive {
             return Ok(());
         }
         state.watcher.unwatch(path).map_err(watcher_error)?;
@@ -104,14 +104,22 @@ pub fn sync_watches() -> Result<(), AppError> {
     let mut desired = HashMap::new();
     for binding in linked::list()? {
         if let Some(parent) = Path::new(&binding.path)
-            .parent()
-            .filter(|path| path.is_dir())
+            .ancestors()
+            .skip(1)
+            .find(|path| path.is_dir())
         {
             desired.insert(parent.to_path_buf(), RecursiveMode::NonRecursive);
         }
     }
     for root in linked::list_roots()? {
         let path = PathBuf::from(&root.path);
+        // Watch the parent as well: atomic replacement/remount invalidates
+        // the old directory watch. Missing trees recover on ancestor events.
+        if let Some(parent) = path.ancestors().skip(1).find(|p| p.is_dir()) {
+            desired
+                .entry(parent.to_path_buf())
+                .or_insert(RecursiveMode::NonRecursive);
+        }
         if path.is_dir() {
             desired.insert(
                 path,
@@ -134,9 +142,9 @@ pub fn sync_watches() -> Result<(), AppError> {
         })?;
         state
             .watched
-            .keys()
-            .filter(|path| !desired.contains_key(*path))
-            .cloned()
+            .iter()
+            .filter(|(path, mode)| desired.get(*path) != Some(*mode))
+            .map(|(path, _)| path.clone())
             .collect::<Vec<_>>()
     };
     for path in stale {
@@ -155,8 +163,22 @@ pub fn sync_watches() -> Result<(), AppError> {
 }
 
 pub fn start(app: AppHandle) -> Result<(), AppError> {
-    let (sender, receiver) = mpsc::channel::<notify::Result<Event>>();
-    let watcher = notify::recommended_watcher(sender).map_err(watcher_error)?;
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+    let (sender, receiver) = mpsc::sync_channel::<notify::Result<Event>>(256);
+    let overflow = Arc::new(AtomicBool::new(false));
+    let dropped = overflow.clone();
+    let watcher = notify::recommended_watcher(move |event: notify::Result<Event>| {
+        if matches!(&event, Ok(event) if matches!(event.kind, EventKind::Access(_))) {
+            return;
+        }
+        if let Err(mpsc::TrySendError::Full(_)) = sender.try_send(event) {
+            dropped.store(true, Ordering::Release);
+        }
+    })
+    .map_err(watcher_error)?;
     WATCHER
         .set(Mutex::new(WatcherState {
             watcher,
@@ -170,10 +192,12 @@ pub fn start(app: AppHandle) -> Result<(), AppError> {
     let _ = linked::scan_roots()?;
     sync_watches()?;
     std::thread::spawn(move || {
+        let mut revisions = HashMap::<String, String>::new();
         let mut paths = HashSet::new();
         let mut batch_started = std::time::Instant::now();
         let mut rescan = false;
         loop {
+            rescan |= overflow.swap(false, Ordering::AcqRel);
             // 空闲时阻塞等待；事件簇最多积累 400ms，持续写入也不会无限推迟通知。
             let event = if paths.is_empty() && !rescan {
                 let event = receiver
@@ -191,6 +215,9 @@ pub fn start(app: AppHandle) -> Result<(), AppError> {
             };
             match event {
                 Ok(Ok(event)) => {
+                    if matches!(event.kind, EventKind::Access(_)) {
+                        continue;
+                    }
                     if matches!(
                         event.kind,
                         EventKind::Create(_)
@@ -207,6 +234,7 @@ pub fn start(app: AppHandle) -> Result<(), AppError> {
                     rescan = true;
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
+                    rescan |= overflow.swap(false, Ordering::AcqRel);
                     if paths.is_empty() && !rescan {
                         continue;
                     }
@@ -217,16 +245,43 @@ pub fn start(app: AppHandle) -> Result<(), AppError> {
                                 let _ = app.emit("bindings-changed", ());
                             }
                         }
+                        // Forget removed/replaced directory handles before
+                        // reconciling; the same path may now name a new inode.
+                        if let Some(state) = WATCHER.get() {
+                            if let Ok(mut state) = state.lock() {
+                                let invalid: Vec<_> = state
+                                    .watched
+                                    .keys()
+                                    .filter(|watch| {
+                                        paths.iter().any(|p| {
+                                            event_affects_binding(p, &watch.to_string_lossy())
+                                        })
+                                    })
+                                    .cloned()
+                                    .collect();
+                                for path in invalid {
+                                    let _ = state.watcher.unwatch(&path);
+                                    state.watched.remove(&path);
+                                }
+                            }
+                        }
+                        let _ = sync_watches();
                     }
                     if let Ok(bindings) = linked::list() {
+                        revisions.retain(|id, _| bindings.iter().any(|binding| &binding.id == id));
                         for binding in bindings {
-                            let affected = paths
-                                .iter()
-                                .any(|path: &PathBuf| event_affects_binding(path, &binding.path));
+                            let affected = rescan
+                                || paths.iter().any(|path: &PathBuf| {
+                                    event_affects_binding(path, &binding.path)
+                                });
                             if !affected {
                                 continue;
                             }
                             if let Ok(content) = linked::read(&binding.id) {
+                                if revisions.get(&binding.id) == Some(&content.revision) {
+                                    continue;
+                                }
+                                revisions.insert(binding.id.clone(), content.revision.clone());
                                 let _ = app.emit(
                                     "linked-content-changed",
                                     ContentChanged {
@@ -235,6 +290,7 @@ pub fn start(app: AppHandle) -> Result<(), AppError> {
                                     },
                                 );
                             } else {
+                                revisions.remove(&binding.id);
                                 let _ = app.emit("linked-file-unavailable", binding.id);
                             }
                         }

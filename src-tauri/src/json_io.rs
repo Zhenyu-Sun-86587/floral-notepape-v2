@@ -8,6 +8,25 @@ use std::{
 };
 
 pub fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<(), AppError> {
+    write_atomic(path, |file| {
+        serde_json::to_writer_pretty(&mut *file, value)?;
+        file.write_all(b"\n")?;
+        Ok(())
+    })
+}
+
+/// Commit complete bytes without truncating the last good copy on failure.
+pub fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
+    write_atomic(path, |file| {
+        file.write_all(bytes)?;
+        Ok(())
+    })
+}
+
+fn write_atomic(
+    path: &Path,
+    write: impl FnOnce(&mut fs::File) -> Result<(), AppError>,
+) -> Result<(), AppError> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -18,8 +37,10 @@ pub fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<(), App
             .create_new(true)
             .write(true)
             .open(&temp_path)?;
-        serde_json::to_writer_pretty(&mut temp_file, value)?;
-        temp_file.write_all(b"\n")?;
+        if let Ok(metadata) = fs::metadata(path) {
+            temp_file.set_permissions(metadata.permissions())?;
+        }
+        write(&mut temp_file)?;
         temp_file.sync_all()?;
         drop(temp_file);
         fs::rename(&temp_path, path)?;
@@ -50,6 +71,24 @@ fn temporary_json_path(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_write_keeps_original_bytes_and_removes_temporary_file() {
+        let dir = std::env::temp_dir().join(format!("folio-atomic-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("note.md");
+        fs::write(&path, "original").unwrap();
+        let result = write_atomic(&path, |file| {
+            file.write_all(b"partial")?;
+            Err(std::io::Error::other("injected write failure").into())
+        });
+        assert!(result.is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "original");
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
+        write_bytes_atomic(&path, "完整\r\n".as_bytes()).unwrap();
+        assert_eq!(fs::read_to_string(path).unwrap(), "完整\r\n");
+        fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn concurrent_json_writers_never_share_temporary_files() {

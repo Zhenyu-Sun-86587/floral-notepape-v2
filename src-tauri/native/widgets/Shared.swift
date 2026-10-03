@@ -9,7 +9,7 @@ struct FolioWidgetNote: Codable, Identifiable, Hashable {
     var link: URL? {
         let parts = key.split(separator: ":", maxSplits: 1)
         guard parts.count == 2, ["note", "linked"].contains(String(parts[0])), UUID(uuidString: String(parts[1])) != nil else { return nil }
-        let scheme = FolioWidgetStore.privateContainerIdentifier == nil ? "folio" : "folio-private"
+        let scheme = FolioWidgetStore.urlScheme
         return URL(string: "\(scheme)://widget-open/\(parts[0])/\(parts[1])")
     }
 }
@@ -27,6 +27,10 @@ struct FolioWidgetTaskChange: Codable {
 }
 
 enum FolioWidgetStore {
+    // Storage choice does not define the app's URL identity.
+    static var urlScheme: String {
+        Bundle.main.bundleIdentifier?.hasPrefix("dev.folio.surface.containerexperiment") == true ? "folio-private" : "folio"
+    }
     static let experimentLog = Logger(subsystem: "dev.folio.widget-container", category: "snapshot")
     private static let snapshotLock = NSLock()
     private static var cachedSnapshot: (url: URL, modified: Date, size: Int, inode: UInt64, snapshot: FolioWidgetSnapshot)?

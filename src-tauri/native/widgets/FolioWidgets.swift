@@ -81,12 +81,16 @@ struct ToggleNoteTask: AppIntent {
     @Parameter(title: "行") var line: Int
     @Parameter(title: "完成") var checked: Bool
     @Parameter(title: "原始待办") var expectedLine: String
+    @Parameter(title: "原始快照", default: "") var expectedContent: String
     init() {}
-    init(noteKey: String, line: Int, checked: Bool, expectedLine: String) { self.noteKey = noteKey; self.line = line; self.checked = checked; self.expectedLine = expectedLine }
+    init(noteKey: String, line: Int, checked: Bool, expectedLine: String, expectedContent: String) { self.noteKey = noteKey; self.line = line; self.checked = checked; self.expectedLine = expectedLine; self.expectedContent = expectedContent }
     @MainActor func perform() async throws -> some IntentResult {
         guard let note = FolioWidgetStore.read().notes.first(where: { $0.key == noteKey }) else { return .result() }
         let lines = note.content.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
-        guard lines.indices.contains(line), lines[line] == expectedLine else {
+        // Archived views must not retarget a same-text task at the old line.
+        // Old intents without a snapshot are safely rejected after upgrade.
+        guard !expectedContent.isEmpty, note.content == expectedContent,
+              lines.indices.contains(line), lines[line] == expectedLine else {
             WidgetCenter.shared.reloadTimelines(ofKind: "FolioNote")
             return .result()
         }
@@ -155,7 +159,7 @@ struct NoteWidgetView: View {
                 if line.rule {
                     Divider().frame(height: line.height)
                 } else if let taskLine = line.taskLine {
-                    Button(intent: ToggleNoteTask(noteKey: entry.note?.key ?? "", line: taskLine, checked: !line.taskChecked, expectedLine: line.sourceLine)) {
+                    Button(intent: ToggleNoteTask(noteKey: entry.note?.key ?? "", line: taskLine, checked: !line.taskChecked, expectedLine: line.sourceLine, expectedContent: entry.note?.content ?? "")) {
                         Text(line.text)
                             .font(.system(size: line.size))
                             .frame(maxWidth: .infinity, alignment: .leading)

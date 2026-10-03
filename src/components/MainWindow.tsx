@@ -385,6 +385,8 @@ export function MainWindow({
   const [notes, setNotes] = useState<NoteMetadata[]>([]);
   const [externalFiles, setExternalFiles] = useState<ExternalFile[]>([]);
   const externalRevisionRef = useRef("");
+  const externalBaselineRef = useRef("");
+  const legacyRevisionRef = useRef<string | undefined>(undefined);
   const [linkedConflict, setLinkedConflict] = useState<LinkedContent | null>(null);
   const [linkedRoots, setLinkedRoots] = useState<LinkedRoot[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -655,11 +657,13 @@ export function MainWindow({
   );
   const charCount = useMemo(() => countNoteChars(deferredContent), [deferredContent]);
 
+  const loadedNoteVersion = useRef<string | undefined>(undefined);
   const applyNote = useCallback(
     (note: Note) => {
       // 立刻同步各 ref，保证保存快照与守卫在下一次渲染前就能读到最新值
       loadEpoch.bump();
       selectedIdRef.current = note.id;
+      loadedNoteVersion.current = note.updatedAt;
       titleValueRef.current = note.title;
       contentValueRef.current = note.content;
       saveStateRef.current = "saved";
@@ -819,6 +823,8 @@ export function MainWindow({
         setSaveState(recovered ? "dirty" : "saved");
         setNoteTransitionKey((k) => k + 1);
         externalFileMtimeRef.current = mtime;
+        externalBaselineRef.current = fileContent;
+        legacyRevisionRef.current = undefined;
         externalRevisionRef.current = recovered ? draft!.baseRevision : (linked?.revision ?? "");
         setLinkedConflict(recovered && draft!.baseRevision !== linked?.revision ? linked : null);
       } catch (error) {
@@ -1021,15 +1027,16 @@ export function MainWindow({
           if (!currentId) return;
           const stillExists = loaded.some((n) => n.id === currentId);
           if (stillExists) {
-            if (saveStateRef.current !== "dirty" && saveStateRef.current !== "saving") {
+            if (saveStateRef.current === "saved") {
               void getNote(currentId)
                 .then((note) => {
                   if (isStale()) return;
                   if (selectedIdRef.current !== currentId) return;
-                  if (saveStateRef.current === "dirty" || saveStateRef.current === "saving") {
+                  if (saveStateRef.current !== "saved") {
                     return;
                   }
                   titleValueRef.current = note.title;
+                  loadedNoteVersion.current = note.updatedAt;
                   contentValueRef.current = note.content;
                   saveStateRef.current = "saved";
                   setTitle(note.title);
@@ -1038,7 +1045,7 @@ export function MainWindow({
                 })
                 .catch(() => undefined);
             }
-          } else if (selectedNoteRef.current) {
+          } else if (selectedNoteRef.current && saveStateRef.current === "saved") {
             if (loaded[0]) {
               void loadNote(loaded[0].id);
             } else {
@@ -1178,15 +1185,17 @@ export function MainWindow({
 
     if (selectedExternalFile.bindingId) {
       const bindingId = selectedExternalFile.bindingId;
+      let active = true;
       const refresh = async () => {
         try {
           const linked = await readLinkedFile(bindingId);
           if (
+            !active ||
             selectedIdRef.current !== selectedExternalFile.id ||
             linked.revision === externalRevisionRef.current
           )
             return;
-          if (saveStateRef.current === "dirty" || saveStateRef.current === "error") {
+          if (saveStateRef.current !== "saved" && saveStateRef.current !== "idle") {
             setLinkedConflict(linked);
             return;
           }
@@ -1194,6 +1203,7 @@ export function MainWindow({
           setLinkedConflict(null);
           contentValueRef.current = linked.content;
           setContent(linked.content);
+          saveStateRef.current = "saved";
           setSaveState("saved");
         } catch (error) {
           showToast(getErrorMessage(error));
@@ -1207,6 +1217,7 @@ export function MainWindow({
       };
       window.addEventListener("focus", onFocus);
       return () => {
+        active = false;
         window.removeEventListener("focus", onFocus);
         void unlisten.then((fn) => fn());
       };
@@ -1220,10 +1231,13 @@ export function MainWindow({
         const mtime = await getFileModifiedTime(selectedExternalFile.filePath);
         if (selectedIdRef.current !== selectedExternalFile.id) return;
         if (mtime !== externalFileMtimeRef.current) {
-          if (saveStateRef.current === "dirty" || saveStateRef.current === "error") return;
-          externalFileMtimeRef.current = mtime;
+          if (saveStateRef.current !== "saved" && saveStateRef.current !== "idle") return;
           const fileContent = await readExternalFile(selectedExternalFile.filePath);
           if (selectedIdRef.current !== selectedExternalFile.id) return;
+          if (saveStateRef.current !== "saved" && saveStateRef.current !== "idle") return;
+          externalFileMtimeRef.current = mtime;
+          externalBaselineRef.current = fileContent;
+          legacyRevisionRef.current = undefined;
           contentValueRef.current = fileContent;
           saveStateRef.current = "saved";
           setContent(fileContent);
@@ -1296,7 +1310,8 @@ export function MainWindow({
   const performSave = useCallback(
     async (force: boolean): Promise<boolean> => {
       // 非强制保存（自动保存、切换前保存）在没有未保存修改时直接视为成功
-      if (!force && saveStateRef.current !== "dirty") return true;
+      if (!force && (saveStateRef.current === "saved" || saveStateRef.current === "idle"))
+        return true;
       const id = selectedIdRef.current;
       if (!id) return false;
 
@@ -1328,7 +1343,13 @@ export function MainWindow({
             }
             void writeLinkedDraft(externalFile.bindingId, null, revision).catch(() => undefined);
           } else {
-            await saveExternalFile(externalFile.filePath, contentSnapshot);
+            const revision = await saveExternalFile(
+              externalFile.filePath,
+              contentSnapshot,
+              externalBaselineRef.current,
+              legacyRevisionRef.current,
+            );
+            if (stillCurrent()) legacyRevisionRef.current = revision;
             lastExternalSaveRef.current = Date.now();
             const mtime = await getFileModifiedTime(externalFile.filePath);
             if (stillCurrent()) externalFileMtimeRef.current = mtime;
@@ -1336,11 +1357,16 @@ export function MainWindow({
           settleSaveState(contentValueRef.current === contentSnapshot ? "saved" : "dirty");
         } else {
           const category = notesRef.current.find((note) => note.id === id)?.category ?? "";
-          const note = await updateNote(id, {
-            title: titleSnapshot,
-            content: contentSnapshot,
-            category,
-          });
+          const note = await updateNote(
+            id,
+            {
+              title: titleSnapshot,
+              content: contentSnapshot,
+              category,
+            },
+            loadedNoteVersion.current,
+          );
+          if (stillCurrent()) loadedNoteVersion.current = note.updatedAt;
           replaceNoteMetadata(note);
           const contentChanged =
             contentValueRef.current !== contentSnapshot || titleValueRef.current !== titleSnapshot;
@@ -1376,9 +1402,8 @@ export function MainWindow({
     const unlisten = listen<UpdateInstallPrepareRequest>("update://prepare-install", (event) => {
       const respond = async () => {
         const windowLabel = windowLabelRef.current;
-        // 无未保存修改时直接上报就绪：避免排进 saveQueueRef，被正在执行的
-        // 防抖自动保存拖住、不必要地延迟安装准备响应
-        if (saveStateRef.current !== "dirty") {
+        await saveQueueRef.current;
+        if (saveStateRef.current === "saved" || saveStateRef.current === "idle") {
           await reportInstallPreparation(event.payload.requestId, windowLabel, "ready");
           return;
         }
@@ -1644,6 +1669,8 @@ export function MainWindow({
       setSaveState(recovered ? "dirty" : "saved");
       setNoteTransitionKey((k) => k + 1);
       externalFileMtimeRef.current = mtime;
+      externalBaselineRef.current = fileContent;
+      legacyRevisionRef.current = undefined;
       externalRevisionRef.current = recovered ? draft!.baseRevision : (linked?.revision ?? "");
       setLinkedConflict(recovered && draft!.baseRevision !== linked?.revision ? linked : null);
     } catch (error) {
@@ -3213,6 +3240,7 @@ export function MainWindow({
                         selectedExternalFile.bindingId!,
                         null,
                         linkedConflict.revision,
+                        content,
                       ).catch(() => undefined);
                     }}
                   >
@@ -3228,9 +3256,12 @@ export function MainWindow({
                         true,
                       )
                         .then((revision) => {
+                          if (selectedIdRef.current !== selectedExternalFile.id) return;
                           externalRevisionRef.current = revision;
                           setLinkedConflict(null);
-                          setSaveState(contentValueRef.current === snapshot ? "saved" : "dirty");
+                          saveStateRef.current =
+                            contentValueRef.current === snapshot ? "saved" : "dirty";
+                          setSaveState(saveStateRef.current);
                           void writeLinkedDraft(
                             selectedExternalFile.bindingId!,
                             null,
