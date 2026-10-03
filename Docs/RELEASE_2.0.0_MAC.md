@@ -25,4 +25,4 @@
 
 包采用 ad-hoc 签名，无 Developer ID 公证；不保证跨版本免授权或所有电脑直接运行。正文与索引不是跨文件事务，外部同步软件的并发竞争仍有剩余窗口。先向少量同学分发并验证目标机器，再扩大范围。
 
-运行、升级与人工清单见 [MAC_2.0_DISTRIBUTION.md](MAC_2.0_DISTRIBUTION.md)；修复、恢复点、性能原始结果与详细限制见 [MAC_HARDENING_2.0.md](MAC_HARDENING_2.0.md)。本次打包与合并不代表本机应用已替换安装。
+运行、升级与人工清单见 [MAC_2.0_DISTRIBUTION.md](MAC_2.0_DISTRIBUTION.md)；修复、恢复点、性能原始结果与详细限制见 [MAC_HARDENING_2.0.md](MAC_HARDENING_2.0.md)。本机 `/Applications/Folio.app` 已替换为 2.0.0，主程序与小组件启动、身份和严格签名核验通过；关键交互及跨版本授权仍未验收。
