@@ -62,6 +62,12 @@ private final class FolioURLHandler: NSObject {
     }
 }
 
+func reloadFolioWidgets() {
+    for kind in FolioWidgetStore.widgetKinds {
+        WidgetCenter.shared.reloadTimelines(ofKind: kind)
+    }
+}
+
 @_cdecl("folio_widgets_initialize")
 func folioWidgetsInitialize(_ callback: FolioOpenCallback, _ taskCallback: FolioOpenCallback) {
     FolioURLHandler.shared.callback = callback
@@ -73,7 +79,7 @@ func folioWidgetsInitialize(_ callback: FolioOpenCallback, _ taskCallback: Folio
     // Updating the extension must invalidate archived views even when notes.json
     // is unchanged. Publish deduplication alone cannot refresh a new UI build.
     if folioWidgetsAvailable() {
-        WidgetCenter.shared.reloadTimelines(ofKind: "FolioNote")
+        reloadFolioWidgets()
     }
 }
 
@@ -101,7 +107,7 @@ func folioWidgetsPublish(_ json: UnsafePointer<CChar>) -> Bool {
         if FolioWidgetStore.privateContainerIdentifier != nil {
             FolioWidgetStore.experimentLog.notice("WRITE_OK bytes=\(data.count)")
         }
-        WidgetCenter.shared.reloadTimelines(ofKind: "FolioNote")
+        reloadFolioWidgets()
         return true
     } catch { return false }
 }

@@ -27,6 +27,22 @@ pub struct Status {
     available: bool,
     selected: Vec<String>,
     choices: Vec<Choice>,
+    displays: Vec<Display>,
+}
+const DISPLAY_COUNT: usize = 4;
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Display {
+    note_key: Option<String>,
+    text_size: String,
+}
+impl Default for Display {
+    fn default() -> Self {
+        Self {
+            note_key: None,
+            text_size: "standard".into(),
+        }
+    }
 }
 #[derive(Serialize)]
 pub struct Choice {
@@ -36,6 +52,7 @@ pub struct Choice {
 #[derive(Serialize)]
 struct Snapshot {
     notes: Vec<WidgetNote>,
+    displays: Vec<Display>,
 }
 #[derive(Serialize)]
 struct WidgetNote {
@@ -49,6 +66,61 @@ fn selected() -> Result<Vec<String>, AppError> {
         return Ok(Vec::new());
     }
     Ok(serde_json::from_slice(&std::fs::read(path)?)?)
+}
+fn displays() -> Result<Vec<Display>, AppError> {
+    let path = default_store()?.config_dir().join("widget-displays.json");
+    if !path.exists() {
+        // Preserve sharing permissions; do not infer an old widget's choice
+        // from snapshot order or from its size when system decoding failed.
+        return Ok(vec![Display::default(); DISPLAY_COUNT]);
+    }
+    let displays: Vec<Display> = serde_json::from_slice(&std::fs::read(path)?)?;
+    if displays.len() != DISPLAY_COUNT
+        || displays
+            .iter()
+            .any(|d| !matches!(d.text_size.as_str(), "compact" | "standard" | "large"))
+    {
+        return Err(error("小组件显示配置无效，请检查配置备份"));
+    }
+    Ok(displays)
+}
+fn validate_display(
+    display: &Display,
+    selection: &[String],
+    choices: &[Choice],
+) -> Result<(), AppError> {
+    if !matches!(display.text_size.as_str(), "compact" | "standard" | "large")
+        || display
+            .note_key
+            .as_ref()
+            .is_some_and(|key| !selection.contains(key) || !choices.iter().any(|c| &c.key == key))
+    {
+        return Err(error("请选择已允许共享的现有便签和有效字号"));
+    }
+    Ok(())
+}
+pub fn configure(slot: usize, display: Display) -> Result<Status, AppError> {
+    let guard = SNAPSHOT_WRITE_LOCK
+        .lock()
+        .map_err(|_| error("小组件快照锁不可用"))?;
+    let s = status()?;
+    if !s.available {
+        return Err(error("当前安装包未启用小组件"));
+    }
+    if !(1..=DISPLAY_COUNT).contains(&slot) {
+        return Err(error("无效小组件编号"));
+    }
+    validate_display(&display, &s.selected, &s.choices)?;
+    // One slot changes under the same lock as sharing/task operations.
+    let mut displays = s.displays;
+    displays[slot - 1] = display;
+    write_json_atomic(
+        &default_store()?.config_dir().join("widget-displays.json"),
+        &displays,
+    )?;
+    drop(guard);
+    refresh()?;
+    status()
 }
 pub fn status() -> Result<Status, AppError> {
     let store = default_store()?;
@@ -75,6 +147,7 @@ pub fn status() -> Result<Status, AppError> {
         available: unsafe { folio_widgets_available() },
         selected: selected()?,
         choices,
+        displays: displays()?,
     })
 }
 pub fn select(keys: Vec<String>) -> Result<Status, AppError> {
@@ -151,8 +224,11 @@ fn refresh() -> Result<(), AppError> {
             });
         }
     }
-    let json = CString::new(serde_json::to_string(&Snapshot { notes })?)
-        .map_err(|_| error("小组件快照编码失败"))?;
+    let json = CString::new(serde_json::to_string(&Snapshot {
+        notes,
+        displays: displays()?,
+    })?)
+    .map_err(|_| error("小组件快照编码失败"))?;
     if !unsafe { folio_widgets_publish(json.as_ptr()) } {
         return Err(error("写入小组件共享容器失败"));
     }
@@ -180,6 +256,8 @@ struct TaskChange {
     expected_content: String,
     line: usize,
     checked: bool,
+    #[serde(default)]
+    slot: Option<usize>,
 }
 
 fn apply_task(content: &str, change: &TaskChange) -> Result<String, AppError> {
@@ -244,6 +322,16 @@ extern "C" fn task_change(pointer: *const std::ffi::c_char) {
         let change: TaskChange = serde_json::from_slice(bytes)?;
         if !selected()?.contains(&change.note_key) {
             return Err(error("便签未授权给小组件"));
+        }
+        let current_displays = displays()?;
+        if !change
+            .slot
+            .filter(|slot| (1..=DISPLAY_COUNT).contains(slot))
+            .is_some_and(|slot| {
+                current_displays[slot - 1].note_key.as_ref() == Some(&change.note_key)
+            })
+        {
+            return Err(error("小组件已切换便签，请刷新后重试"));
         }
         let (kind, id) = change
             .note_key
@@ -371,6 +459,39 @@ pub fn setup(app: &tauri::AppHandle) {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn display_assignments_require_existing_shared_notes_and_valid_text_size() {
+        let choices = vec![
+            super::Choice {
+                key: "note:internal".into(),
+                title: "same".into(),
+            },
+            super::Choice {
+                key: "linked:external".into(),
+                title: "same".into(),
+            },
+        ];
+        let selection: Vec<String> = vec!["note:internal".into(), "linked:external".into()];
+        for key in &selection {
+            let display = super::Display {
+                note_key: Some(key.clone()),
+                text_size: "standard".into(),
+            };
+            assert!(super::validate_display(&display, &selection, &choices).is_ok());
+            assert!(super::validate_display(&display, &[], &choices).is_err());
+            assert!(super::validate_display(&display, &selection, &[]).is_err());
+        }
+        assert!(super::validate_display(&super::Display::default(), &[], &[]).is_ok());
+        assert!(super::validate_display(
+            &super::Display {
+                note_key: None,
+                text_size: "invalid".into()
+            },
+            &selection,
+            &choices
+        )
+        .is_err());
+    }
+    #[test]
     fn tasks_reject_mixed_fences_and_lines_outside_published_prefix() {
         let content = "````\n```\n- [ ] code\n````\n- [ ] real";
         let mut change = super::TaskChange {
@@ -378,6 +499,7 @@ mod tests {
             expected_content: content.into(),
             line: 2,
             checked: true,
+            slot: None,
         };
         assert!(super::apply_task(content, &change).is_err());
         change.line = 4;
@@ -397,6 +519,7 @@ mod tests {
             expected_content: content.into(),
             line: 2,
             checked: true,
+            slot: None,
         };
         assert_eq!(
             super::apply_task(content, &change).unwrap(),
