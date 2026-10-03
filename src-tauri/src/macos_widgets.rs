@@ -235,6 +235,7 @@ extern "C" fn task_change(pointer: *const std::ffi::c_char) {
             _ => return Err(error("无效便签类型")),
         }
         if let Some(app) = APP.get() {
+            let _ = app.emit("widget-note-updated", &change.note_key);
             let _ = app.emit("notes-changed", ());
         }
         Ok(())

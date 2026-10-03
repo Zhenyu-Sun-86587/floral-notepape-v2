@@ -62,7 +62,7 @@ enum WidgetMarkdown {
             if heading { line = String(line.dropFirst(headingPrefix + 1)) }
             if quote { line = String(line.dropFirst()).trimmingCharacters(in: .whitespaces) }
             if !fenced {
-                for (prefix, marker) in [("- [x] ", "☑ "), ("- [X] ", "☑ "), ("- [ ] ", "☐ "), ("* [x] ", "☑ "), ("* [ ] ", "☐ "), ("- ", "• "), ("* ", "• "), ("+ ", "• ")] {
+                for (prefix, marker) in [("- [x] ", "☑ "), ("- [X] ", "☑ "), ("- [ ] ", "☐ "), ("* [x] ", "☑ "), ("* [X] ", "☑ "), ("* [ ] ", "☐ "), ("+ [x] ", "☑ "), ("+ [X] ", "☑ "), ("+ [ ] ", "☐ "), ("- ", "• "), ("* ", "• "), ("+ ", "• ")] {
                     if line.hasPrefix(prefix) { line = marker + line.dropFirst(prefix.count); break }
                 }
             }

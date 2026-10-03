@@ -80,9 +80,6 @@ enum FolioWidgetStore {
         return FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)
     }
     static func read() -> FolioWidgetSnapshot {
-        if privateContainerIdentifier != nil, let container {
-            try? FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
-        }
         guard let url = container?.appendingPathComponent("notes.json") else { return .empty }
         return readSnapshot(at: url)
     }

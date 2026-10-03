@@ -8,11 +8,23 @@ export const displayTitleSelection = {
 };
 export const singleClickToEdit = false;
 export function useNativeNoteShell(props: NoteShellProps) {
+  const state = useRef(props);
+  state.current = props;
   const actions = useRef(props.actions);
   actions.current = props.actions;
   useEffect(() => {
     const off = listen<string>("native-note-action", ({ payload }) => {
       void Promise.resolve(actions.current[payload]?.()).catch(console.error);
+    });
+    return () => {
+      void off.then((fn) => fn());
+    };
+  }, []);
+  useEffect(() => {
+    const off = listen<string>("widget-note-updated", ({ payload }) => {
+      if (payload === state.current.noteKey) {
+        void Promise.resolve(state.current.onContentChanged?.()).catch(console.error);
+      }
     });
     return () => {
       void off.then((fn) => fn());

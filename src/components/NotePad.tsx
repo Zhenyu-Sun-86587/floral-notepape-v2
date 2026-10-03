@@ -1201,6 +1201,26 @@ export function NotePad({
     tile: isTile,
     editing: isTile ? tileWriting : true,
     locked: tileLocked,
+    noteKey: initialBindingId
+      ? `linked:${initialBindingId}`
+      : `note:${editingNoteId ?? initialNoteId ?? ""}`,
+    onContentChanged: async () => {
+      const id = editingNoteId ?? initialNoteId;
+      const hasDraft = () => statusRef.current === "dirty" || statusRef.current === "saveFailed";
+      if (!id || initialBindingId || hasDraft()) return;
+      const previousContent = contentValueRef.current;
+      const previousTitle = titleValueRef.current;
+      const note = await getNote(id);
+      if (
+        hasDraft() ||
+        contentValueRef.current !== previousContent ||
+        titleValueRef.current !== previousTitle
+      )
+        return;
+      setContent(note.content);
+      setTitle(note.title);
+      setStatus("saved");
+    },
     actions: {
       edit: () => (isTile ? (tileWriting ? finishTileWriting() : startTileWriting()) : saveNote()),
       lock: () => lockTile(),
