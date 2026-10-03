@@ -9,7 +9,8 @@ struct FolioWidgetNote: Codable, Identifiable, Hashable {
     var link: URL? {
         let parts = key.split(separator: ":", maxSplits: 1)
         guard parts.count == 2, ["note", "linked"].contains(String(parts[0])), UUID(uuidString: String(parts[1])) != nil else { return nil }
-        return URL(string: "folio://widget-open/\(parts[0])/\(parts[1])")
+        let scheme = FolioWidgetStore.privateContainerIdentifier == nil ? "folio" : "folio-private"
+        return URL(string: "\(scheme)://widget-open/\(parts[0])/\(parts[1])")
     }
 }
 

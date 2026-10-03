@@ -142,7 +142,14 @@ fn refresh() -> Result<(), AppError> {
     Ok(())
 }
 fn parse_explicit_open(url: &str) -> Option<(&str, &str)> {
-    let (kind, id) = url.strip_prefix("folio://widget-open/")?.split_once('/')?;
+    let scheme = if cfg!(folio_private_container_experiment) {
+        "folio-private"
+    } else {
+        "folio"
+    };
+    let (kind, id) = url
+        .strip_prefix(&format!("{scheme}://widget-open/"))?
+        .split_once('/')?;
     if !matches!(kind, "note" | "linked") || uuid::Uuid::parse_str(id).is_err() {
         return None;
     }
@@ -207,9 +214,15 @@ mod tests {
     #[test]
     fn only_explicit_widget_open_links_are_accepted() {
         let id = "40a88de0-7176-4be4-b4ea-c9155cae5ce4";
+        let scheme = if cfg!(folio_private_container_experiment) {
+            "folio-private"
+        } else {
+            "folio"
+        };
         for kind in ["note", "linked"] {
             assert!(
-                super::parse_explicit_open(&format!("folio://widget-open/{kind}/{id}")).is_some()
+                super::parse_explicit_open(&format!("{scheme}://widget-open/{kind}/{id}"))
+                    .is_some()
             );
             assert!(super::parse_explicit_open(&format!("folio://{kind}/{id}")).is_none());
         }

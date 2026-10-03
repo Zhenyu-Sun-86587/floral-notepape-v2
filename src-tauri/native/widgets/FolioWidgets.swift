@@ -207,7 +207,7 @@ struct FolioNoteWidget: Widget {
         AppIntentConfiguration(kind: "FolioNote", intent: SelectNote.self, provider: NoteProvider()) { entry in
             NoteWidgetView(entry: entry)
         }
-        .configurationDisplayName("笺影便签")
+        .configurationDisplayName(FolioWidgetStore.privateContainerIdentifier == nil ? "笺影便签" : "笺影便签 · 沙盒实验")
         .description("显示 Markdown 便签；点击段落复制文字，支持翻页和复制当前页。尺寸由系统管理。")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge])
     }

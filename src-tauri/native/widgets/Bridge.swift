@@ -8,8 +8,9 @@ private final class FolioURLHandler: NSObject {
     @objc func handle(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
         // Consume legacy widget links without opening any note. Old archived
         // timelines can retain folio://note/... until WidgetKit refreshes them.
+        let scheme = FolioWidgetStore.privateContainerIdentifier == nil ? "folio" : "folio-private"
         guard let url = event.paramDescriptor(forKeyword: 0x2D2D2D2D)?.stringValue,
-              url.hasPrefix("folio://widget-open/") else { return }
+              url.hasPrefix(scheme + "://widget-open/") else { return }
         url.withCString { callback?($0) }
     }
 }

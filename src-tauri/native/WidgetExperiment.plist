@@ -3,4 +3,8 @@
 <plist version="1.0"><dict>
 <key>CFBundleDisplayName</key><string>笺影沙盒实验</string>
 <key>FolioWidgetPrivateContainer</key><string>dev.folio.surface.containerexperiment.widgets</string>
+<key>CFBundleURLTypes</key><array><dict>
+<key>CFBundleURLName</key><string>dev.folio.surface.containerexperiment.note</string>
+<key>CFBundleURLSchemes</key><array><string>folio-private</string></array>
+</dict></array>
 </dict></plist>
