@@ -102,3 +102,11 @@
 - 本轮 Rust/Swift 本地编译通过，未追加动态测试。公开分发的 ad-hoc 签名和权限稳定性仍是未验证门槛。
 
 - 外部监听在判定目录重扫前过滤本程序 `.hermes-` 临时文件，避免每次原子保存的临时创建/删除都引发全目录扫描；带实际目标路径的重命名事件继续处理。
+
+## 候选包静态核验
+
+源码 `321ae25ddedc6888e3f15f4b99ab4deab0f5f7fa`：[macOS 构建通过](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/37128366918)，[Windows 检查通过](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/37128359137)。后续提交仅补文档。
+
+本机候选包：`local-build/mac-2.0.0-candidate/Folio_2.0.0_aarch64.dmg`。SHA-256：`10d425dc026c8d66b277a60dd284d17b6720d67d9bb36499d7fc307daab0511c`，与 CI 清单一致。ZIP 和 DMG 完整性检查通过；只读挂载后 `codesign --verify --deep --strict` 通过。主应用 `dev.hermes.surface`、扩展 `dev.hermes.surface.widgets` 均为 2.0.0；主程序 arm64、ad-hoc，存在 App Intents 元数据，应用内无 `.provisionprofile`、Python 或 Shell 脚本。检查后已卸载只读卷，未运行或安装候选包。
+
+备份清单 15 项无缺失；仅原先打开应用造成的 `surface-sessions.json` 与初始备份不同，其余校验值一致。升级、跨版本授权、真实交互和长期运行未验收，因此 main 未合并，安装和旧版本清理暂不执行。使用说明见 [MAC_2.0_DISTRIBUTION.md](MAC_2.0_DISTRIBUTION.md)。
