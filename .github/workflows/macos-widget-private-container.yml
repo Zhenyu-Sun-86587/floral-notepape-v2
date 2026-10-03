@@ -2,6 +2,11 @@ name: macOS Private Container Widget Experiment
 
 on:
   workflow_dispatch:
+    inputs:
+      production:
+        description: Build the production Folio identity and data paths
+        type: boolean
+        default: false
   push:
     branches: [codex/macos-widget-private-container]
     paths:
@@ -31,28 +36,38 @@ jobs:
         with:
           workspaces: src-tauri
       - name: Build isolated real host and full-Xcode WidgetKit extension
-        env:
-          FOLIO_WIDGET_CONTAINER_EXPERIMENT: "1"
         run: |
           xcodebuild -version
           npm ci
-          npm run tauri build -- --config src-tauri/tauri.widget-experiment.conf.json --bundles app
+          cargo test --manifest-path src-tauri/Cargo.toml macos_widgets::tests --lib
+          if [ "${{ inputs.production }}" = "true" ]; then
+            npm run tauri build -- --config src-tauri/tauri.macos.conf.json --bundles app
+          else
+            FOLIO_WIDGET_CONTAINER_EXPERIMENT=1 npm run tauri build -- --config src-tauri/tauri.widget-experiment.conf.json --bundles app
+          fi
           python3 scripts/build-macos-widgets.py --compile-only
-          python3 scripts/build-private-container-widgets.py --app src-tauri/target/release/bundle/macos/FolioPrivate.app --prebuilt-extension local-build/widget-ci/FolioWidgets.appex
+          if [ "${{ inputs.production }}" = "true" ]; then
+            python3 scripts/build-private-container-widgets.py --production --app src-tauri/target/release/bundle/macos/Folio.app --prebuilt-extension local-build/widget-ci/FolioWidgets.appex
+          else
+            python3 scripts/build-private-container-widgets.py --app src-tauri/target/release/bundle/macos/FolioPrivate.app --prebuilt-extension local-build/widget-ci/FolioWidgets.appex
+          fi
       - name: Package and inspect the ad-hoc experiment
         run: |
           mkdir -p local-build/private-widget-delivery
-          ditto src-tauri/target/release/bundle/macos/FolioPrivate.app local-build/private-widget-delivery/FolioPrivate.app
+          product=FolioPrivate
+          if [ "${{ inputs.production }}" = "true" ]; then product=Folio; fi
+          ditto "src-tauri/target/release/bundle/macos/${product}.app" "local-build/private-widget-delivery/${product}.app"
           cp src-tauri/target/release/bundle/macos/PRIVATE_WIDGET_BUILD_REPORT.json local-build/private-widget-delivery/
-          codesign -d --verbose=2 --entitlements - local-build/private-widget-delivery/FolioPrivate.app/Contents/PlugIns/FolioWidgets.appex
+          codesign -d --verbose=2 --entitlements - "local-build/private-widget-delivery/${product}.app/Contents/PlugIns/FolioWidgets.appex"
           test -z "$(find local-build/private-widget-delivery -name '*.provisionprofile' -print)"
-          hdiutil create -volname FolioPrivate -srcfolder local-build/private-widget-delivery -ov -format UDZO local-build/FolioPrivate_1.8.7_aarch64.dmg
-          shasum -a 256 local-build/FolioPrivate_1.8.7_aarch64.dmg > local-build/FolioPrivate_SHA256SUMS.txt
+          version=$(node -p 'require("./package.json").version')
+          hdiutil create -volname "$product" -srcfolder local-build/private-widget-delivery -ov -format UDZO "local-build/${product}_${version}_aarch64.dmg"
+          shasum -a 256 "local-build/${product}_${version}_aarch64.dmg" > local-build/FolioPrivate_SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: FolioPrivate-ad-hoc-widget-experiment
           path: |
-            local-build/FolioPrivate_1.8.7_aarch64.dmg
+            local-build/Folio*_aarch64.dmg
             local-build/FolioPrivate_SHA256SUMS.txt
             local-build/private-widget-delivery/PRIVATE_WIDGET_BUILD_REPORT.json
           if-no-files-found: error

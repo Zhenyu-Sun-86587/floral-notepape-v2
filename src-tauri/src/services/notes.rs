@@ -228,6 +228,9 @@ pub struct NoteStore {
     data_dir: PathBuf,
 }
 
+#[cfg(target_os = "macos")]
+static MAC_NOTE_UPDATE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 pub fn default_store() -> Result<NoteStore, AppError> {
     let config_dir = default_config_dir()?;
     let data_dir = resolve_data_dir(&config_dir)?;
@@ -834,6 +837,35 @@ impl NoteStore {
     }
 
     pub fn update_note(&self, id: &str, request: SaveNoteRequest) -> Result<Note, AppError> {
+        #[cfg(target_os = "macos")]
+        let _guard = MAC_NOTE_UPDATE_LOCK
+            .lock()
+            .map_err(|_| AppError::new("io", "笔记保存锁不可用"))?;
+        self.update_note_inner(id, request)
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(crate) fn update_widget_task(
+        &self,
+        id: &str,
+        update: impl FnOnce(&str) -> Result<String, AppError>,
+    ) -> Result<Note, AppError> {
+        let _guard = MAC_NOTE_UPDATE_LOCK
+            .lock()
+            .map_err(|_| AppError::new("io", "笔记保存锁不可用"))?;
+        let note = self.read_note(id)?;
+        let content = update(&note.content)?;
+        self.update_note_inner(
+            id,
+            SaveNoteRequest {
+                title: note.title,
+                content,
+                category: note.category,
+            },
+        )
+    }
+
+    fn update_note_inner(&self, id: &str, request: SaveNoteRequest) -> Result<Note, AppError> {
         self.ensure_storage()?;
         let mut metadata_file = self.load_metadata()?;
         let note = metadata_file

@@ -74,6 +74,35 @@ struct KeepWidgetVisible: AppIntent {
     static var openAppWhenRun: Bool = false
     func perform() async throws -> some IntentResult { .result() }
 }
+struct ToggleNoteTask: AppIntent {
+    static var title: LocalizedStringResource = "切换待办状态"
+    static var openAppWhenRun: Bool = false
+    @Parameter(title: "便签") var noteKey: String
+    @Parameter(title: "行") var line: Int
+    @Parameter(title: "完成") var checked: Bool
+    @Parameter(title: "原始待办") var expectedLine: String
+    init() {}
+    init(noteKey: String, line: Int, checked: Bool, expectedLine: String) { self.noteKey = noteKey; self.line = line; self.checked = checked; self.expectedLine = expectedLine }
+    @MainActor func perform() async throws -> some IntentResult {
+        guard let note = FolioWidgetStore.read().notes.first(where: { $0.key == noteKey }) else { return .result() }
+        let lines = note.content.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        guard lines.indices.contains(line), lines[line] == expectedLine else {
+            WidgetCenter.shared.reloadTimelines(ofKind: "FolioNote")
+            return .result()
+        }
+        try FolioWidgetStore.enqueueTask(FolioWidgetTaskChange(noteKey: noteKey, expectedContent: note.content, line: line, checked: checked))
+        // Wake only the host belonging to this extension, without showing UI.
+        let host = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        if let identifier = Bundle(url: host)?.bundleIdentifier,
+           NSRunningApplication.runningApplications(withBundleIdentifier: identifier).isEmpty {
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = false
+            configuration.arguments = ["--silent"]
+            NSWorkspace.shared.openApplication(at: host, configuration: configuration) { _, _ in }
+        }
+        return .result()
+    }
+}
 struct CopySharedNote: AppIntent {
     static var title: LocalizedStringResource = "复制便签 Markdown"
     static var openAppWhenRun: Bool = false
@@ -125,6 +154,16 @@ struct NoteWidgetView: View {
             ForEach(lines) { line in
                 if line.rule {
                     Divider().frame(height: line.height)
+                } else if let taskLine = line.taskLine {
+                    Button(intent: ToggleNoteTask(noteKey: entry.note?.key ?? "", line: taskLine, checked: !line.taskChecked, expectedLine: line.sourceLine)) {
+                        Text(line.text)
+                            .font(.system(size: line.size))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(height: line.height, alignment: .topLeading)
+                            .contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                        .accessibilityLabel(line.taskChecked ? "取消完成待办" : "完成待办")
+                        .help("点击切换待办完成状态")
                 } else {
                     Button(intent: CopyNoteText(noteKey: entry.note?.key ?? "", text: String(line.text.characters))) {
                       HStack(alignment: .top, spacing: 6) {
@@ -207,7 +246,7 @@ struct FolioNoteWidget: Widget {
         AppIntentConfiguration(kind: "FolioNote", intent: SelectNote.self, provider: NoteProvider()) { entry in
             NoteWidgetView(entry: entry)
         }
-        .configurationDisplayName(FolioWidgetStore.privateContainerIdentifier == nil ? "笺影便签" : "笺影便签 · 沙盒实验")
+        .configurationDisplayName(Bundle.main.bundleIdentifier == "dev.folio.surface.containerexperiment.widgets" ? "笺影便签 · 沙盒实验" : "笺影便签")
         .description("显示 Markdown 便签；点击段落复制文字，支持翻页和复制当前页。尺寸由系统管理。")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge])
     }

@@ -19,8 +19,17 @@ struct FolioWidgetSnapshot: Codable {
     static let empty = FolioWidgetSnapshot(notes: [])
 }
 
+struct FolioWidgetTaskChange: Codable {
+    let noteKey: String
+    let expectedContent: String
+    let line: Int
+    let checked: Bool
+}
+
 enum FolioWidgetStore {
     static let experimentLog = Logger(subsystem: "dev.folio.widget-container", category: "snapshot")
+    private static let snapshotLock = NSLock()
+    private static var cachedSnapshot: (url: URL, modified: Date, size: Int, inode: UInt64, snapshot: FolioWidgetSnapshot)?
     // Opt-in local experiment only. Normal signed builds keep the App Group
     // path; the experiment writes snapshots into the extension's own sandbox.
     static var privateContainerIdentifier: String? {
@@ -37,6 +46,16 @@ enum FolioWidgetStore {
     static func page(for key: String) -> Int { max(0, defaults?.integer(forKey: "page." + key) ?? 0) }
     static func setPage(_ page: Int, for key: String) {
         defaults?.set(max(0, min(4000, page)), forKey: "page." + key)
+    }
+    static func enqueueTask(_ change: FolioWidgetTaskChange) throws {
+        guard let container else { throw CocoaError(.fileNoSuchFile) }
+        let inbox = container.appendingPathComponent("actions", isDirectory: true)
+        try FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)
+        // Bound abandoned actions when the containing app is unavailable.
+        let pending = try FileManager.default.contentsOfDirectory(at: inbox, includingPropertiesForKeys: nil)
+        guard pending.filter({ $0.pathExtension == "json" }).count < 64 else { throw CocoaError(.fileWriteOutOfSpace) }
+        let data = try JSONEncoder().encode(change)
+        try data.write(to: inbox.appendingPathComponent(UUID().uuidString + ".json"), options: .atomic)
     }
     static var container: URL? {
         if let identifier = privateContainerIdentifier {
@@ -64,10 +83,29 @@ enum FolioWidgetStore {
         if privateContainerIdentifier != nil, let container {
             try? FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
         }
-        guard let url = container?.appendingPathComponent("notes.json"),
-              let bytes = try? Data(contentsOf: url), bytes.count <= 1_048_576,
-              let snapshot = try? JSONDecoder().decode(FolioWidgetSnapshot.self, from: bytes)
-        else { return .empty }
+        guard let url = container?.appendingPathComponent("notes.json") else { return .empty }
+        return readSnapshot(at: url)
+    }
+    // Atomic host writes replace the inode. Check metadata on every request so
+    // removed permissions/content are never hidden by a time-based cache.
+    static func readSnapshot(at url: URL) -> FolioWidgetSnapshot {
+        snapshotLock.lock()
+        defer { snapshotLock.unlock() }
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let modified = attributes[.modificationDate] as? Date,
+              let size = attributes[.size] as? Int, size <= 1_048_576,
+              let inode = attributes[.systemFileNumber] as? UInt64 else {
+            cachedSnapshot = nil
+            return .empty
+        }
+        if let cached = cachedSnapshot, cached.url == url, cached.modified == modified,
+           cached.size == size, cached.inode == inode { return cached.snapshot }
+        guard let bytes = try? Data(contentsOf: url), bytes.count <= 1_048_576,
+              let snapshot = try? JSONDecoder().decode(FolioWidgetSnapshot.self, from: bytes) else {
+            cachedSnapshot = nil
+            return .empty
+        }
+        cachedSnapshot = (url, modified, size, inode, snapshot)
         if privateContainerIdentifier != nil {
             experimentLog.notice("READ_OK bundle=\(Bundle.main.bundleIdentifier ?? "unknown", privacy: .public) notes=\(snapshot.notes.count) bytes=\(bytes.count)")
         }

@@ -1,0 +1,60 @@
+name: macOS Folio Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/macos-release.yml
+      - scripts/build-private-container-widgets.py
+      - scripts/build-macos-widgets.py
+      - src-tauri/**
+      - src/**
+      - package*.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: folio-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Basic checks and native build
+        run: |
+          xcodebuild -version
+          npm ci
+          cargo test --manifest-path src-tauri/Cargo.toml macos_widgets::tests --lib
+          npm run tauri build -- --config src-tauri/tauri.macos.conf.json --bundles app
+          python3 scripts/build-macos-widgets.py --compile-only
+          python3 scripts/build-private-container-widgets.py --production --app src-tauri/target/release/bundle/macos/Folio.app --prebuilt-extension local-build/widget-ci/FolioWidgets.appex
+      - name: Package Folio and verify signatures
+        run: |
+          mkdir -p local-build/folio-delivery
+          ditto src-tauri/target/release/bundle/macos/Folio.app local-build/folio-delivery/Folio.app
+          cp src-tauri/target/release/bundle/macos/PRIVATE_WIDGET_BUILD_REPORT.json local-build/folio-delivery/
+          codesign --verify --deep --strict local-build/folio-delivery/Folio.app
+          test -z "$(find local-build/folio-delivery -name '*.provisionprofile' -print)"
+          version=$(node -p 'require("./package.json").version')
+          hdiutil create -volname Folio -srcfolder local-build/folio-delivery -ov -format UDZO "local-build/Folio_${version}_aarch64.dmg"
+          shasum -a 256 "local-build/Folio_${version}_aarch64.dmg" > local-build/Folio_SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Folio-macOS-ad-hoc-widgets
+          path: |
+            local-build/Folio_*_aarch64.dmg
+            local-build/Folio_SHA256SUMS.txt
+            local-build/folio-delivery/PRIVATE_WIDGET_BUILD_REPORT.json
+          if-no-files-found: error

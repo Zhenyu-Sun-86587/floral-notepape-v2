@@ -1,7 +1,49 @@
 import AppKit
+import Darwin
 import WidgetKit
 
 typealias FolioOpenCallback = @convention(c) (UnsafePointer<CChar>) -> Void
+private enum FolioWidgetActionInbox {
+    static let queue = DispatchQueue(label: "dev.folio.widget-actions")
+    static var source: DispatchSourceFileSystemObject?
+    static var callback: FolioOpenCallback?
+    static func watch(_ container: URL) {
+        queue.async {
+            guard source == nil else { return }
+            let inbox = container.appendingPathComponent("actions", isDirectory: true)
+            do { try FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true) }
+            catch { return }
+            let descriptor = open(inbox.path, O_EVTONLY)
+            guard descriptor >= 0 else { return }
+            let watcher = DispatchSource.makeFileSystemObjectSource(fileDescriptor: descriptor, eventMask: [.write, .delete, .rename], queue: queue)
+            watcher.setEventHandler {
+                if !watcher.data.intersection([.delete, .rename]).isEmpty {
+                    watcher.cancel()
+                    source = nil
+                    return
+                }
+                drain(inbox)
+            }
+            watcher.setCancelHandler { close(descriptor) }
+            source = watcher
+            watcher.resume()
+            drain(inbox)
+        }
+    }
+    static func drain(_ inbox: URL) {
+        guard let files = try? FileManager.default.contentsOfDirectory(at: inbox, includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey]) else { return }
+        for file in files.filter({ $0.pathExtension == "json" }).prefix(64) {
+            guard UUID(uuidString: file.deletingPathExtension().lastPathComponent) != nil else { continue }
+            defer { try? FileManager.default.removeItem(at: file) }
+            guard let values = try? file.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]),
+                  let date = values.contentModificationDate, Date().timeIntervalSince(date) < 86400,
+                  let size = values.fileSize, size <= 32768,
+                  let data = try? Data(contentsOf: file), data.count <= 32768,
+                  let json = String(data: data, encoding: .utf8) else { continue }
+            json.withCString { callback?($0) }
+        }
+    }
+}
 private final class FolioURLHandler: NSObject {
     static let shared = FolioURLHandler()
     var callback: FolioOpenCallback?
@@ -16,8 +58,9 @@ private final class FolioURLHandler: NSObject {
 }
 
 @_cdecl("folio_widgets_initialize")
-func folioWidgetsInitialize(_ callback: FolioOpenCallback) {
+func folioWidgetsInitialize(_ callback: FolioOpenCallback, _ taskCallback: FolioOpenCallback) {
     FolioURLHandler.shared.callback = callback
+    FolioWidgetActionInbox.callback = taskCallback
     NSAppleEventManager.shared().setEventHandler(
         FolioURLHandler.shared,
         andSelector: #selector(FolioURLHandler.handle(_:reply:)),
@@ -43,6 +86,7 @@ func folioWidgetsPublish(_ json: UnsafePointer<CChar>) -> Bool {
     guard let container = FolioWidgetStore.container,
           let data = String(cString: json).data(using: .utf8) else { return false }
     let destination = container.appendingPathComponent("notes.json")
+    FolioWidgetActionInbox.watch(container)
     if (try? Data(contentsOf: destination)) == data { return true }
     do {
         if FolioWidgetStore.privateContainerIdentifier != nil {
