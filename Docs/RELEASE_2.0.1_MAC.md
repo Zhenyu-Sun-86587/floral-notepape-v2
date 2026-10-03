@@ -17,8 +17,11 @@
 ## 验证记录
 
 - 本机定向 Rust（4 项）、Swift 和前端设置回归通过，类型检查与前端构建通过。覆盖内部和外部稳定 ID、同名笔记、共享撤销、空配置、编号独立性和原待办一致性保护。
-- 编译源码：`c92dc2ed9a725ae35c292c116d219cdf4966e75d`。[完整 macOS 构建](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/37137368339)通过（Xcode 26.6，前端 161 项、Rust 207 项、Swift 回归、App Intents 元数据提取、签名与 DMG）；[Windows 兼容检查](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/37137667684)通过。
-- 本机安装包校验、安装与实际快照链路结果待补齐。
+- 正式包编译源码：`84466ca2a622e219af9fb48bb571f6e61cb6f4d7`。[完整 macOS 构建](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/37140096687)通过（完整 Xcode、前端/Rust/Swift 回归、App Intents 元数据提取、签名与 DMG）；[Windows 兼容检查](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/37137667684)在 `c92dc2e` 通过，此后的运行时代码变化仅为 macOS Swift 组件固定名称。
+- DMG：`Folio_2.0.1_aarch64.dmg`，SHA-256：`907df7f40da88a638d003b97536da3e054733cf28cba862d3e8e4ee1721a1232`。Actions ZIP 摘要、本机 DMG 清单、只读挂载与严格签名验证通过。主应用 arm64，扩展 arm64/x86_64；两者身份与版本核对通过，App Intents 元数据存在，包内无临时 Python/Shell 脚本或开发描述文件。
+- 2026-10-04 本机 `/Applications/Folio.app` 已安装 2.0.1。按用户此前的 Inbox 选择设置便签 1，其余未分配；原共享许可保留。主程序实际发布编号配置，系统 WidgetKit 请求记录 `slot=1 assigned=true resolved=true`，对应快照中的 Inbox；名称校验未再崩溃。此为真实链路验证，不等于画面或按钮点击验收。
+- 首个候选包曾因组件名称字符串插值在 WidgetKit 运行时崩溃，未发布；已改为固定名称，并增加直接构造四种生产配置的运行时回归，本机通过，接入以后 Mac 发布工作流。后续测试及文档提交不改变上述正式包应用源码。
+- 安装前备份真实内外部笔记、配置、绑定、共享许可及原 2.0.0 应用；最终替换后 15 项受保护文件校验值均保持。相对最初 2.0.0 基线仅版本状态与发布快照发生预期变化，原发布正文及外部 Markdown 完全保留。私人备份与安装报告不随包分发。
 - 界面选择、四种尺寸、翻页/复制/待办真实点击、主程序退出后的行为、跨机器和升级授权需区分实际通过与待人工验收，不用构建结果替代。
 - 未测量实际 CPU/GPU/能耗，不宣称整体性能提升。无新增空闲轮询；快照更新去重和既有缓存保留。
 

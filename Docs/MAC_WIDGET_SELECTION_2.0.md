@@ -10,11 +10,11 @@
 - 完整 Xcode 诊断日志显示 EntityQuery 默认结果被调用，Provider 取得索引 0；没有按已保存 Inbox 标识成功调用实体解析。默认结果和 Provider 回退叠加掩盖了配置失败。
 - 本机 `security find-identity -v -p codesigning` 为 0 个有效身份。不能从本机事实推广为所有 macOS 或所有 ad-hoc 包均如此。
 
-## 已完成的安全修复（开发分支）
+## 早期安全修复记录
 
 实体查询按请求标识顺序返回；默认结果返回 nil，缺失或失效的显式选择不能回退到第一篇。对内部/外部标识、列表重排、空选择和撤销选择加入定向回归，执行通过。正式 WidgetKit 扩展的完整 Xcode 构建检查 [37135901465](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/37135901465) 通过。
 
-这仅防止显示错误笔记，不代表签名导致的配置失败已恢复。尚未合并或发布新版本。
+这仅防止显示错误笔记，不代表签名导致的配置失败已恢复。最终 2.0.1 已用下述主应用编号方案替换实体配置路径。
 
 ## 免费方案比较
 
@@ -33,3 +33,7 @@
 - [小组件交互依赖 App Intents](https://developer.apple.com/documentation/widgetkit/adding-interactivity-to-widgets-and-live-activities)
 
 SiriKit 验证组件在调研时位于 native/tests，仅通过明确 --compile-only --legacy-probe 编译，未进入正式包。用户接受主应用设置方案后，验证组件和专用构建开关已删除。诊断应用不得作为正式交付物。本轮未重置小组件、权限、启动项数据库，未修改真实笔记。实现与升级方式见 [2.0.1 发布说明](RELEASE_2.0.1_MAC.md)。
+
+## 运行时配置检查
+
+首个编号方案候选包虽通过完整编译，实际系统时间线请求仍触发 `configurationDisplayName` 的 formatted text 致命错误。编号名称已改为四个固定 LocalizedStringKey；新增测试直接构造生产代码中的四种 WidgetKit 配置，本机通过，并接入 Mac 发布工作流。测试不启动组件、不生成测试笔记，临时编译目录执行后自动清除。系统时间线和实际画面仍分别验证，不能由构造测试替代。
