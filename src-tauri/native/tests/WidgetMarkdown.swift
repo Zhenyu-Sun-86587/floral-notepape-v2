@@ -18,6 +18,18 @@ struct WidgetMarkdownRegression {
         precondition(FolioWidgetSnapshot(notes: [external, note]).selectedNote(key: external.key) == external)
         precondition(snapshot.selectedNote(key: nil) == nil)
         precondition(snapshot.selectedNote(key: "removed") == nil)
+        let assigned = FolioWidgetSnapshot(notes: [note, external], displays: [
+            FolioWidgetDisplay(noteKey: note.key, textSize: "standard"),
+            FolioWidgetDisplay(noteKey: external.key, textSize: "large")
+        ])
+        precondition(assigned.isDisplayed(key: external.key, slot: 2))
+        precondition(!assigned.isDisplayed(key: note.key, slot: 2))
+        precondition(!assigned.isDisplayed(key: external.key, slot: 0))
+        precondition(!assigned.isDisplayed(key: external.key, slot: 5))
+        precondition(!FolioWidgetSnapshot(notes: [note], displays: assigned.displays).isDisplayed(key: external.key, slot: 2))
+        precondition(!FolioWidgetSnapshot(notes: [note, external]).isDisplayed(key: note.key, slot: 1))
+        let decoded = try JSONDecoder().decode(FolioWidgetSnapshot.self, from: JSONEncoder().encode(assigned))
+        precondition(decoded.isDisplayed(key: external.key, slot: 2))
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }

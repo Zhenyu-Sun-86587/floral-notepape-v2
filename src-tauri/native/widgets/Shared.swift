@@ -14,12 +14,28 @@ struct FolioWidgetNote: Codable, Identifiable, Hashable {
     }
 }
 
+struct FolioWidgetDisplay: Codable {
+    let noteKey: String?
+    let textSize: String
+}
 struct FolioWidgetSnapshot: Codable {
     let notes: [FolioWidgetNote]
+    let displays: [FolioWidgetDisplay]?
+    init(notes: [FolioWidgetNote], displays: [FolioWidgetDisplay]? = nil) {
+        self.notes = notes
+        self.displays = displays
+    }
     static let empty = FolioWidgetSnapshot(notes: [])
     func selectedNote(key: String?) -> FolioWidgetNote? {
         guard let key else { return nil }
         return notes.first { $0.key == key }
+    }
+    func display(slot: Int) -> FolioWidgetDisplay? {
+        guard (1...4).contains(slot), let displays, displays.indices.contains(slot - 1) else { return nil }
+        return displays[slot - 1]
+    }
+    func isDisplayed(key: String, slot: Int) -> Bool {
+        display(slot: slot)?.noteKey == key && selectedNote(key: key) != nil
     }
 }
 
@@ -28,9 +44,11 @@ struct FolioWidgetTaskChange: Codable {
     let expectedContent: String
     let line: Int
     let checked: Bool
+    var slot: Int? = nil
 }
 
 enum FolioWidgetStore {
+    static let widgetKinds = ["FolioNote", "FolioNote2", "FolioNote3", "FolioNote4"]
     // Storage choice does not define the app's URL identity.
     static var urlScheme: String {
         Bundle.main.bundleIdentifier?.hasPrefix("dev.folio.surface.containerexperiment") == true ? "folio-private" : "folio"

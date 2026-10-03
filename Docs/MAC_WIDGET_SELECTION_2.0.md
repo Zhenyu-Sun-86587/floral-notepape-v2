@@ -22,7 +22,7 @@
 2. 主应用设置多个固定编号，使用 StaticConfiguration 与 WidgetBundle：建议优先验证。按稳定笔记 ID 发布编号配置，组件 1 / 2 分别显示指定笔记；同一编号的多个副本共享设置。内部和外部笔记共用既有发布边界，不直接读写原笔记。更新后请求对应 kind 刷新，实际时机由系统调度。该方式绕开 App Intents 的选择参数解析，但不解决所有签名/容器授权限制。
 3. SiriKit IntentConfiguration：能提供系统配置界面；独立字符串参数的完整 Xcode 验证组件已构建 [37135888200](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/37135888200)。未进行真实选项传递验证。要恢复动态笔记下拉列表，通常需要额外 Intents extension 和动态选项处理，复杂度及免费签名可靠性尚未验证。
 
-现有 App Intents 按钮也有身份读取失败日志。主应用编号方案只能解决笔记选择；复制、翻页、待办需单独验证。公开 Link / widgetURL 路线可将操作交给主程序，代价是唤起应用，不能宣称与系统原地按钮完全等价。多 Link 控件适用于中、大、超大组件；小尺寸需要单独设计，不能偷偷删功能。不得绕过系统身份检查或伪造 Team ID。
+配置期间日志也涉及按钮类型的元数据读取失败，但这不能证明真实点击无法执行；用户报告按钮可以使用。当前按钮构造时直接赋予 noteKey、page、line 等具体参数，配置选择则需要系统还原 NoteEntity 与实体查询，不能将两条路径等同。现有证据仅支持本机配置读取链路失败，不支持“ad-hoc 下所有 App Intents 不可用”的结论。主应用编号方案应优先保留现有按钮，复制、翻页、待办单独实测后再决定是否修改。只有实际按钮失败时才考虑公开 Link / widgetURL 路线，其代价是唤起应用，不能宣称与系统原地按钮完全等价。多 Link 控件适用于中、大、超大组件；小尺寸需要单独设计，不能偷偷删功能。不得绕过系统身份检查或伪造 Team ID。
 
 ## Apple 一手资料
 
@@ -32,4 +32,4 @@
 - [SiriKit 配置与动态选项 WWDC20](https://developer.apple.com/videos/play/wwdc2020/10194/)
 - [小组件交互依赖 App Intents](https://developer.apple.com/documentation/widgetkit/adding-interactivity-to-widgets-and-live-activities)
 
-所有验证组件位于 native/tests，仅通过明确 --compile-only --legacy-probe 编译，正式构建不包含。诊断应用不得作为正式交付物。本轮未重置小组件、权限、启动项数据库，未修改真实笔记。
+SiriKit 验证组件在调研时位于 native/tests，仅通过明确 --compile-only --legacy-probe 编译，未进入正式包。用户接受主应用设置方案后，验证组件和专用构建开关已删除。诊断应用不得作为正式交付物。本轮未重置小组件、权限、启动项数据库，未修改真实笔记。实现与升级方式见 [2.0.1 发布说明](RELEASE_2.0.1_MAC.md)。

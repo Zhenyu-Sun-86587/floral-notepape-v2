@@ -3,39 +3,9 @@ import AppKit
 import SwiftUI
 import WidgetKit
 
-struct NoteEntity: AppEntity {
-    static var typeDisplayRepresentation: TypeDisplayRepresentation = "便签"
-    static var defaultQuery = NoteQuery()
-    let id: String
-    let title: String
-    var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(title)") }
-}
-struct NoteQuery: EntityQuery {
-    func entities(for identifiers: [String]) async throws -> [NoteEntity] {
-        let all = try await suggestedEntities()
-        let result = identifiers.compactMap { id in all.first { $0.id == id } }
-        return result
-    }
-    func suggestedEntities() async throws -> [NoteEntity] {
-        FolioWidgetStore.read().notes.map { NoteEntity(id: $0.key, title: $0.title) }
-    }
-    func defaultResult() async -> NoteEntity? {
-        // A failed system decode must not silently become the first shared note.
-        // Require an explicit choice, including when creating a new widget.
-        return nil
-    }
-}
-enum NoteTextSize: String, AppEnum {
+enum NoteTextSize: String {
     case compact, standard, large
-    static var typeDisplayRepresentation: TypeDisplayRepresentation = "字号"
-    static var caseDisplayRepresentations: [Self: DisplayRepresentation] = [.compact: "紧凑", .standard: "标准", .large: "大字"]
     var points: CGFloat { switch self { case .compact: return 12; case .standard: return 13; case .large: return 15 } }
-}
-struct SelectNote: WidgetConfigurationIntent {
-    static var title: LocalizedStringResource = "选择便签"
-    static var description = IntentDescription("选择在笺影设置中允许显示的小组件便签。")
-    @Parameter(title: "便签") var note: NoteEntity?
-    @Parameter(title: "字号", default: .standard) var textSize: NoteTextSize
 }
 struct NoteEntry: TimelineEntry {
     let date: Date
@@ -46,6 +16,7 @@ struct NoteEntry: TimelineEntry {
     var page: Int = 0
     var pageCount: Int = 1
     var pageKey: String = ""
+    var slot: Int = 1
 }
 struct TurnNotePage: AppIntent {
     static var title: LocalizedStringResource = "翻阅便签"
@@ -55,8 +26,12 @@ struct TurnNotePage: AppIntent {
     init() {}
     init(key: String, page: Int) { self.key = key; self.page = page }
     func perform() async throws -> some IntentResult {
+        let parts = key.split(separator: ".")
+        guard parts.count == 4, parts[0].hasPrefix("slot"),
+              let slot = Int(parts[0].dropFirst(4)),
+              FolioWidgetStore.read().isDisplayed(key: String(parts[1]), slot: slot) else { return .result() }
         FolioWidgetStore.setPage(page, for: key)
-        WidgetCenter.shared.reloadTimelines(ofKind: "FolioNote")
+        WidgetCenter.shared.reloadTimelines(ofKind: FolioWidgetStore.widgetKinds[slot - 1])
         return .result()
     }
 }
@@ -65,11 +40,12 @@ struct CopyNoteText: AppIntent {
     static var openAppWhenRun: Bool = false
     @Parameter(title: "便签") var noteKey: String
     @Parameter(title: "文字") var text: String
+    @Parameter(title: "小组件编号", default: 0) var slot: Int
     init() {}
-    init(noteKey: String, text: String) { self.noteKey = noteKey; self.text = text }
+    init(noteKey: String, text: String, slot: Int) { self.noteKey = noteKey; self.text = text; self.slot = slot }
     @MainActor func perform() async throws -> some IntentResult {
         // Removed sharing permission must also invalidate a cached copy button.
-        guard FolioWidgetStore.read().notes.contains(where: { $0.key == noteKey }), !text.isEmpty else { return .result() }
+        guard FolioWidgetStore.read().isDisplayed(key: noteKey, slot: slot), !text.isEmpty else { return .result() }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(String(text.prefix(4000)), forType: .string)
         return .result()
@@ -88,19 +64,21 @@ struct ToggleNoteTask: AppIntent {
     @Parameter(title: "完成") var checked: Bool
     @Parameter(title: "原始待办") var expectedLine: String
     @Parameter(title: "原始快照", default: "") var expectedContent: String
+    @Parameter(title: "小组件编号", default: 0) var slot: Int
     init() {}
-    init(noteKey: String, line: Int, checked: Bool, expectedLine: String, expectedContent: String) { self.noteKey = noteKey; self.line = line; self.checked = checked; self.expectedLine = expectedLine; self.expectedContent = expectedContent }
+    init(noteKey: String, line: Int, checked: Bool, expectedLine: String, expectedContent: String, slot: Int) { self.noteKey = noteKey; self.line = line; self.checked = checked; self.expectedLine = expectedLine; self.expectedContent = expectedContent; self.slot = slot }
     @MainActor func perform() async throws -> some IntentResult {
-        guard let note = FolioWidgetStore.read().notes.first(where: { $0.key == noteKey }) else { return .result() }
+        let snapshot = FolioWidgetStore.read()
+        guard snapshot.isDisplayed(key: noteKey, slot: slot), let note = snapshot.selectedNote(key: noteKey) else { return .result() }
         let lines = note.content.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
         // Archived views must not retarget a same-text task at the old line.
         // Old intents without a snapshot are safely rejected after upgrade.
         guard !expectedContent.isEmpty, note.content == expectedContent,
               lines.indices.contains(line), lines[line] == expectedLine else {
-            WidgetCenter.shared.reloadTimelines(ofKind: "FolioNote")
+            WidgetCenter.shared.reloadTimelines(ofKind: FolioWidgetStore.widgetKinds[slot - 1])
             return .result()
         }
-        try FolioWidgetStore.enqueueTask(FolioWidgetTaskChange(noteKey: noteKey, expectedContent: note.content, line: line, checked: checked))
+        try FolioWidgetStore.enqueueTask(FolioWidgetTaskChange(noteKey: noteKey, expectedContent: note.content, line: line, checked: checked, slot: slot))
         // Wake only the host belonging to this extension, without showing UI.
         let host = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         if let identifier = Bundle(url: host)?.bundleIdentifier,
@@ -117,35 +95,43 @@ struct CopySharedNote: AppIntent {
     static var title: LocalizedStringResource = "复制便签 Markdown"
     static var openAppWhenRun: Bool = false
     @Parameter(title: "便签") var noteKey: String
+    @Parameter(title: "小组件编号", default: 0) var slot: Int
     init() {}
-    init(noteKey: String) { self.noteKey = noteKey }
+    init(noteKey: String, slot: Int) { self.noteKey = noteKey; self.slot = slot }
     @MainActor func perform() async throws -> some IntentResult {
-        guard let note = FolioWidgetStore.read().notes.first(where: { $0.key == noteKey }) else { return .result() }
+        let snapshot = FolioWidgetStore.read()
+        guard snapshot.isDisplayed(key: noteKey, slot: slot), let note = snapshot.selectedNote(key: noteKey) else { return .result() }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(note.content, forType: .string)
         return .result()
     }
 }
-struct NoteProvider: AppIntentTimelineProvider {
+struct NoteProvider: TimelineProvider {
+    let slot: Int
     func placeholder(in context: Context) -> NoteEntry {
         NoteEntry(date: .now, note: FolioWidgetNote(key: "", title: "笺影", content: "记录此刻，留待回望。"))
     }
-    func snapshot(for configuration: SelectNote, in context: Context) async -> NoteEntry { entry(configuration, context: context) }
-    func timeline(for configuration: SelectNote, in context: Context) async -> Timeline<NoteEntry> {
-        // Host publishes only on changes; no polling, capture, or animation timer.
-        Timeline(entries: [entry(configuration, context: context)], policy: .never)
+    func getSnapshot(in context: Context, completion: @escaping (NoteEntry) -> Void) {
+        completion(entry(context: context))
     }
-    private func entry(_ configuration: SelectNote, context: Context) -> NoteEntry {
-        let notes = FolioWidgetStore.read().notes
-        let note = FolioWidgetSnapshot(notes: notes).selectedNote(key: configuration.note?.id)
-        guard let note else { return NoteEntry(date: .now, note: nil) }
+    func getTimeline(in context: Context, completion: @escaping (Timeline<NoteEntry>) -> Void) {
+        // Host publishes only on changes; no polling, capture, or animation timer.
+        completion(Timeline(entries: [entry(context: context)], policy: .never))
+    }
+    private func entry(context: Context) -> NoteEntry {
+        let snapshot = FolioWidgetStore.read()
+        let display = snapshot.display(slot: slot)
+        let note = snapshot.selectedNote(key: display?.noteKey)
+        FolioWidgetStore.experimentLog.notice("WIDGET_DISPLAY slot=\(slot) assigned=\(display?.noteKey != nil) resolved=\(note != nil)")
+        guard let note else { return NoteEntry(date: .now, note: nil, slot: slot) }
+        let textSize = NoteTextSize(rawValue: display?.textSize ?? "") ?? .standard
         let spread = context.family == .systemExtraLarge
         let width = spread ? (context.displaySize.width - 48) / 2 : context.displaySize.width - 32
-        let pages = WidgetMarkdown.pages(note.content, width: width, height: context.displaySize.height - 82, bodySize: configuration.textSize.points)
-        let key = note.key + "." + String(context.family.rawValue) + "." + configuration.textSize.rawValue
+        let pages = WidgetMarkdown.pages(note.content, width: width, height: context.displaySize.height - 82, bodySize: textSize.points)
+        let key = "slot\(slot)." + note.key + "." + String(context.family.rawValue) + "." + textSize.rawValue
         let step = spread ? 2 : 1
         let page = min(FolioWidgetStore.page(for: key), pages.count - 1) / step * step
-        return NoteEntry(date: .now, note: note, lines: pages[page], rightLines: spread && page + 1 < pages.count ? pages[page + 1] : [], spread: spread, page: page, pageCount: pages.count, pageKey: key)
+        return NoteEntry(date: .now, note: note, lines: pages[page], rightLines: spread && page + 1 < pages.count ? pages[page + 1] : [], spread: spread, page: page, pageCount: pages.count, pageKey: key, slot: slot)
     }
 }
 struct NoteWidgetView: View {
@@ -165,7 +151,7 @@ struct NoteWidgetView: View {
                 if line.rule {
                     Divider().frame(height: line.height)
                 } else if let taskLine = line.taskLine {
-                    Button(intent: ToggleNoteTask(noteKey: entry.note?.key ?? "", line: taskLine, checked: !line.taskChecked, expectedLine: line.sourceLine, expectedContent: entry.note?.content ?? "")) {
+                    Button(intent: ToggleNoteTask(noteKey: entry.note?.key ?? "", line: taskLine, checked: !line.taskChecked, expectedLine: line.sourceLine, expectedContent: entry.note?.content ?? "", slot: entry.slot)) {
                         Text(line.text)
                             .font(.system(size: line.size))
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -175,7 +161,7 @@ struct NoteWidgetView: View {
                         .accessibilityLabel(line.taskChecked ? "取消完成待办" : "完成待办")
                         .help("点击切换待办完成状态")
                 } else {
-                    Button(intent: CopyNoteText(noteKey: entry.note?.key ?? "", text: String(line.text.characters))) {
+                    Button(intent: CopyNoteText(noteKey: entry.note?.key ?? "", text: String(line.text.characters), slot: entry.slot)) {
                       HStack(alignment: .top, spacing: 6) {
                         if line.quote { Rectangle().fill(.secondary).frame(width: 2) }
                         Text(line.text)
@@ -193,7 +179,7 @@ struct NoteWidgetView: View {
         VStack(alignment: .leading, spacing: 8) {
             if let note = entry.note {
               HStack(spacing: 8) {
-                Button(intent: CopyNoteText(noteKey: note.key, text: note.title)) {
+                Button(intent: CopyNoteText(noteKey: note.key, text: note.title, slot: entry.slot)) {
                     Text(note.title).font(.headline).lineLimit(1).widgetAccentable()
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }.buttonStyle(.plain).accessibilityLabel("复制便签标题").help("复制标题")
@@ -212,7 +198,7 @@ struct NoteWidgetView: View {
                     if entry.spread { page(entry.rightLines) }
                 }.frame(maxHeight: .infinity, alignment: .topLeading).clipped()
             } else {
-                Text("请编辑小组件选择便签。若已经选择但仍无内容，系统未能读取配置，请使用支持小组件配置的版本。")
+                Text("在笺影主应用设置中，为便签 \(entry.slot) 选择内容并允许共享。")
                     .font(.body).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
@@ -231,9 +217,9 @@ struct NoteWidgetView: View {
                     Button(intent: TurnNotePage(key: entry.pageKey, page: entry.page + step)) { Image(systemName: "chevron.right") }
                         .disabled(entry.page + step >= entry.pageCount).accessibilityLabel("下一页")
                   } else { Spacer() }
-                  Button(intent: CopyNoteText(noteKey: entry.note?.key ?? "", text: visibleText)) { Image(systemName: "doc.on.doc") }
+                  Button(intent: CopyNoteText(noteKey: entry.note?.key ?? "", text: visibleText, slot: entry.slot)) { Image(systemName: "doc.on.doc") }
                     .disabled(visibleText.isEmpty).accessibilityLabel("复制当前页文字").help("复制当前页纯文本")
-                  Button(intent: CopySharedNote(noteKey: entry.note?.key ?? "")) { Image(systemName: "doc.text") }
+                  Button(intent: CopySharedNote(noteKey: entry.note?.key ?? "", slot: entry.slot)) { Image(systemName: "doc.text") }
                     .accessibilityLabel("复制便签 Markdown 正文（共享内容最多四千字）").help("复制 Markdown 正文（共享内容最多4000字符）")
                 }.buttonStyle(.plain).fixedSize(horizontal: false, vertical: true).layoutPriority(1)
             }
@@ -250,14 +236,25 @@ struct NoteWidgetView: View {
         .privacySensitive()
     }
 }
-@main
 struct FolioNoteWidget: Widget {
+    let slot: Int
+    init() { self.slot = 1 }
+    init(slot: Int) { self.slot = slot }
     var body: some WidgetConfiguration {
-        AppIntentConfiguration(kind: "FolioNote", intent: SelectNote.self, provider: NoteProvider()) { entry in
+        StaticConfiguration(kind: slot == 1 ? "FolioNote" : "FolioNote\(slot)", provider: NoteProvider(slot: slot)) { entry in
             NoteWidgetView(entry: entry)
         }
-        .configurationDisplayName(Bundle.main.bundleIdentifier == "dev.folio.surface.containerexperiment.widgets" ? "笺影便签 · 沙盒实验" : "笺影便签")
+        .configurationDisplayName("笺影便签 \(slot)")
         .description("显示 Markdown 便签；点击段落复制文字，支持翻页和复制当前页。尺寸由系统管理。")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge])
+    }
+}
+@main
+struct FolioWidgets: WidgetBundle {
+    var body: some Widget {
+        FolioNoteWidget(slot: 1)
+        FolioNoteWidget(slot: 2)
+        FolioNoteWidget(slot: 3)
+        FolioNoteWidget(slot: 4)
     }
 }

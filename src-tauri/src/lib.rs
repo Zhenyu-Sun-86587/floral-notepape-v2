@@ -67,6 +67,25 @@ async fn macos_widgets_select(keys: Vec<String>) -> Result<serde_json::Value, Ap
 }
 
 #[tauri::command]
+async fn macos_widgets_configure(
+    slot: usize,
+    display: serde_json::Value,
+) -> Result<serde_json::Value, AppError> {
+    #[cfg(target_os = "macos")]
+    {
+        return Ok(serde_json::to_value(macos_widgets::configure(
+            slot,
+            serde_json::from_value(display)?,
+        )?)?);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (slot, display);
+        Ok(serde_json::json!({"available": false}))
+    }
+}
+
+#[tauri::command]
 fn linked_bind(path: String) -> Result<linked::LinkedBinding, AppError> {
     let binding = linked::bind(&path)?;
     linked_watcher::watch_binding(&binding.path)?;
@@ -1093,6 +1112,7 @@ pub fn run() {
             app_name,
             macos_widgets_status,
             macos_widgets_select,
+            macos_widgets_configure,
             notes_list,
             notes_get,
             notes_create,
