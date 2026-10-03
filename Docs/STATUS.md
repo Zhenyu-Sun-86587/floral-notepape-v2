@@ -8,9 +8,9 @@
 
 # Hermes Surface Dev：平台状态
 
-当前 Mac 开发版 **1.7.18 / 胶囊重构**，已安装、基础录制检查通过。上一轮 Spaces 修复：用户明确需要跨多个桌面与全屏空间显示；本次便签加入所有 Spaces 与 Mission Control，置顶/锁定便签和胶囊申请加入其他应用全屏空间。记录与人工清单见 [MAC_SPACES_1.7.15](MAC_SPACES_1.7.15.md)。M3 胶囊拖动和编辑优化保留，真实跨 Spaces/全屏显示待用户验收，Windows 发布基线仍为 1.7.9。
+当前 Mac 开发版 **1.8.8 / 原生小组件性能与待办交互**，阶段代码已整合到 `main`，正式包由 GitHub Actions 构建。原生胶囊、便签、跨桌面设置和玻璃效果沿用前轮阶段实现；本轮实际主程序待办保存链路与基础检查通过，小组件按钮和持续使用体验继续人工验收。Windows 发布版本保持 1.7.9。
 
-当前 Windows 源码版本为 **1.7.9**；历史 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
+Windows 发布基线为 **1.7.9**，Mac 专属功能按平台隔离；历史 P8 总结见 [P8_FINAL.md](P8_FINAL.md)；上游起点 tag：`baseline-upstream-2026-09-23-69a43ae`。
 
 ## 1.7.9 外部文件链路
 
