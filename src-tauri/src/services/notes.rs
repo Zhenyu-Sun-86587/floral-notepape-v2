@@ -798,6 +798,10 @@ impl NoteStore {
     }
 
     pub fn create_note(&self, request: SaveNoteRequest) -> Result<Note, AppError> {
+        #[cfg(target_os = "macos")]
+        let _guard = MAC_NOTE_UPDATE_LOCK
+            .lock()
+            .map_err(|_| AppError::new("io", "笔记保存锁不可用"))?;
         self.ensure_storage()?;
         let id = Uuid::new_v4().to_string();
         let now = Utc::now();
@@ -924,6 +928,10 @@ impl NoteStore {
     }
 
     pub fn delete_note(&self, id: &str) -> Result<(), AppError> {
+        #[cfg(target_os = "macos")]
+        let _guard = MAC_NOTE_UPDATE_LOCK
+            .lock()
+            .map_err(|_| AppError::new("io", "笔记保存锁不可用"))?;
         self.ensure_storage()?;
         let mut metadata_file = self.load_metadata()?;
         let index = metadata_file

@@ -7,11 +7,12 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::{
     ffi::{CStr, CString},
-    sync::{mpsc, OnceLock},
+    sync::{mpsc, Mutex, OnceLock},
     time::{Duration, Instant},
 };
 use tauri::{Emitter, Listener};
 static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
+static SNAPSHOT_WRITE_LOCK: Mutex<()> = Mutex::new(());
 unsafe extern "C" {
     fn folio_widgets_available() -> bool;
     fn folio_widgets_publish(json: *const std::ffi::c_char) -> bool;
@@ -102,6 +103,9 @@ fn error(message: &str) -> AppError {
     }
 }
 fn refresh() -> Result<(), AppError> {
+    let _guard = SNAPSHOT_WRITE_LOCK
+        .lock()
+        .map_err(|_| error("小组件快照锁不可用"))?;
     if !unsafe { folio_widgets_available() } {
         return Ok(());
     }
