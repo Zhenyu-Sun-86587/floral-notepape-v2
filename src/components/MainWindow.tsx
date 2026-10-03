@@ -658,6 +658,7 @@ export function MainWindow({
   const charCount = useMemo(() => countNoteChars(deferredContent), [deferredContent]);
 
   const loadedNoteVersion = useRef<string | undefined>(undefined);
+  const flushSettingsRef = useRef<() => Promise<void>>(async () => {});
   const applyNote = useCallback(
     (note: Note) => {
       // 立刻同步各 ref，保证保存快照与守卫在下一次渲染前就能读到最新值
@@ -1402,6 +1403,7 @@ export function MainWindow({
     const unlisten = listen<UpdateInstallPrepareRequest>("update://prepare-install", (event) => {
       const respond = async () => {
         const windowLabel = windowLabelRef.current;
+        await flushSettingsRef.current();
         await saveQueueRef.current;
         if (saveStateRef.current === "saved" || saveStateRef.current === "idle") {
           await reportInstallPreparation(event.payload.requestId, windowLabel, "ready");
@@ -1544,13 +1546,17 @@ export function MainWindow({
   };
 
   const settingsSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const settingsSaveQueue = useRef<Promise<void>>(Promise.resolve());
+  const settingsSaveEpoch = useRef(0);
 
   const persistSettings = useCallback(
     (nextConfig: AppConfig) => {
+      const epoch = ++settingsSaveEpoch.current;
       if (settingsSaveTimer.current) {
         clearTimeout(settingsSaveTimer.current);
       }
-      settingsSaveTimer.current = setTimeout(async () => {
+      const write = async () => {
+        if (epoch !== settingsSaveEpoch.current) return;
         const previousDataDir = savedDataDir ?? nextConfig.dataDir;
         const normalizedConfig = {
           ...nextConfig,
@@ -1559,6 +1565,7 @@ export function MainWindow({
         };
         try {
           const savedConfig = await saveConfig(normalizedConfig);
+          if (epoch !== settingsSaveEpoch.current) return;
           setSettingsConfig(savedConfig);
           setSavedDataDir(savedConfig.dataDir);
           setViewMode(normalizeViewMode(savedConfig.defaultViewMode));
@@ -1573,7 +1580,22 @@ export function MainWindow({
           }
         } catch (error) {
           showToast(getErrorMessage(error));
+          throw error;
         }
+      };
+      let queued = false;
+      const flush = () => {
+        if (queued) return settingsSaveQueue.current;
+        queued = true;
+        if (settingsSaveTimer.current) clearTimeout(settingsSaveTimer.current);
+        settingsSaveTimer.current = null;
+        const run = settingsSaveQueue.current.catch(() => undefined).then(write);
+        settingsSaveQueue.current = run;
+        return run;
+      };
+      flushSettingsRef.current = flush;
+      settingsSaveTimer.current = setTimeout(() => {
+        void flush().catch(() => undefined);
       }, 300);
     },
     [savedDataDir, refreshNotes, loadNote, clearCurrentNote],

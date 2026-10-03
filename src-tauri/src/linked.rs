@@ -582,6 +582,9 @@ fn save_file(
         bytes.extend_from_slice(&[0xef, 0xbb, 0xbf]);
     }
     bytes.extend_from_slice(normalized.as_bytes());
+    if bytes == current {
+        return Ok(revision(&current));
+    }
     let temp = parent.join(format!(".hermes-{}.tmp", Uuid::new_v4()));
     let write_result = (|| -> Result<(), AppError> {
         let mut file = fs::OpenOptions::new()

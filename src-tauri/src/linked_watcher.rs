@@ -77,27 +77,12 @@ fn watcher_error(error: notify::Error) -> AppError {
     }
 }
 
-pub fn watch_binding(path: &str) -> Result<(), AppError> {
-    if let Some(parent) = Path::new(path).parent() {
-        if parent.is_dir() {
-            watch(parent, RecursiveMode::NonRecursive)?;
-        }
-    }
-    Ok(())
+pub fn watch_binding(_path: &str) -> Result<(), AppError> {
+    sync_watches()
 }
 
-pub fn watch_root(path: &str, recursive: bool) -> Result<(), AppError> {
-    if Path::new(path).is_dir() {
-        watch(
-            Path::new(path),
-            if recursive {
-                RecursiveMode::Recursive
-            } else {
-                RecursiveMode::NonRecursive
-            },
-        )?;
-    }
-    Ok(())
+pub fn watch_root(_path: &str, _recursive: bool) -> Result<(), AppError> {
+    sync_watches()
 }
 
 pub fn sync_watches() -> Result<(), AppError> {
@@ -227,7 +212,19 @@ pub fn start(app: AppHandle) -> Result<(), AppError> {
                     ) {
                         rescan = true;
                     }
-                    paths.extend(event.paths);
+                    for path in event.paths {
+                        if path
+                            .file_name()
+                            .is_some_and(|name| name.to_string_lossy().starts_with(".hermes-"))
+                        {
+                            continue;
+                        }
+                        if paths.len() < 4096 {
+                            paths.insert(path);
+                        } else {
+                            rescan = true;
+                        }
+                    }
                 }
                 Ok(Err(error)) => {
                     eprintln!("linked watcher error: {error}");
@@ -305,9 +302,26 @@ pub fn start(app: AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 
-#[cfg(all(test, target_os = "windows"))]
+#[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn directory_replacement_matches_only_its_descendants() {
+        assert!(event_affects_binding(
+            Path::new("/sync/notes"),
+            "/sync/notes/Today.md"
+        ));
+        assert!(!event_affects_binding(
+            Path::new("/sync/note"),
+            "/sync/notes/Today.md"
+        ));
+        assert!(!event_affects_binding(
+            Path::new("/sync/notes/Today.md.tmp"),
+            "/sync/notes/Today.md"
+        ));
+    }
+    #[cfg(target_os = "windows")]
     #[test]
     fn watcher_matches_extended_paths_and_directory_replacement() {
         let binding = r"\\?\C:\Sync\HermesSurface\Today.md";
