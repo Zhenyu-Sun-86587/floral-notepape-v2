@@ -2,6 +2,11 @@ name: macOS WidgetKit Build Check
 
 on:
   workflow_dispatch:
+    inputs:
+      legacy_probe:
+        description: Isolated SiriKit configuration probe (not production)
+        type: boolean
+        default: false
   push:
     branches: [codex/macos-stage-baseline]
     paths:
@@ -25,7 +30,14 @@ jobs:
           xcrun --find appintentsmetadataprocessor
           security find-identity -v -p codesigning
       - name: Build unsigned extension and validate metadata
-        run: python3 scripts/build-macos-widgets.py --compile-only
+        env:
+          LEGACY_PROBE: ${{ inputs.legacy_probe }}
+        run: |
+          if [ "$LEGACY_PROBE" = "true" ]; then
+            python3 scripts/build-macos-widgets.py --compile-only --legacy-probe
+          else
+            python3 scripts/build-macos-widgets.py --compile-only
+          fi
       - name: Upload build-check artifacts (not an installable widget)
         uses: actions/upload-artifact@v4
         with:

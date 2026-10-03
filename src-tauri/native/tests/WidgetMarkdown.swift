@@ -12,6 +12,12 @@ struct WidgetMarkdownRegression {
         precondition(crlf.count == 2 && crlf[0].taskLine == 1 && crlf[1].taskChecked)
         let note = FolioWidgetNote(key: "note:40a88de0-7176-4be4-b4ea-c9155cae5ce4", title: "test", content: "test")
         precondition(note.link?.scheme == "folio")
+        let external = FolioWidgetNote(key: "linked:54d86ff1-4b0f-4890-a7f8-f083e678d659", title: "Inbox", content: "external")
+        let snapshot = FolioWidgetSnapshot(notes: [note, external])
+        precondition(snapshot.selectedNote(key: external.key) == external)
+        precondition(FolioWidgetSnapshot(notes: [external, note]).selectedNote(key: external.key) == external)
+        precondition(snapshot.selectedNote(key: nil) == nil)
+        precondition(snapshot.selectedNote(key: "removed") == nil)
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }

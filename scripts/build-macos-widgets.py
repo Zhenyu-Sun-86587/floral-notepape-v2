@@ -62,7 +62,7 @@ def embed_profile(bundle, directory, identifier, team):
             'com.apple.developer.team-identifier': team}
 
 
-def project(directory, source):
+def project(directory, source, legacy_probe=False):
     objects = {}
 
     def add(object_key, **properties):
@@ -72,9 +72,16 @@ def project(directory, source):
 
     refs = []
     builds = []
-    for name in ['Shared.swift', 'Markdown.swift', 'FolioWidgets.swift']:
-        ref = add(name, isa='PBXFileReference', lastKnownFileType='sourcecode.swift',
-                  path=str(source / name), sourceTree='<absolute>')
+    files = [source / name for name in ['Shared.swift', 'Markdown.swift', 'FolioWidgets.swift']]
+    if legacy_probe:
+        files = [source / 'Shared.swift', source / 'Markdown.swift',
+                 source.parent / 'tests/LegacyWidgetProbe.swift',
+                 source.parent / 'tests/FolioLegacySelection.intentdefinition']
+    for file in files:
+        name = file.name
+        ref = add(name, isa='PBXFileReference', lastKnownFileType=(
+                  'file.intentdefinition' if file.suffix == '.intentdefinition' else 'sourcecode.swift'),
+                  path=str(file), sourceTree='<absolute>', intentDefinitionClassGenerationLanguage='Swift')
         refs.append(ref)
         builds.append(add(name + '-build', isa='PBXBuildFile', fileRef=ref))
     product = add('product', isa='PBXFileReference', explicitFileType='wrapper.app-extension',
@@ -119,8 +126,11 @@ def main():
     parser.add_argument('--profiles-dir', type=Path, help='Directory containing matching macOS development profiles for host and widget.')
     parser.add_argument('--development', action='store_true', help='Use development/debug entitlements; requires matching development profiles.')
     parser.add_argument('--compile-only', action='store_true', help='Build an unsigned extension for CI validation only; do not install or enable it.')
+    parser.add_argument('--legacy-probe', action='store_true', help='Isolated SiriKit configuration probe; compile-only, never production packaging.')
     parser.add_argument('--output', type=Path, default=Path('local-build/widget-ci'))
     args = parser.parse_args()
+    if args.legacy_probe and not args.compile_only:
+        parser.error('--legacy-probe requires --compile-only.')
     if args.compile_only and args.prebuilt_extension:
         parser.error('--compile-only and --prebuilt-extension are mutually exclusive.')
     if args.development and not args.profiles_dir:
@@ -133,7 +143,7 @@ def main():
         version = json.loads((source.parents[1] / 'tauri.conf.json').read_text())['version']
         with tempfile.TemporaryDirectory(prefix='folio-widget-check-') as tmp:
             proj = Path(tmp) / 'FolioWidgets.xcodeproj'
-            project(proj, source)
+            project(proj, source, args.legacy_probe)
             run('xcodebuild', '-project', str(proj), '-target', 'FolioWidgets',
                 '-configuration', 'Release', 'build',
                 'CONFIGURATION_BUILD_DIR=' + str(output),
@@ -146,9 +156,9 @@ def main():
         assert (extension / 'Contents/MacOS' / info['CFBundleExecutable']).is_file()
         metadata = [str(p.relative_to(extension)) for p in extension.rglob('*')
                     if p.is_file() and '.appintents/' in str(p)]
-        if not metadata:
+        if not metadata and not args.legacy_probe:
             raise RuntimeError('Xcode built the binary but did not extract App Intents metadata.')
-        report = dict(version=version, mode='unsigned-build-check', installable=False, metadata=metadata)
+        report = dict(version=version, mode='legacy-configuration-probe' if args.legacy_probe else 'unsigned-build-check', installable=False, metadata=metadata)
         (output / 'BUILD_REPORT.json').write_text(json.dumps(report, indent=2) + '\n')
         print(json.dumps(report))
         return

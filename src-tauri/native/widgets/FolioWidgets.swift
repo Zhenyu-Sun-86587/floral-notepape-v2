@@ -2,7 +2,6 @@ import AppIntents
 import AppKit
 import SwiftUI
 import WidgetKit
-import OSLog
 
 struct NoteEntity: AppEntity {
     static var typeDisplayRepresentation: TypeDisplayRepresentation = "便签"
@@ -15,15 +14,15 @@ struct NoteQuery: EntityQuery {
     func entities(for identifiers: [String]) async throws -> [NoteEntity] {
         let all = try await suggestedEntities()
         let result = identifiers.compactMap { id in all.first { $0.id == id } }
-        FolioWidgetStore.experimentLog.notice("ENTITY_RESOLVE requested=\(identifiers.count) matched=\(result.count) firstIndex=\(result.first.flatMap { entity in all.firstIndex { $0.id == entity.id } } ?? -1)")
         return result
     }
     func suggestedEntities() async throws -> [NoteEntity] {
         FolioWidgetStore.read().notes.map { NoteEntity(id: $0.key, title: $0.title) }
     }
     func defaultResult() async -> NoteEntity? {
-        FolioWidgetStore.experimentLog.notice("ENTITY_DEFAULT")
-        return try? await suggestedEntities().first
+        // A failed system decode must not silently become the first shared note.
+        // Require an explicit choice, including when creating a new widget.
+        return nil
     }
 }
 enum NoteTextSize: String, AppEnum {
@@ -138,9 +137,7 @@ struct NoteProvider: AppIntentTimelineProvider {
     }
     private func entry(_ configuration: SelectNote, context: Context) -> NoteEntry {
         let notes = FolioWidgetStore.read().notes
-        let note = configuration.note.map { selected in notes.first { $0.key == selected.id } } ?? notes.first
-        let selectedIndex = configuration.note.flatMap { selected in notes.firstIndex { $0.key == selected.id } } ?? -1
-        FolioWidgetStore.experimentLog.notice("CONFIG_SELECTION hasSelection=\(configuration.note != nil) selectedIndex=\(selectedIndex) resolvedIndex=\(note.flatMap { selected in notes.firstIndex { $0.key == selected.key } } ?? -1) preview=\(context.isPreview)")
+        let note = FolioWidgetSnapshot(notes: notes).selectedNote(key: configuration.note?.id)
         guard let note else { return NoteEntry(date: .now, note: nil) }
         let spread = context.family == .systemExtraLarge
         let width = spread ? (context.displaySize.width - 48) / 2 : context.displaySize.width - 32
@@ -215,7 +212,7 @@ struct NoteWidgetView: View {
                     if entry.spread { page(entry.rightLines) }
                 }.frame(maxHeight: .infinity, alignment: .topLeading).clipped()
             } else {
-                Text("在笺影设置中选择便签，再编辑小组件。")
+                Text("请编辑小组件选择便签。若已经选择但仍无内容，系统未能读取配置，请使用支持小组件配置的版本。")
                     .font(.body).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)

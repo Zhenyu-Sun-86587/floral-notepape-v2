@@ -17,6 +17,10 @@ struct FolioWidgetNote: Codable, Identifiable, Hashable {
 struct FolioWidgetSnapshot: Codable {
     let notes: [FolioWidgetNote]
     static let empty = FolioWidgetSnapshot(notes: [])
+    func selectedNote(key: String?) -> FolioWidgetNote? {
+        guard let key else { return nil }
+        return notes.first { $0.key == key }
+    }
 }
 
 struct FolioWidgetTaskChange: Codable {
