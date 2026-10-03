@@ -1,5 +1,5 @@
 //! WidgetKit snapshot boundary. Only explicitly selected notes cross into the
-//! signed App Group; widgets never read or modify the live note store.
+//! widget snapshot container; widgets never read or modify the live note store.
 use crate::{
     json_io::write_json_atomic,
     services::notes::{default_store, AppError},
@@ -76,7 +76,7 @@ pub fn status() -> Result<Status, AppError> {
 pub fn select(keys: Vec<String>) -> Result<Status, AppError> {
     let s = status()?;
     if !s.available {
-        return Err(error("当前安装包尚未配置 WidgetKit 签名与共享容器"));
+        return Err(error("当前安装包尚未配置 WidgetKit 扩展与数据容器"));
     }
     if keys.len() > 32 || keys.iter().any(|k| !s.choices.iter().any(|c| &c.key == k)) {
         return Err(error("请选择至多32张现有便签"));

@@ -235,36 +235,54 @@ pub fn default_store() -> Result<NoteStore, AppError> {
 }
 
 pub(crate) fn default_config_dir() -> Result<PathBuf, AppError> {
-    if let Ok(path) = env::var("HERMES_SURFACE_CONFIG_DIR") {
-        let trimmed = path.trim();
-        if !trimmed.is_empty() {
-            return Ok(PathBuf::from(trimmed));
+    #[cfg(all(target_os = "macos", folio_private_container_experiment))]
+    {
+        return Ok(dirs::config_dir()
+            .ok_or_else(|| AppError::new("config", "无法定位实验配置目录"))?
+            .join("FolioWidgetExperiment/config"));
+    }
+    #[cfg(not(all(target_os = "macos", folio_private_container_experiment)))]
+    {
+        if let Ok(path) = env::var("HERMES_SURFACE_CONFIG_DIR") {
+            let trimmed = path.trim();
+            if !trimmed.is_empty() {
+                return Ok(PathBuf::from(trimmed));
+            }
         }
+        if let Some(dir) = dirs::config_dir() {
+            return Ok(dir.join("hermes-surface-dev"));
+        }
+        Ok(env::current_dir()?.join("hermes-surface-dev"))
     }
-    if let Some(dir) = dirs::config_dir() {
-        return Ok(dir.join("hermes-surface-dev"));
-    }
-    Ok(env::current_dir()?.join("hermes-surface-dev"))
 }
 
 fn default_data_dir() -> Result<PathBuf, AppError> {
-    if let Ok(path) = env::var("HERMES_SURFACE_DATA_DIR") {
-        let trimmed = path.trim();
-        if !trimmed.is_empty() {
-            return Ok(PathBuf::from(trimmed));
+    #[cfg(all(target_os = "macos", folio_private_container_experiment))]
+    {
+        return Ok(dirs::data_dir()
+            .ok_or_else(|| AppError::new("config", "无法定位实验数据目录"))?
+            .join("FolioWidgetExperiment/data"));
+    }
+    #[cfg(not(all(target_os = "macos", folio_private_container_experiment)))]
+    {
+        if let Ok(path) = env::var("HERMES_SURFACE_DATA_DIR") {
+            let trimmed = path.trim();
+            if !trimmed.is_empty() {
+                return Ok(PathBuf::from(trimmed));
+            }
         }
-    }
 
-    #[cfg(target_os = "macos")]
-    if let Some(dir) = dirs::data_dir() {
-        return Ok(dir.join("Hermes Surface Dev"));
-    }
+        #[cfg(target_os = "macos")]
+        if let Some(dir) = dirs::data_dir() {
+            return Ok(dir.join("Hermes Surface Dev"));
+        }
 
-    if let Some(dir) = dirs::document_dir() {
-        return Ok(dir.join("Hermes Surface Dev"));
-    }
+        if let Some(dir) = dirs::document_dir() {
+            return Ok(dir.join("Hermes Surface Dev"));
+        }
 
-    Ok(env::current_dir()?.join("hermes-surface-dev-data"))
+        Ok(env::current_dir()?.join("hermes-surface-dev-data"))
+    }
 }
 
 fn resolve_data_dir(config_dir: &Path) -> Result<PathBuf, AppError> {

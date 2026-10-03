@@ -1,0 +1,11 @@
+{
+  "productName": "FolioPrivate",
+  "mainBinaryName": "folio",
+  "identifier": "dev.folio.surface.containerexperiment",
+  "bundle": {
+    "macOS": {
+      "infoPlist": "native/WidgetExperiment.plist",
+      "signingIdentity": null
+    }
+  }
+}

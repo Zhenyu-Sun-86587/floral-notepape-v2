@@ -1,4 +1,10 @@
 fn main() {
+    println!("cargo:rustc-check-cfg=cfg(folio_private_container_experiment)");
+    println!("cargo:rerun-if-env-changed=FOLIO_WIDGET_CONTAINER_EXPERIMENT");
+    if std::env::var("FOLIO_WIDGET_CONTAINER_EXPERIMENT").as_deref() == Ok("1") {
+        assert_eq!(std::env::var("CARGO_CFG_TARGET_OS").as_deref(), Ok("macos"));
+        println!("cargo:rustc-cfg=folio_private_container_experiment");
+    }
     let conf = std::fs::read_to_string("tauri.conf.json").expect("read tauri.conf.json");
     let parsed: serde_json::Value = serde_json::from_str(&conf).expect("parse tauri.conf.json");
     let version = parsed["version"]

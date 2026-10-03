@@ -1,0 +1,54 @@
+name: macOS Private Container Widget Experiment
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/macos-widget-private-container]
+    paths:
+      - .github/workflows/macos-widget-private-container.yml
+      - scripts/build-private-container-widgets.py
+      - src-tauri/**
+      - src/**
+
+permissions:
+  contents: read
+
+jobs:
+  private-widget:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Build isolated real host and full-Xcode WidgetKit extension
+        env:
+          FOLIO_WIDGET_CONTAINER_EXPERIMENT: "1"
+        run: |
+          xcodebuild -version
+          npm ci
+          npm run tauri build -- --config src-tauri/tauri.widget-experiment.conf.json --bundles app
+          python3 scripts/build-macos-widgets.py --compile-only
+          python3 scripts/build-private-container-widgets.py --app src-tauri/target/release/bundle/macos/FolioPrivate.app --prebuilt-extension local-build/widget-ci/FolioWidgets.appex
+      - name: Package and inspect the ad-hoc experiment
+        run: |
+          mkdir -p local-build/private-widget-delivery
+          ditto src-tauri/target/release/bundle/macos/FolioPrivate.app local-build/private-widget-delivery/FolioPrivate.app
+          cp src-tauri/target/release/bundle/macos/PRIVATE_WIDGET_BUILD_REPORT.json local-build/private-widget-delivery/
+          codesign -d --verbose=2 --entitlements - local-build/private-widget-delivery/FolioPrivate.app/Contents/PlugIns/FolioWidgets.appex
+          test -z "$(find local-build/private-widget-delivery -name '*.provisionprofile' -print)"
+          hdiutil create -volname FolioPrivate -srcfolder local-build/private-widget-delivery -ov -format UDZO local-build/FolioPrivate_1.8.7_aarch64.dmg
+          shasum -a 256 local-build/FolioPrivate_1.8.7_aarch64.dmg > local-build/FolioPrivate_SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FolioPrivate-ad-hoc-widget-experiment
+          path: |
+            local-build/FolioPrivate_1.8.7_aarch64.dmg
+            local-build/FolioPrivate_SHA256SUMS.txt
+            local-build/private-widget-delivery/PRIVATE_WIDGET_BUILD_REPORT.json
+          if-no-files-found: error

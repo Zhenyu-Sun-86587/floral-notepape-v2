@@ -34,7 +34,7 @@ func folioWidgetsAvailable() -> Bool {
           let plugins = Bundle.main.builtInPlugInsURL,
           FileManager.default.fileExists(atPath: plugins.appendingPathComponent("FolioWidgets.appex").path)
     else { return false }
-    return FolioWidgetStore.container != nil
+    return FolioWidgetStore.privateContainerIdentifier != nil || FolioWidgetStore.container != nil
 }
 
 @_cdecl("folio_widgets_publish")
@@ -44,6 +44,9 @@ func folioWidgetsPublish(_ json: UnsafePointer<CChar>) -> Bool {
     let destination = container.appendingPathComponent("notes.json")
     if (try? Data(contentsOf: destination)) == data { return true }
     do {
+        if FolioWidgetStore.privateContainerIdentifier != nil {
+            try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
+        }
         try data.write(to: destination, options: .atomic)
         WidgetCenter.shared.reloadTimelines(ofKind: "FolioNote")
         return true
