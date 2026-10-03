@@ -1,4 +1,4 @@
-> 2.0.0 发布加固正在验证，当前审计与构建证据以 [Docs/MAC_HARDENING_2.0.md](Docs/MAC_HARDENING_2.0.md) 为准。下列历史版本记录不代表本轮已完成验收。
+> 当前交付版本为 [笺影 Mac 2.0.0](Docs/RELEASE_2.0.0_MAC.md)。构建与安装包静态核验通过，长期性能、升级授权和关键交互仍按发布说明保留待验收状态。下列为历史记录。
 
 当前版本：[笺影 Mac 1.8.8：原生小组件性能与待办交互](Docs/MAC_WIDGETS_1.8.8.md)。GitHub Actions 构建真正的 WidgetKit 扩展；正式 Mac 包采用私有容器与 ad-hoc 签名，不需要七天开发描述文件。支持 Markdown、翻页、复制与待办勾选，具体人工验收范围见文档。
 

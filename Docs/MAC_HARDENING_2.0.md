@@ -109,4 +109,8 @@
 
 本机候选包：`local-build/mac-2.0.0-candidate/Folio_2.0.0_aarch64.dmg`。SHA-256：`10d425dc026c8d66b277a60dd284d17b6720d67d9bb36499d7fc307daab0511c`，与 CI 清单一致。ZIP 和 DMG 完整性检查通过；只读挂载后 `codesign --verify --deep --strict` 通过。主应用 `dev.hermes.surface`、扩展 `dev.hermes.surface.widgets` 均为 2.0.0；主程序 arm64、ad-hoc，存在 App Intents 元数据，应用内无 `.provisionprofile`、Python 或 Shell 脚本。检查后已卸载只读卷，未运行或安装候选包。
 
-备份清单 15 项无缺失；仅原先打开应用造成的 `surface-sessions.json` 与初始备份不同，其余校验值一致。升级、跨版本授权、真实交互和长期运行未验收，因此 main 未合并，安装和旧版本清理暂不执行。使用说明见 [MAC_2.0_DISTRIBUTION.md](MAC_2.0_DISTRIBUTION.md)。
+备份清单 15 项无缺失；仅原先打开应用造成的 `surface-sessions.json` 与初始备份不同，其余校验值一致。此核验时升级、跨版本授权、真实交互和长期运行未验收，main 尚未合并，安装和旧版本清理尚未执行。使用说明见 [MAC_2.0_DISTRIBUTION.md](MAC_2.0_DISTRIBUTION.md)。
+
+## 打包与合并决定
+
+用户在上述未测范围与剩余风险已说明后，明确要求先打包与合并。使用同一已验证源码及 DMG，不重复构建无源码变化的文档提交。交付记录见 [RELEASE_2.0.0_MAC.md](RELEASE_2.0.0_MAC.md)。此决定不构成实际运行、跨电脑分发或本机安装的验证证据。
