@@ -100,7 +100,6 @@ struct Host {
     root: Retained<NSView>,
     clip: Retained<NSView>,
     effects: Vec<Retained<NSView>>,
-    glass: Option<Retained<NSView>>,
     kind: String,
     opacity: f64,
     radius: f64,
@@ -177,13 +176,8 @@ fn install(window: &WebviewWindow, radius: f64) -> Result<MaterialState, AppErro
         }
         crate::macos_fluid::remove(window.label());
         let (root, clip) = if let Some(host) = hosts.get(window.label()) {
-            // The Wry root never moves during a mode change. NSGlassEffectView
-            // owns its contentView: reparenting that content across effects can
-            // make its old owner detach the WebView after the new host installs.
-            // Clear ownership before detaching: an old NSGlassEffectView must
-            // never remove the WebView after it has joined the next host.
-            if let Some(glass) = &host.glass { unsafe { let _: () = msg_send![&**glass, setContentView: std::ptr::null::<AnyObject>()]; } }
-            host.root.removeFromSuperview();
+            // Keep the Wry root and its responder/layout chain attached to the
+            // same clip for every mode. Glass owns only decorative content.
             for effect in &host.effects { effect.removeFromSuperview(); }
             configure_view(&host.clip, radius);
             configure_view(&host.root, radius);
@@ -201,14 +195,15 @@ fn install(window: &WebviewWindow, radius: f64) -> Result<MaterialState, AppErro
         };
 
         let frame = clip.bounds();
+        root.setFrame(frame);
+        if unsafe { root.superview() }.is_none() { clip.addSubview(&root); }
         let background = NSView::initWithFrame(NSView::alloc(mtm),frame);
         background.setAutoresizingMask(Sizing::ViewWidthSizable | Sizing::ViewHeightSizable);
         let fluid = kind == "glass" && dynamics == CapsuleDynamics::Fluid;
         let separate = kind == "glass" && (window.label().starts_with("tile-") || window.label().starts_with("notepad-"));
         background.setWantsLayer(true);
-        if separate { clip.addSubview(&background); }
+        if separate { clip.addSubview_positioned_relativeTo(&background, objc2_app_kit::NSWindowOrderingMode::Below, Some(&root)); }
         let mut effects = Vec::new();
-        let mut glass_host = None;
         if kind == "glass" || kind == "frosted" {
             // Explicit behind-window sampling supplies wallpaper/other apps,
             // rather than blurring an empty transparent window's own contents.
@@ -221,7 +216,7 @@ fn install(window: &WebviewWindow, radius: f64) -> Result<MaterialState, AppErro
             }
             // Clear glass keeps a lighter backdrop; frosted keeps full diffusion.
             backdrop.setAlphaValue(opacity);
-            if separate { background.addSubview(&backdrop); } else { clip.addSubview(&backdrop); }
+            if separate { background.addSubview(&backdrop); } else { clip.addSubview_positioned_relativeTo(&backdrop, objc2_app_kit::NSWindowOrderingMode::Below, Some(&root)); }
             effects.push(backdrop);
             if kind == "glass" {
                 let glass = effect_view(glass_class.expect("available glass"), frame);
@@ -231,20 +226,19 @@ fn install(window: &WebviewWindow, radius: f64) -> Result<MaterialState, AppErro
                     let _: () = msg_send![&*glass, setCornerRadius: radius];
                     let tint = NSColor::colorWithWhite_alpha(1.0, opacity * if dynamics == CapsuleDynamics::Lightweight { 0.12 } else { 0.025 });
                     let _: () = msg_send![&*glass, setTintColor: &*tint];
-                    if window.label() == "capsule-preview" || separate {
-                        // Selection/focus belongs to the WebView, not to the
-                        // glass subtree's dynamic interaction/emphasis state.
-                        let content=NSView::initWithFrame(NSView::alloc(mtm),frame);
-                        let _: () = msg_send![&*glass, setContentView: &*content];
-                    } else { let _: () = msg_send![&*glass, setContentView: &*root]; }
+                    // NSGlassEffectView may detach or resize content when its
+                    // material is replaced. Never give it ownership of Wry.
+                    let content=NSView::initWithFrame(NSView::alloc(mtm),frame);
+                    content.setAutoresizingMask(Sizing::ViewWidthSizable | Sizing::ViewHeightSizable);
+                    let _: () = msg_send![&*glass, setContentView: &*content];
 
                 }
-                if separate { background.addSubview(&glass); } else { clip.addSubview(&glass); }
-                glass_host = Some(glass.clone());
+                if separate { background.addSubview(&glass); } else { clip.addSubview_positioned_relativeTo(&glass, objc2_app_kit::NSWindowOrderingMode::Below, Some(&root)); }
                 effects.push(glass);
             }
         }
-        if kind != "glass" || window.label() == "capsule-preview" || separate { clip.addSubview(&root); }
+        clip.setNeedsLayout(true);
+        clip.layoutSubtreeIfNeeded();
         if fluid {
             crate::macos_fluid::install_note(native,&background,window.label(),radius,opacity);
         }
@@ -253,7 +247,7 @@ fn install(window: &WebviewWindow, radius: f64) -> Result<MaterialState, AppErro
         native.setBackgroundColor(Some(&NSColor::clearColor()));
         native.setAcceptsMouseMovedEvents(true);
         native.setHasShadow(!window.label().starts_with("capsule-group"));
-        hosts.insert(window.label().into(), Host { root, clip, effects, glass: glass_host, kind: kind.into(), opacity, radius, dynamics, background:separate.then_some(background) });
+        hosts.insert(window.label().into(), Host { root, clip, effects, kind: kind.into(), opacity, radius, dynamics, background:separate.then_some(background) });
         crate::macos_note_shell::attach(window, &hosts.get(window.label()).unwrap().root);
         let _ = window.emit("mac-material-changed", &state);
         Ok(state)
