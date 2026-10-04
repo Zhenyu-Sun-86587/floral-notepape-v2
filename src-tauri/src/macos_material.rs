@@ -30,55 +30,40 @@ pub struct MaterialState {
     pub kind: String,
     pub opacity: f64,
 }
-/// Both public glass classes are needed by the capsule renderer. Older AppKit
-/// versions keep their native chrome and use NSVisualEffectView instead.
-pub fn glass_available() -> bool {
-    AnyClass::get(c"NSGlassEffectView").is_some()
-        && AnyClass::get(c"NSGlassEffectContainerView").is_some()
-}
-fn glass_active() -> bool {
-    effective_kind() == "glass"
-}
-pub fn is_enabled() -> bool {
-    ENABLED.load(Ordering::Relaxed)
-}
 pub fn glass_motion_enabled() -> bool {
-    glass_active()
-        && CONFIG
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .as_ref()
-            .is_none_or(|c| {
-                c.material_enabled
-                    && c.material_effect == MaterialEffect::LiquidGlass
-                    && c.capsule_liquid_motion
-            })
+    CONFIG
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .is_none_or(|c| {
+            c.material_enabled
+                && c.material_effect == MaterialEffect::LiquidGlass
+                && c.capsule_liquid_motion
+        })
 }
 pub fn elastic_capsules() -> bool {
-    glass_active()
-        && CONFIG
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .as_ref()
-            .is_some_and(|c| c.capsule_dynamics != CapsuleDynamics::Lightweight)
+    CONFIG
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .is_some_and(|c| c.capsule_dynamics != CapsuleDynamics::Lightweight)
 }
 pub fn fluid_capsules() -> bool {
-    glass_active()
-        && CONFIG
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .as_ref()
-            .is_some_and(|c| {
-                c.material_enabled
-                    && c.material_effect == MaterialEffect::LiquidGlass
-                    && c.capsule_dynamics == CapsuleDynamics::Fluid
-            })
+    CONFIG
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .is_some_and(|c| {
+            c.material_enabled
+                && c.material_effect == MaterialEffect::LiquidGlass
+                && c.capsule_dynamics == CapsuleDynamics::Fluid
+        })
 }
 pub fn capsule_tint(opacity: f64) -> f64 {
     opacity * if elastic_capsules() { 0.025 } else { 0.12 }
 }
 pub fn note_dynamics(label: &str) -> CapsuleDynamics {
-    if !glass_active() || (!label.starts_with("tile-") && !label.starts_with("notepad-")) {
+    if !label.starts_with("tile-") && !label.starts_with("notepad-") {
         return CapsuleDynamics::Lightweight;
     }
     CONFIG
@@ -102,12 +87,11 @@ pub fn opacity(label: &str, glass: bool) -> f64 {
     .value(glass)
 }
 pub fn note_spring_enabled() -> bool {
-    glass_active()
-        && CONFIG
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .as_ref()
-            .is_some_and(MacosConfig::note_spring_enabled)
+    CONFIG
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .is_some_and(MacosConfig::note_spring_enabled)
 }
 pub fn current_config() -> Option<MacosConfig> {
     CONFIG.read().unwrap_or_else(|e| e.into_inner()).clone()
@@ -153,25 +137,22 @@ fn configure_view(view: &NSView, radius: f64) {
         layer.setMasksToBounds(true);
     }
 }
-fn effective_kind() -> &'static str {
-    if !is_enabled() {
-        return "off";
-    }
+pub fn state(label: &str) -> MaterialState {
     let reduce: bool = unsafe {
         let class = AnyClass::get(c"NSWorkspace").expect("AppKit NSWorkspace");
         let workspace: *mut AnyObject = msg_send![class, sharedWorkspace];
         msg_send![workspace, accessibilityDisplayShouldReduceTransparency]
     };
-    if reduce {
+    let glass_class = AnyClass::get(c"NSGlassEffectView");
+    let kind = if !ENABLED.load(Ordering::Relaxed) {
+        "off"
+    } else if reduce {
         "solid"
-    } else if GLASS.load(Ordering::Relaxed) && glass_available() {
+    } else if GLASS.load(Ordering::Relaxed) && glass_class.is_some() {
         "glass"
     } else {
         "frosted"
-    }
-}
-pub fn state(label: &str) -> MaterialState {
-    let kind = effective_kind();
+    };
     let opacity = opacity(label, kind == "glass");
     MaterialState {
         kind: kind.into(),

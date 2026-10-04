@@ -261,12 +261,6 @@ async fn surface_capsule_material(
 
 #[cfg(target_os = "macos")]
 #[tauri::command]
-fn macos_glass_available() -> bool {
-    macos_material::glass_available()
-}
-
-#[cfg(target_os = "macos")]
-#[tauri::command]
 async fn macos_fluid_status(app: AppHandle, request: Option<bool>) -> Result<String, AppError> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.run_on_main_thread(move || {
@@ -1149,8 +1143,6 @@ pub fn run() {
             surface_capsule_preview_state,
             #[cfg(target_os = "macos")]
             surface_capsule_material,
-            #[cfg(target_os = "macos")]
-            macos_glass_available,
             #[cfg(target_os = "macos")]
             macos_fluid_status,
             surface_capsule_present,
