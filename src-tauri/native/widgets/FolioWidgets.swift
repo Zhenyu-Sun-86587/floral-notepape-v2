@@ -79,17 +79,39 @@ struct ToggleNoteTask: AppIntent {
             return .result()
         }
         try FolioWidgetStore.enqueueTask(FolioWidgetTaskChange(noteKey: noteKey, expectedContent: note.content, line: line, checked: checked, slot: slot))
+        try await wakeFolioHost()
+        return .result()
+    }
+}
+
+// Use the same primitive-parameter background intent route as task buttons.
+// A Link activates the containing application and triggers its Reopen handler.
+struct OpenNoteWindow: AppIntent {
+    static var title: LocalizedStringResource = "展开便签"
+    static var openAppWhenRun: Bool = false
+    @Parameter(title: "便签") var noteKey: String
+    @Parameter(title: "小组件编号", default: 0) var slot: Int
+    init() {}
+    init(noteKey: String, slot: Int) { self.noteKey = noteKey; self.slot = slot }
+    @MainActor func perform() async throws -> some IntentResult {
+        guard FolioWidgetStore.read().isDisplayed(key: noteKey, slot: slot) else { return .result() }
+        try FolioWidgetStore.enqueueAction(FolioWidgetOpenRequest(noteKey: noteKey, slot: slot))
+        try await wakeFolioHost()
+        return .result()
+    }
+}
+
+@MainActor private func wakeFolioHost() async throws {
         // Wake only the host belonging to this extension, without showing UI.
         let host = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         if let identifier = Bundle(url: host)?.bundleIdentifier,
            NSRunningApplication.runningApplications(withBundleIdentifier: identifier).isEmpty {
             let configuration = NSWorkspace.OpenConfiguration()
             configuration.activates = false
+            configuration.addsToRecentItems = false
             configuration.arguments = ["--silent"]
-            NSWorkspace.shared.openApplication(at: host, configuration: configuration) { _, _ in }
+            _ = try await NSWorkspace.shared.openApplication(at: host, configuration: configuration)
         }
-        return .result()
-    }
 }
 struct CopySharedNote: AppIntent {
     static var title: LocalizedStringResource = "复制便签 Markdown"
@@ -183,8 +205,8 @@ struct NoteWidgetView: View {
                     Text(note.title).font(.headline).lineLimit(1).widgetAccentable()
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }.buttonStyle(.plain).accessibilityLabel("复制便签标题").help("复制标题")
-                if let url = note.link {
-                  Link(destination: url) {
+                if note.link != nil {
+                  Button(intent: OpenNoteWindow(noteKey: note.key, slot: entry.slot)) {
                     Image(systemName: "arrow.up.right.square").frame(width: 22, height: 22)
                   }.buttonStyle(.plain).accessibilityLabel("展开便签").help("展开便签")
                 }

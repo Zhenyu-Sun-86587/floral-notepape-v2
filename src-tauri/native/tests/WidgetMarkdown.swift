@@ -30,6 +30,10 @@ struct WidgetMarkdownRegression {
         precondition(!FolioWidgetSnapshot(notes: [note, external]).isDisplayed(key: note.key, slot: 1))
         let decoded = try JSONDecoder().decode(FolioWidgetSnapshot.self, from: JSONEncoder().encode(assigned))
         precondition(decoded.isDisplayed(key: external.key, slot: 2))
+        let open = try JSONEncoder().encode(FolioWidgetOpenRequest(noteKey: external.key, slot: 2))
+        let action = try JSONSerialization.jsonObject(with: open) as! [String: Any]
+        precondition(action["action"] as? String == "openNote")
+        precondition(action["noteKey"] as? String == external.key && action["slot"] as? Int == 2)
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }

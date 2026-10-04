@@ -40,6 +40,7 @@ impl MaterialOpacity {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct MacosConfig {
+    pub lightweight_mode: bool,
     pub material_effect: MaterialEffect,
     pub material_enabled: bool,
     pub main_opacity: MaterialOpacity,
@@ -57,6 +58,7 @@ pub struct MacosConfig {
 impl Default for MacosConfig {
     fn default() -> Self {
         Self {
+            lightweight_mode: false,
             material_effect: MaterialEffect::LiquidGlass,
             material_enabled: true,
             main_opacity: MaterialOpacity::default(),
@@ -92,6 +94,12 @@ mod tests {
                 .unwrap();
         assert_eq!(config.main_opacity, MaterialOpacity::default());
         assert!(!config.notes_on_all_spaces);
+        assert!(!config.lightweight_mode);
+        assert!(
+            serde_json::from_str::<MacosConfig>(r#"{"lightweightMode":true}"#)
+                .unwrap()
+                .lightweight_mode
+        );
         assert_eq!(
             MaterialOpacity {
                 glass: 0,
