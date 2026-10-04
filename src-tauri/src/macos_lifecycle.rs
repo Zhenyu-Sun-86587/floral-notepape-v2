@@ -50,9 +50,6 @@ pub fn main_destroyed(app: &tauri::AppHandle) {
     };
     if !crate::desktop::app_is_exiting(app) {
         let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-        if crate::desktop::lightweight_mode_enabled() {
-            crate::desktop::release_idle_notepads(app);
-        }
         if reopen {
             let app = app.clone();
             tauri::async_runtime::spawn_blocking(move || {

@@ -1783,15 +1783,10 @@ pub fn recycle_notepad_window(app: &AppHandle, label: &str) -> Result<(), AppErr
 
     window.hide()?;
 
-    #[cfg(not(target_os = "macos"))]
-    let recycle_allowed = true;
-    #[cfg(target_os = "macos")]
-    let recycle_allowed = !lightweight_mode_enabled();
-    let recycled = recycle_allowed
-        && app
-            .try_state::<NotepadPool>()
-            .map(|pool| pool.put(label.to_string()))
-            .unwrap_or(false);
+    let recycled = app
+        .try_state::<NotepadPool>()
+        .map(|pool| pool.put(label.to_string()))
+        .unwrap_or(false);
 
     if !recycled {
         // The frontend has completed its save handshake. Do not re-enter its
@@ -1857,10 +1852,6 @@ fn schedule_notepad_replenish(app: &AppHandle, delay_ms: u64) {
 }
 
 fn prewarm_notepad(app: &AppHandle) -> Result<(), AppError> {
-    #[cfg(target_os = "macos")]
-    if lightweight_mode_enabled() {
-        return Ok(());
-    }
     let pool = app.try_state::<NotepadPool>().ok_or_else(|| AppError {
         code: "noPool".into(),
         message: "notepad pool not initialized".into(),
@@ -3428,24 +3419,6 @@ pub(crate) fn lightweight_mode_enabled() -> bool {
     load_config()
         .map(|config| config.macos.lightweight_mode)
         .unwrap_or(false)
-}
-
-#[cfg(target_os = "macos")]
-pub(crate) fn release_idle_notepads(app: &AppHandle) {
-    if let Some(pool) = app.try_state::<NotepadPool>() {
-        let labels = pool
-            .available
-            .lock()
-            .map(|mut labels| std::mem::take(&mut *labels))
-            .unwrap_or_default();
-        for label in labels {
-            if let Some(window) = app.get_webview_window(&label) {
-                if let Err(error) = window.destroy() {
-                    eprintln!("failed to release idle notepad: {error}");
-                }
-            }
-        }
-    }
 }
 
 fn close_to_tray_enabled() -> bool {
