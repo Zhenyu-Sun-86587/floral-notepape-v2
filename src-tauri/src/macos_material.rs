@@ -24,6 +24,9 @@ use tauri::{Emitter, Manager, WebviewWindow};
 static ENABLED: AtomicBool = AtomicBool::new(true);
 static GLASS: AtomicBool = AtomicBool::new(true);
 static CONFIG: RwLock<Option<MacosConfig>> = RwLock::new(None);
+pub fn enabled() -> bool {
+    ENABLED.load(Ordering::Relaxed)
+}
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MaterialState {
@@ -144,11 +147,14 @@ pub fn state(label: &str) -> MaterialState {
         msg_send![workspace, accessibilityDisplayShouldReduceTransparency]
     };
     let glass_class = AnyClass::get(c"NSGlassEffectView");
-    let kind = if !ENABLED.load(Ordering::Relaxed) {
+    let kind = if !enabled() {
         "off"
     } else if reduce {
         "solid"
-    } else if GLASS.load(Ordering::Relaxed) && glass_class.is_some() {
+    } else if GLASS.load(Ordering::Relaxed)
+        && glass_class.is_some()
+        && AnyClass::get(c"NSGlassEffectContainerView").is_some()
+    {
         "glass"
     } else {
         "frosted"
