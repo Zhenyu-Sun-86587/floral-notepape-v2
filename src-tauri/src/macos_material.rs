@@ -39,6 +39,9 @@ pub fn glass_available() -> bool {
 fn glass_active() -> bool {
     effective_kind() == "glass"
 }
+pub fn is_enabled() -> bool {
+    ENABLED.load(Ordering::Relaxed)
+}
 pub fn glass_motion_enabled() -> bool {
     glass_active()
         && CONFIG
@@ -151,7 +154,7 @@ fn configure_view(view: &NSView, radius: f64) {
     }
 }
 fn effective_kind() -> &'static str {
-    if !ENABLED.load(Ordering::Relaxed) {
+    if !is_enabled() {
         return "off";
     }
     let reduce: bool = unsafe {

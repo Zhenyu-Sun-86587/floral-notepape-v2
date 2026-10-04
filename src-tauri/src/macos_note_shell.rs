@@ -77,10 +77,12 @@ pub fn layout(window: &WebviewWindow, root: &NSView) {
         // The native header sits outside the WebView. With material disabled,
         // the DOM's opaque background cannot cover this reserved title area.
         // Keep the 2.0.3 transparent header for every enabled native material.
-        let kind = crate::macos_material::state(window.label()).kind;
-        entry.header.setWantsLayer(true);
+        let enabled = crate::macos_material::is_enabled();
+        if !enabled {
+            entry.header.setWantsLayer(true);
+        }
         if let Some(layer) = entry.header.layer() {
-            if kind == "off" {
+            if !enabled {
                 layer.setBackgroundColor(Some(&NSColor::windowBackgroundColor().CGColor()));
             } else {
                 layer.setBackgroundColor(None);
