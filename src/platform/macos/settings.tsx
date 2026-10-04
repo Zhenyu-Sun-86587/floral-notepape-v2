@@ -90,9 +90,24 @@ export function MaterialSettings({
 }) {
   const settings = config.macos ?? { notesOnAllSpaces: true, capsulesOnAllSpaces: true };
   const [fluidStatus, setFluidStatus] = useState("");
+  const [glassAvailable, setGlassAvailable] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void invoke<boolean>("macos_glass_available").then(
+      (available) => {
+        if (active) setGlassAvailable(available);
+      },
+      () => {
+        if (active) setGlassAvailable(false);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, []);
+  const enabled = settings.materialEnabled ?? true;
   const glass =
-    (settings.materialEnabled ?? true) &&
-    (settings.materialEffect ?? "liquidGlass") === "liquidGlass";
+    enabled && glassAvailable && (settings.materialEffect ?? "liquidGlass") === "liquidGlass";
   const fluid =
     glass && (settings.capsuleDynamics === "fluid" || settings.noteDynamics === "fluid");
   const noteSpring =
@@ -137,7 +152,8 @@ export function MaterialSettings({
         材质效果
         <select
           aria-label="Mac 材质效果"
-          value={settings.materialEffect ?? "liquidGlass"}
+          disabled={!enabled}
+          value={glassAvailable ? (settings.materialEffect ?? "liquidGlass") : "frosted"}
           onChange={(event) =>
             onChange({
               ...config,
@@ -149,10 +165,19 @@ export function MaterialSettings({
           }
           className="rounded-lg px-3 py-2 bg-paper-warm"
         >
-          <option value="liquidGlass">液态玻璃</option>
+          <option value="liquidGlass" disabled={!glassAvailable}>
+            液态玻璃（macOS 26+）
+          </option>
           <option value="frosted">磨砂</option>
         </select>
       </label>
+      <p className="text-[10px] text-ink-faint">
+        {!enabled
+          ? "原生材质已关闭：便签与胶囊保留 AppKit 边界和操作栏，不启用玻璃、磨砂或桌面折射。"
+          : !glassAvailable
+            ? "此系统不支持液态玻璃，使用原生磨砂；玻璃设置保留，升级系统后可继续使用。"
+            : "原生材质已开启，效果应用于主界面、便签和胶囊。"}
+      </p>
       {(
         [
           ["mainOpacity", "主界面", 35, 70],
@@ -161,7 +186,9 @@ export function MaterialSettings({
         ] as const
       ).map(([key, label, glass, frosted]) => {
         const mode =
-          (settings.materialEffect ?? "liquidGlass") === "liquidGlass" ? "glass" : "frosted";
+          glassAvailable && (settings.materialEffect ?? "liquidGlass") === "liquidGlass"
+            ? "glass"
+            : "frosted";
         const values = settings[key] ?? { glass, frosted };
         return (
           <label key={key} className="block text-[11px] text-ink-soft">
@@ -174,6 +201,7 @@ export function MaterialSettings({
             </span>
             <input
               aria-label={`${label}材质浓度`}
+              disabled={!enabled}
               type="range"
               min="0"
               max="100"
@@ -194,6 +222,7 @@ export function MaterialSettings({
         <input
           type="checkbox"
           checked={settings.capsuleLiquidMotion ?? true}
+          disabled={!glass}
           onChange={(event) =>
             onChange({
               ...config,
