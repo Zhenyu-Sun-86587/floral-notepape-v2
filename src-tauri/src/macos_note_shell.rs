@@ -74,6 +74,20 @@ pub fn layout(window: &WebviewWindow, root: &NSView) {
         };
         let size = root.bounds().size;
         let h = HEIGHT.min(size.height);
+        // This title area is outside the WebView: its opaque DOM background
+        // cannot cover it when native material is off. Enabled material keeps
+        // the original 2.0.3 transparent header and decorative effect below it.
+        let enabled = crate::macos_material::enabled();
+        if !enabled {
+            entry.header.setWantsLayer(true);
+        }
+        if let Some(layer) = entry.header.layer() {
+            if enabled {
+                layer.setBackgroundColor(None);
+            } else {
+                layer.setBackgroundColor(Some(&NSColor::windowBackgroundColor().CGColor()));
+            }
+        }
         // Wry also changes the WebView frame during live resize. Native
         // constraints keep the reserved title area authoritative after that
         // callback, rather than racing it with a second frame assignment.
