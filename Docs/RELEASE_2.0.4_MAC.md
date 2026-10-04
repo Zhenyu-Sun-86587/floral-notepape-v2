@@ -12,4 +12,7 @@
 
 安装前备份真实数据和旧应用，校验包、身份、版本、嵌入扩展及严格签名，只终止本项目进程并替换 /Applications/Folio.app，按要求不启动新版做运行测试。签名仍为 ad-hoc 且未公证，升级可能需要用户重新授权，不承诺永久免授权或所有机器可用。
 
-构建、校验、安装和发布结果在交付时补充；此段不表示已完成。
+- 正式源码 `789f2294fb5e31e36160509ae7f07192e36176a2`：[Mac 完整 Xcode 构建](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/37195857429)和 [Windows 兼容工作流](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/37195860072)均通过。先前候选已取消，没有分发，不计作通过。
+- DMG `Folio_2.0.4_aarch64.dmg`，SHA-256：`ef5adcd02c418aedcaecb63170b2dc5309a348cf9badf4674f44924725b90fb7`。Actions ZIP SHA-256 `7cdc972d9e13e3ebf941af9c96f82e9157f20f6b86a0282ac8b30ecc868e8e75` 已核对，解压完整性通过。主程序 arm64、扩展 arm64/x86_64；版本、身份、App Intents 元数据及 deep strict 签名检查通过，无开发描述文件。
+- 2026-10-04 已安装到 `/Applications/Folio.app`，仅终止旧 Folio 主程序和扩展进程。15 项磁盘文件在替换前后保持相同校验，包括设置、共享编号、内部元数据、外部 Markdown 与绑定/草稿、小组件快照。恢复备份保留在本机，未上传。未启动新版做任何运行或界面测试，未声称未保存的内存编辑可被强制终止保留。
+- 合并和 GitHub 发布结果随后补充。
