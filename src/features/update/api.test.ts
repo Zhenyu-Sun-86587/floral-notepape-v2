@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
   cancelUpdate,
@@ -113,5 +114,13 @@ describe("update api", () => {
       status: "failed",
       message: "save failed",
     });
+    // A mocked invoke alone cannot catch a missing native IPC registration.
+    // Quit and update preparation share this cross-language acknowledgement.
+    const native = readFileSync(new URL("../../../src-tauri/src/lib.rs", import.meta.url), "utf8");
+    const handlers = native.match(
+      /\.invoke_handler\(tauri::generate_handler!\[([\s\S]*?)\]\)/,
+    )?.[1];
+    const command = mockedInvoke.mock.calls[0][0];
+    expect(handlers).toContain(`updater::commands::${command},`);
   });
 });
