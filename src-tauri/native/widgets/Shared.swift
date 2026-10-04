@@ -47,6 +47,12 @@ struct FolioWidgetTaskChange: Codable {
     var slot: Int? = nil
 }
 
+struct FolioWidgetOpenRequest: Encodable {
+    let action = "openNote"
+    let noteKey: String
+    let slot: Int
+}
+
 enum FolioWidgetStore {
     static let widgetKinds = ["FolioNote", "FolioNote2", "FolioNote3", "FolioNote4"]
     // Storage choice does not define the app's URL identity.
@@ -74,6 +80,9 @@ enum FolioWidgetStore {
         defaults?.set(max(0, min(4000, page)), forKey: "page." + key)
     }
     static func enqueueTask(_ change: FolioWidgetTaskChange) throws {
+        try enqueueAction(change)
+    }
+    static func enqueueAction<T: Encodable>(_ change: T) throws {
         guard let container else { throw CocoaError(.fileNoSuchFile) }
         let inbox = container.appendingPathComponent("actions", isDirectory: true)
         try FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)

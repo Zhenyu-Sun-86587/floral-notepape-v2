@@ -1073,6 +1073,10 @@ pub fn run() {
             {
                 return;
             }
+            #[cfg(target_os = "macos")]
+            if desktop::lightweight_mode_enabled() && desktop::extract_file_arg(&args).is_none() {
+                return;
+            }
             if let Some(file_path) = desktop::extract_file_arg(&args) {
                 if app.get_webview_window("main").is_some() {
                     let _ = app.emit("open-external-file", file_path);
@@ -1201,11 +1205,24 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
     #[cfg(target_os = "macos")]
-    if std::env::args().any(|arg| arg == "--silent") {
+    {
         // setup 在 Ready 才执行；启动策略必须在 run/DidFinishLaunching 之前设置。
         app.set_activation_policy(tauri::ActivationPolicy::Accessory);
     }
     app.run(move |_app_handle, _event| {
+        // RunEvent arrives after Tauri removes the old window from its registry.
+        // Rebuilding from a per-window Destroyed callback can reuse a dying label.
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::WindowEvent {
+            label,
+            event: tauri::WindowEvent::Destroyed,
+            ..
+        } = &_event
+        {
+            if label == "main" {
+                macos_lifecycle::main_destroyed(_app_handle);
+            }
+        }
         if let tauri::RunEvent::ExitRequested { code, api, .. } = &_event {
             #[cfg(any(target_os = "windows", target_os = "macos"))]
             if desktop::should_prevent_windowless_exit(*code, desktop::app_is_exiting(_app_handle))
@@ -1251,6 +1268,11 @@ pub fn run() {
         }
         #[cfg(target_os = "macos")]
         if let tauri::RunEvent::Reopen { .. } = _event {
+            if desktop::lightweight_mode_enabled()
+                && _app_handle.get_webview_window("main").is_none()
+            {
+                return;
+            }
             // 用户点 Dock 是主动找回列表；桌面便签可见不能阻止主窗重开。
             if let Err(error) = desktop::show_main_window(_app_handle) {
                 eprintln!("failed to show main window on dock click: {error}");

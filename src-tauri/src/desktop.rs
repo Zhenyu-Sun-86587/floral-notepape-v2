@@ -1283,6 +1283,8 @@ pub fn setup_desktop(app: &mut App) -> Result<(), Box<dyn Error>> {
     }
 
     let silent = std::env::args().any(|a| a == "--silent");
+    #[cfg(target_os = "macos")]
+    let silent = silent || (lightweight_mode_enabled() && extract_file_arg(&args).is_none());
     let startup_app = app.handle().clone();
     tauri::async_runtime::spawn(async move {
         let result = run_capsule_task(move || {
@@ -1360,6 +1362,13 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
     let WindowEvent::CloseRequested { api, .. } = event else {
         return;
     };
+
+    #[cfg(target_os = "macos")]
+    if !app_is_exiting(window.app_handle()) && lightweight_mode_enabled() {
+        api.prevent_close();
+        crate::macos_lifecycle::request_close_main(window.app_handle());
+        return;
+    }
 
     match main_window_close_action(app_is_exiting(window.app_handle()), close_to_tray_enabled()) {
         MainWindowCloseAction::AllowClose => {}
@@ -1622,7 +1631,12 @@ fn toggle_close_to_tray(_app: &AppHandle) -> Result<AppConfig, Box<dyn Error>> {
 
 pub fn show_main_window(app: &AppHandle) -> Result<(), AppError> {
     #[cfg(target_os = "macos")]
-    app.set_activation_policy(tauri::ActivationPolicy::Regular)?;
+    {
+        if crate::macos_lifecycle::cancel_or_defer_main_close() {
+            return Ok(());
+        }
+        app.set_activation_policy(tauri::ActivationPolicy::Regular)?;
+    }
     clear_hidden_window_state(app);
     let locale = configured_locale();
 
@@ -3398,6 +3412,13 @@ fn sanitize_label_part(value: &str) -> String {
 
 fn load_config() -> Result<AppConfig, AppError> {
     default_store()?.load_config()
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn lightweight_mode_enabled() -> bool {
+    load_config()
+        .map(|config| config.macos.lightweight_mode)
+        .unwrap_or(false)
 }
 
 fn close_to_tray_enabled() -> bool {

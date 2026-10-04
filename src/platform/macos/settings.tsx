@@ -5,6 +5,7 @@ import { WidgetSettings } from "./WidgetSettings";
 export const productName = "笺影";
 export interface PlatformConfig {
   macos?: {
+    lightweightMode?: boolean;
     notesOnAllSpaces: boolean;
     capsulesOnAllSpaces: boolean;
     materialEffect?: "liquidGlass" | "frosted";
@@ -30,6 +31,20 @@ export function PlatformSettings({
   const settings = config.macos ?? { notesOnAllSpaces: true, capsulesOnAllSpaces: true };
   return (
     <section className="space-y-2">
+      <label className="flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 bg-paper-warm/45 border border-paper-deep/25 cursor-pointer text-[12px] text-ink-soft">
+        轻量模式（便签、胶囊与小组件）
+        <input
+          type="checkbox"
+          className="accent-bamboo"
+          checked={settings.lightweightMode ?? false}
+          onChange={(event) =>
+            onChange({ ...config, macos: { ...settings, lightweightMode: event.target.checked } })
+          }
+        />
+      </label>
+      <p className="text-[11px] text-ink-faint">
+        启动时仅菜单栏驻留；关闭主界面会先保存，再释放主界面。便签与胶囊保留。需要列表或设置时，从菜单栏打开主界面。
+      </p>
       <div className="text-[11px] text-ink-faint">macOS 桌面与全屏空间</div>
       {(
         [

@@ -260,6 +260,31 @@ struct TaskChange {
     slot: Option<usize>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct OpenRequest {
+    action: String,
+    note_key: String,
+    slot: usize,
+}
+
+fn validate_slot(key: &str, slot: Option<usize>) -> Result<(), AppError> {
+    if !selected()?.iter().any(|selected| selected == key) {
+        return Err(error("便签未授权给小组件"));
+    }
+    let current = displays()?;
+    if !slot_matches(key, slot, &current) {
+        return Err(error("小组件已切换便签，请刷新后重试"));
+    }
+    Ok(())
+}
+
+fn slot_matches(key: &str, slot: Option<usize>, current: &[Display]) -> bool {
+    slot.filter(|slot| (1..=DISPLAY_COUNT).contains(slot))
+        .and_then(|slot| current.get(slot - 1))
+        .is_some_and(|display| display.note_key.as_deref() == Some(key))
+}
+
 fn apply_task(content: &str, change: &TaskChange) -> Result<String, AppError> {
     if content.chars().take(4000).collect::<String>() != change.expected_content {
         return Err(error("便签已变化，请刷新小组件后重试"));
@@ -319,20 +344,17 @@ extern "C" fn task_change(pointer: *const std::ffi::c_char) {
         if bytes.len() > 32768 {
             return Err(error("小组件操作过大"));
         }
+        let value: serde_json::Value = serde_json::from_slice(bytes)?;
+        if value.get("action").is_some() {
+            let request: OpenRequest = serde_json::from_value(value)?;
+            if request.action != "openNote" {
+                return Err(error("无效小组件操作"));
+            }
+            validate_slot(&request.note_key, Some(request.slot))?;
+            return open_shared_note(&request.note_key);
+        }
         let change: TaskChange = serde_json::from_slice(bytes)?;
-        if !selected()?.contains(&change.note_key) {
-            return Err(error("便签未授权给小组件"));
-        }
-        let current_displays = displays()?;
-        if !change
-            .slot
-            .filter(|slot| (1..=DISPLAY_COUNT).contains(slot))
-            .is_some_and(|slot| {
-                current_displays[slot - 1].note_key.as_ref() == Some(&change.note_key)
-            })
-        {
-            return Err(error("小组件已切换便签，请刷新后重试"));
-        }
+        validate_slot(&change.note_key, change.slot)?;
         let (kind, id) = change
             .note_key
             .split_once(':')
@@ -375,8 +397,18 @@ extern "C" fn explicit_open(pointer: *const std::ffi::c_char) {
     if !selected().is_ok_and(|keys| keys.contains(&key)) {
         return;
     }
+    if let Err(error) = open_shared_note(&key) {
+        eprintln!("widget open: {error}");
+    }
+}
+
+fn open_shared_note(key: &str) -> Result<(), AppError> {
+    let (kind, id) = key.split_once(':').ok_or_else(|| error("无效便签"))?;
+    if !matches!(kind, "note" | "linked") || uuid::Uuid::parse_str(id).is_err() {
+        return Err(error("无效便签"));
+    }
     let Some(app) = APP.get().cloned() else {
-        return;
+        return Err(error("主程序尚未就绪"));
     };
     let (kind, id) = (kind.to_owned(), id.to_owned());
     tauri::async_runtime::spawn(async move {
@@ -388,6 +420,7 @@ extern "C" fn explicit_open(pointer: *const std::ffi::c_char) {
             let _ = crate::desktop::open_linked_tile_window_now(&app, &id, None);
         }
     });
+    Ok(())
 }
 pub fn setup(app: &tauri::AppHandle) {
     let _ = APP.set(app.clone());
@@ -458,6 +491,35 @@ pub fn setup(app: &tauri::AppHandle) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn background_open_rejects_stale_slots_and_task_payloads() {
+        let request: super::OpenRequest = serde_json::from_str(r#"{"action":"openNote","noteKey":"linked:54d86ff1-4b0f-4890-a7f8-f083e678d659","slot":2}"#).unwrap();
+        assert_eq!(request.action, "openNote");
+        let displays = vec![
+            super::Display::default(),
+            super::Display {
+                note_key: Some(request.note_key.clone()),
+                text_size: "standard".into(),
+            },
+        ];
+        assert!(super::slot_matches(
+            &request.note_key,
+            Some(request.slot),
+            &displays
+        ));
+        for slot in [None, Some(0), Some(1), Some(3), Some(5)] {
+            assert!(!super::slot_matches(&request.note_key, slot, &displays));
+        }
+        assert!(!super::slot_matches("note:other", Some(2), &displays));
+        assert!(serde_json::from_str::<super::OpenRequest>(
+            r#"{"action":"openNote","noteKey":"linked:x","slot":2,"checked":true}"#
+        )
+        .is_err());
+        assert!(serde_json::from_str::<super::TaskChange>(
+            r#"{"action":"openNote","noteKey":"linked:x","slot":2}"#
+        )
+        .is_err());
+    }
     #[test]
     fn display_assignments_require_existing_shared_notes_and_valid_text_size() {
         let choices = vec![
