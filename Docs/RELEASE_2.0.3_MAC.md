@@ -18,3 +18,5 @@ macOS 设置增加可选轻量模式，默认关闭以保留现有启动习惯�
 - 生命周期通过 Tauri 注销主窗口后执行清理。WindowServer 的 optionAll 列表仍记录关闭后不可见的原生窗口，故不能用总窗口数当作 WebView 释放或 RSS 改善的量化证明。没有 CPU/RSS/GPU/能耗持续采样。人工验收重点：主程序退出/后台驻留时分别展开内部和外部便签；Dock 不出现；轻量模式重启、主界面打开/关闭和胶囊操作；未保存长文与外部冲突时关闭；复制/翻页/待办及四个编号回归。
 
 系统启动选项说明：[Apple NSWorkspace.OpenConfiguration](https://developer.apple.com/documentation/appkit/nsworkspace/openconfiguration)。
+
+- 已合并并推送 main `877c16b9d8a088f24749d93361130341026ccd7f`，应用源码与正式打包提交一致。[GitHub 2.0.3 发布](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/mac-v2.0.3) 提供 DMG、校验清单、构建信息与安装说明。远端四项资产大小及 SHA-256 与本机逐项核对后发布。重复 PR 检查及合并后相同源码的自动 Mac 构建已取消，不将取消标记为通过。
