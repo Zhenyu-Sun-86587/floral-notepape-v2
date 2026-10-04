@@ -37,6 +37,7 @@ jobs:
           xcodebuild -version
           npm ci
           npm test
+          node scripts/test-save-handshake.mjs
           cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
           swiftc -O src-tauri/native/widgets/Shared.swift src-tauri/native/widgets/Markdown.swift src-tauri/native/tests/WidgetMarkdown.swift -o "$RUNNER_TEMP/widget-regression"
           "$RUNNER_TEMP/widget-regression"

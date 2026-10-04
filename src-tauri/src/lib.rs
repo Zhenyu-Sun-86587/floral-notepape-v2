@@ -1195,6 +1195,7 @@ pub fn run() {
             toggle_tile_window,
             open_note_in_editor,
             updater::commands::update_status,
+            updater::commands::update_install_prepare_report,
             take_startup_file
         ])
         .build(tauri::generate_context!())
