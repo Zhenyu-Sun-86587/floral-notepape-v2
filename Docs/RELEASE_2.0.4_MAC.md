@@ -15,4 +15,5 @@
 - 正式源码 `789f2294fb5e31e36160509ae7f07192e36176a2`：[Mac 完整 Xcode 构建](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/37195857429)和 [Windows 兼容工作流](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/37195860072)均通过。先前候选已取消，没有分发，不计作通过。
 - DMG `Folio_2.0.4_aarch64.dmg`，SHA-256：`ef5adcd02c418aedcaecb63170b2dc5309a348cf9badf4674f44924725b90fb7`。Actions ZIP SHA-256 `7cdc972d9e13e3ebf941af9c96f82e9157f20f6b86a0282ac8b30ecc868e8e75` 已核对，解压完整性通过。主程序 arm64、扩展 arm64/x86_64；版本、身份、App Intents 元数据及 deep strict 签名检查通过，无开发描述文件。
 - 2026-10-04 已安装到 `/Applications/Folio.app`，仅终止旧 Folio 主程序和扩展进程。15 项磁盘文件在替换前后保持相同校验，包括设置、共享编号、内部元数据、外部 Markdown 与绑定/草稿、小组件快照。恢复备份保留在本机，未上传。未启动新版做任何运行或界面测试，未声称未保存的内存编辑可被强制终止保留。
-- 合并和 GitHub 发布结果随后补充。
+- [PR #20](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/pull/20) 已合并并推送 main `4b2373b45840d478dcbdcff1477389d92d089bb7`，应用源码与已通过构建的提交逐文件一致。[GitHub 2.0.4 发布](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/mac-v2.0.4) 已公开，DMG、校验清单、构建记录、安装说明四项远端资产的大小和 SHA-256 在正式发布前逐项核对一致。相同源码的重复 PR 与 main 构建已取消，不计作通过。
+- 本机过时的 2.0.3 DMG 已清理，旧应用恢复 ZIP 和真实数据备份保留。新版安装后未启动；实际显示与旧系统体验由用户验收。
