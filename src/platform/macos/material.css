@@ -26,6 +26,14 @@
   background-color: var(--color-cloud) !important;
 }
 
+/* AppKit clips the complete note, including its native title. The WebView
+   begins below that title and must not draw a second rounded window there. */
+:root[data-mac-material="off"][data-native-note-shell="true"] .app-surface-frame {
+  border-radius: 0 !important;
+  border-width: 0 !important;
+  box-shadow: none !important;
+}
+
 :root[data-native-note-shell="true"]
   :is([data-note-toolbar], [data-note-header], [data-note-display-title]) {
   display: none !important;
