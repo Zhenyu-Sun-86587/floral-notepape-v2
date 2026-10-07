@@ -1063,6 +1063,10 @@ fn clear_hidden_window_state(app: &AppHandle) {
 
 fn toggle_app_visibility(app: &AppHandle) {
     #[cfg(target_os = "macos")]
+    if defer_capsule_leave(app, CapsuleLeaveAction::ToggleVisibility).unwrap_or(true) {
+        return;
+    }
+    #[cfg(target_os = "macos")]
     let _ = app.run_on_main_thread(crate::macos_motion::cancel);
     let _ = dismiss_capsule_preview(app);
     let Some(state) = app.try_state::<RuntimeState>() else {
@@ -1306,6 +1310,21 @@ pub fn setup_desktop(app: &mut App) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn handle_window_event(window: &Window, event: &WindowEvent) {
+    #[cfg(target_os = "macos")]
+    if window.label() == "capsule-preview" {
+        match event {
+            WindowEvent::CloseRequested { api, .. } if !app_is_exiting(window.app_handle()) => {
+                api.prevent_close();
+                let app = window.app_handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = run_capsule_task(move || dismiss_capsule_preview(&app)).await;
+                });
+                return;
+            }
+            WindowEvent::Destroyed => forget_capsule_preview(),
+            _ => {}
+        }
+    }
     if matches!(event, WindowEvent::ScaleFactorChanged { .. }) {
         queue_capsule_sync(window.app_handle());
     }
@@ -2305,6 +2324,9 @@ pub struct CapsuleEntry {
     pub preview: String,
     pub color_key: u8,
     pub expanded: bool,
+    pub locked: bool,
+    pub image_base_dir: Option<String>,
+    pub image_root_dir: Option<String>,
 }
 
 // WebView2 建窗不能运行在同步 IPC / UI 事件回调中。所有收纳变更串行排到工作线程，
@@ -2720,6 +2742,8 @@ fn capsule_preview(content: &str) -> String {
 fn capsule_entry_from_session(
     session: &crate::surface_sessions::SurfaceSession,
 ) -> Result<Option<CapsuleEntry>, AppError> {
+    let mut image_base_dir = None;
+    let mut image_root_dir = None;
     let item = if let Some(id) = session.key.strip_prefix("note:") {
         default_store()?.read_note(id).ok().map(|note| {
             let title = if note.title.trim().is_empty() {
@@ -2731,6 +2755,12 @@ fn capsule_entry_from_session(
         })
     } else if let Some(id) = session.key.strip_prefix("linked:") {
         let content = crate::linked::read(id).ok();
+        if let Some(linked) = &content {
+            image_base_dir = std::path::Path::new(&linked.binding.path)
+                .parent()
+                .map(|p| p.to_string_lossy().into_owned());
+            image_root_dir = Some(linked.image_root.clone());
+        }
         let binding = content
             .as_ref()
             .map(|value| value.binding.clone())
@@ -2760,6 +2790,9 @@ fn capsule_entry_from_session(
         preview: capsule_preview(&content),
         color_key: session.capsule_color_key.unwrap_or(0),
         expanded: session.presentation == crate::surface_sessions::Presentation::Expanded,
+        locked: session.locked,
+        image_base_dir,
+        image_root_dir,
     }))
 }
 
@@ -2846,6 +2879,10 @@ pub fn sync_capsule_windows(app: &AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 pub fn hide_stored_surface(app: &AppHandle, key: &str) -> Result<(), AppError> {
+    #[cfg(target_os = "macos")]
+    if defer_capsule_leave(app, CapsuleLeaveAction::Hide(key.to_owned()))? {
+        return Ok(());
+    }
     if crate::surface_sessions::get(key)?.presentation
         != crate::surface_sessions::Presentation::Stored
     {
@@ -2949,6 +2986,10 @@ pub fn store_surface(app: &AppHandle, key: &str) -> Result<(), AppError> {
 }
 
 pub fn restore_stored_surface(app: &AppHandle, key: &str) -> Result<(), AppError> {
+    #[cfg(target_os = "macos")]
+    if defer_capsule_leave(app, CapsuleLeaveAction::Restore(key.to_owned()))? {
+        return Ok(());
+    }
     let session = crate::surface_sessions::get(key)?;
     if session.presentation == crate::surface_sessions::Presentation::Expanded {
         if let Some(window) = app.get_webview_window(&surface_label(key)) {
@@ -2990,6 +3031,10 @@ pub fn restore_stored_surface(app: &AppHandle, key: &str) -> Result<(), AppError
 }
 
 pub fn restore_stored_surface_edit(app: &AppHandle, key: &str) -> Result<(), AppError> {
+    #[cfg(target_os = "macos")]
+    if defer_capsule_leave(app, CapsuleLeaveAction::RestoreEdit(key.to_owned()))? {
+        return Ok(());
+    }
     if crate::surface_sessions::get(key)?.presentation
         == crate::surface_sessions::Presentation::Expanded
     {
@@ -4517,6 +4562,7 @@ mod tests {
             remember_surface_size: true,
             tile_ctrl_close: true,
             tile_double_click_to_edit: false,
+            inline_editing: false,
             tile_save_returns_to_pin: false,
             tile_render_markdown: false,
             render_html_markdown: false,
@@ -4608,6 +4654,7 @@ mod tests {
             remember_surface_size: true,
             tile_ctrl_close: true,
             tile_double_click_to_edit: false,
+            inline_editing: false,
             tile_save_returns_to_pin: false,
             tile_render_markdown: false,
             render_html_markdown: false,
@@ -4650,6 +4697,7 @@ mod tests {
             remember_surface_size: true,
             tile_ctrl_close: true,
             tile_double_click_to_edit: true,
+            inline_editing: false,
             tile_save_returns_to_pin: true,
             tile_render_markdown: false,
             render_html_markdown: false,

@@ -1,4 +1,4 @@
-import { useNativeNoteShell } from "#platform-note-shell";
+import { useNativeNoteShell, liveMarkdownEditing } from "#platform-note-shell";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { useMemo } from "react";
@@ -197,6 +197,7 @@ export function NotePad({
   const [appearanceTheme, setAppearanceTheme] = useState<ThemeOption>("system");
   const [tileRenderMarkdown, setTileRenderMarkdown] = useState(false);
   const [allowRemoteImages, setAllowRemoteImages] = useState(false);
+  const [inlineEditing, setInlineEditing] = useState(false);
   const [tileDoubleClickToEdit, setTileDoubleClickToEdit] = useState(false);
   const [tileSaveReturnsToPin, setTileSaveReturnsToPin] = useState(false);
   const [tileColor, setTileColor] = useState(() =>
@@ -291,6 +292,7 @@ export function NotePad({
           setAppearanceConfig(loadedConfig.appearance);
           setAppearanceTheme(loadedConfig.theme);
           setTileRenderMarkdown(loadedConfig.tileRenderMarkdown ?? false);
+          setInlineEditing(loadedConfig.inlineEditing ?? false);
           setAllowRemoteImages(loadedConfig.allowRemoteImages ?? false);
           setTileDoubleClickToEdit(loadedConfig.tileDoubleClickToEdit ?? false);
           setTileSaveReturnsToPin(loadedConfig.tileSaveReturnsToPin ?? false);
@@ -497,6 +499,7 @@ export function NotePad({
       theme?: ThemeOption;
       tileRenderMarkdown?: boolean;
       allowRemoteImages?: boolean;
+      inlineEditing?: boolean;
       tileDoubleClickToEdit?: boolean;
       tileSaveReturnsToPin?: boolean;
     }>("config-changed", (event) => {
@@ -508,6 +511,7 @@ export function NotePad({
       if (event.payload.surfaceFontSize != null) setSurfaceFontSize(event.payload.surfaceFontSize);
       setAppearanceConfig(event.payload.appearance);
       if (event.payload.theme) setAppearanceTheme(event.payload.theme);
+      if (event.payload.inlineEditing != null) setInlineEditing(event.payload.inlineEditing);
       if (event.payload.tileRenderMarkdown != null)
         setTileRenderMarkdown(event.payload.tileRenderMarkdown);
       if (event.payload.allowRemoteImages != null)
@@ -958,6 +962,7 @@ export function NotePad({
     (event: MouseEvent<HTMLElement>) => {
       if (tileClickTimerRef.current) clearTimeout(tileClickTimerRef.current);
       const textTarget = isTileTextHit(event);
+      if (liveMarkdownEditing && inlineEditing && textTarget) return;
       if (
         !shouldEnterPadFromTileOnDoubleClick(
           !textTarget || tileDoubleClickToEdit,
@@ -972,7 +977,7 @@ export function NotePad({
       event.stopPropagation();
       void startTileWriting();
     },
-    [clearPendingTileDrag, startTileWriting, tileDoubleClickToEdit],
+    [clearPendingTileDrag, startTileWriting, tileDoubleClickToEdit, inlineEditing],
   );
 
   useEffect(
@@ -1347,6 +1352,7 @@ export function NotePad({
           locked={tileLocked}
           onEditorActivate={() => void startTileWriting()}
           doubleClickToEdit={tileDoubleClickToEdit}
+          inlineEditing={inlineEditing}
           onEditorDeactivate={() => void finishTileWriting()}
           onEditorPaste={imagePasteHandler}
           onEditorDrop={imageDropHandler}

@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type MouseEvent,
+  type RefObject,
 } from "react";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { SourceEditor, type Props, type SourceEditorHandle } from "./SourceEditor";
@@ -13,6 +14,8 @@ import { renderedAnchorY, sourceOffsetAtPoint } from "./sourcePosition";
 
 type Anchor = { offset: number; y: number };
 interface SurfaceProps extends Props {
+  scrollContainerRef?: RefObject<HTMLElement | null>;
+  onReadTaskToggle?: (offset: number, checked: boolean) => void;
   activationGesture?: "click" | "doubleClick" | "none";
   imageBaseDir?: string;
   imageRootDir?: string;
@@ -60,6 +63,9 @@ export function MarkdownSurface(props: SurfaceProps) {
       },
       insertText(text) {
         editor.current?.insertText(text);
+      },
+      prepareInsertion() {
+        return editor.current?.prepareInsertion?.() ?? { insert() {}, cancel() {} };
       },
       toggleTask(offset, checked) {
         editor.current?.toggleTask(offset, checked);
@@ -120,7 +126,9 @@ export function MarkdownSurface(props: SurfaceProps) {
     let frame = 0;
     let measureFrame = 0;
     let cancelled = false;
-    const scroll = root.current?.closest<HTMLElement>(".overflow-y-auto");
+    const scroll =
+      latest.current.scrollContainerRef?.current ??
+      root.current?.closest<HTMLElement>(".overflow-y-auto");
     const correct = (target: Anchor, y: number | null | undefined) => {
       if (!cancelled && scroll && y != null) scroll.scrollTop += y - target.y;
     };
@@ -165,7 +173,9 @@ export function MarkdownSurface(props: SurfaceProps) {
   useEffect(() => {
     if (active || !read.current || !anchor.current) return;
     const layer = read.current;
-    const scroll = root.current?.closest<HTMLElement>(".overflow-y-auto");
+    const scroll =
+      latest.current.scrollContainerRef?.current ??
+      root.current?.closest<HTMLElement>(".overflow-y-auto");
     let cancelled = false;
     const stop = () => {
       cancelled = true;
@@ -204,7 +214,11 @@ export function MarkdownSurface(props: SurfaceProps) {
     const offset = read.current
       ? sourceOffsetAtPoint(read.current, event.clientX, event.clientY, event.target as HTMLElement)
       : null;
-    entering.current = { offset: offset ?? editor.current?.selectionStart ?? 0, y: event.clientY };
+    const caret = offset ?? editor.current?.selectionStart ?? 0;
+    entering.current = {
+      offset: caret,
+      y: read.current ? (renderedAnchorY(read.current, caret) ?? event.clientY) : event.clientY,
+    };
     if (props.activationGesture === "doubleClick") {
       event.preventDefault();
       event.stopPropagation();
@@ -230,7 +244,7 @@ export function MarkdownSurface(props: SurfaceProps) {
             imageBaseDir={props.imageBaseDir}
             imageRootDir={props.imageRootDir}
             allowRemoteImages={props.allowRemoteImages}
-            onTaskToggle={props.locked ? undefined : toggleTask}
+            onTaskToggle={props.locked ? undefined : (props.onReadTaskToggle ?? toggleTask)}
           />
         ) : (
           <div

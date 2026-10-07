@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      body {
+        margin: 0;
+        background: white;
+        color: #222;
+      }
+      #qa {
+        padding: 20px;
+      }
+      button,
+      select {
+        border: 1px solid #aaa;
+        padding: 5px;
+        margin: 5px;
+      }
+      #surface {
+        height: 440px;
+        width: 450px;
+        overflow: auto;
+        border: 1px solid #aaa;
+        padding: 16px;
+      }
+      #source {
+        width: 700px;
+        height: 150px;
+        font: 12px monospace;
+        display: block;
+      }
+      #controls {
+        position: sticky;
+        top: 0;
+        background: white;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/scripts/inline-editing-qa.tsx"></script>
+  </body>
+</html>

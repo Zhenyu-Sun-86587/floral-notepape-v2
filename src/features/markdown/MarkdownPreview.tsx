@@ -17,7 +17,7 @@ import { hideLeadingFrontmatter } from "./frontmatter";
 import remarkTaskOffsets from "./remarkTaskOffsets";
 import { highlightCode } from "./highlightCode";
 import { MermaidBlock } from "./MermaidBlock";
-import { rehypeSourcePosition, sourceAttributes } from "./sourcePosition";
+import { rehypeSourcePosition, sourceAttributes, textSourceAttributes } from "./sourcePosition";
 
 function CodeBlock({
   children,
@@ -51,6 +51,8 @@ function CodeBlock({
   return (
     <div {...sourceAttributes(node)} className="markdown-code-block my-3 relative group">
       <pre
+        {...sourceAttributes(node)}
+        {...textSourceAttributes(node)}
         className={`markdown-code-scroll m-0 px-4 rounded bg-paper-warm/80 overflow-x-auto ${
           language ? "pt-8 pb-3" : "py-3"
         }`}
@@ -319,6 +321,7 @@ const staticComponents: Components = {
     return (
       <code
         {...sourceAttributes(node)}
+        {...textSourceAttributes(node)}
         className="px-1.5 py-0.5 text-[0.85em] font-mono bg-paper-warm rounded text-bamboo"
       >
         {children}

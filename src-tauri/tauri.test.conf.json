@@ -1,0 +1,10 @@
+{
+  "productName": "folio(test)",
+  "identifier": "dev.hermes.surface.inline-test",
+  "bundle": {
+    "targets": ["app"],
+    "macOS": {
+      "infoPlist": "native/TestInfo.plist"
+    }
+  }
+}

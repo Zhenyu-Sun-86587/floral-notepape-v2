@@ -56,11 +56,11 @@ describe("AST 源码位置桥接", () => {
     expect(findSourceAnchor(root, expected)).toBe(leaf);
   });
 
-  it("实体和转义不伪造一一对应的偏移", () => {
+  it("实体和转义通过逐字符映射恢复源码偏移", () => {
     const root = render("**a &amp; b**");
     const strong = root.querySelector("strong")!;
     expect(strong.querySelector("[data-source-text-start]")).toBeNull();
-    expect(domSourceOffset(root, strong.firstChild!.firstChild!, 3)).toBe(2);
+    expect(domSourceOffset(root, strong.firstChild!.firstChild!, 3)).toBe(9);
   });
 
   it("复杂块保留源码范围，内部不插入文本包装", () => {
@@ -91,4 +91,27 @@ describe("AST 源码位置桥接", () => {
     expect(sourceOffsetAtPoint(root, 0, 0, second)).toBe(13);
     Reflect.deleteProperty(document, "caretPositionFromPoint");
   });
+});
+
+it.each([
+  ["> 引用文字\n> 第二行", "引用文字", 2],
+  ["> 引用文字\n> 第二行", "第二行", 1],
+  ["> [!NOTE]\n> 提示文字", "提示文字", 2],
+  ["实体 &amp; 后文", "后文", 1],
+  ["转义 \\*星号\\* 后文", "后文", 1],
+  ["行内 `const value = 1`", "value", 2],
+  ["```js\nconst value = 1;\nconsole.log(value);\n```", "console", 2],
+  ["    indented code", "indented", 2],
+  ["| 姓名 |\n| --- |\n| 张三 |", "张三", 1],
+] as const)("%s 点击正文不回退到段首", (source, token, offset) => {
+  const root = render(source);
+  const walker = document.createTreeWalker(root, 4);
+  let node: Node | null;
+  while ((node = walker.nextNode())) {
+    const index = node.textContent?.indexOf(token) ?? -1;
+    if (index < 0) continue;
+    expect(domSourceOffset(root, node, index + offset)).toBe(source.indexOf(token) + offset);
+    return;
+  }
+  throw new Error(`未渲染测试文字 ${token}`);
 });

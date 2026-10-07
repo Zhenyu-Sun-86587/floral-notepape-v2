@@ -1,3 +1,4 @@
+import { liveMarkdownEditing } from "#platform-note-shell";
 import { PlatformSettings } from "#platform-settings";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -218,11 +219,20 @@ export function SettingsPanel({
             checked={config.tileRenderMarkdown}
             onChange={(checked) => setConfigValue("tileRenderMarkdown", checked)}
           />
-          <ToggleRow
-            label={t("settings.tileDoubleClickToEdit", { defaultValue: "双击文字区域进入编辑" })}
-            checked={config.tileDoubleClickToEdit ?? false}
-            onChange={(checked) => setConfigValue("tileDoubleClickToEdit", checked)}
-          />
+          {liveMarkdownEditing && (
+            <ToggleRow
+              label={t("settings.inlineEditing", { defaultValue: "原位编辑（桌面便签与胶囊）" })}
+              checked={config.inlineEditing ?? false}
+              onChange={(checked) => setConfigValue("inlineEditing", checked)}
+            />
+          )}
+          {(!liveMarkdownEditing || !config.inlineEditing) && (
+            <ToggleRow
+              label={t("settings.tileDoubleClickToEdit", { defaultValue: "双击文字区域进入编辑" })}
+              checked={config.tileDoubleClickToEdit ?? false}
+              onChange={(checked) => setConfigValue("tileDoubleClickToEdit", checked)}
+            />
+          )}
           <ToggleRow
             label={t("settings.tileSaveReturnsToPin", { defaultValue: "保存后回到磁贴" })}
             checked={config.tileSaveReturnsToPin ?? false}

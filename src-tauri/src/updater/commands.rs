@@ -200,6 +200,7 @@ pub async fn update_install(
     let task = state.begin_task(UpdateTaskKind::Install)?;
     let request_id = begin_install_prepare(&app, &state);
     if let Err(error) = wait_for_install_prepare(&app, &state, &request_id).await {
+        let _ = app.emit_to("capsule-preview", "app://exit-freeze", false);
         state.clear_install_prepare(&request_id);
         let error_payload = load_saved_error_payload(
             state.paths(),
@@ -225,6 +226,7 @@ pub async fn update_install(
     })
     .await
     .map_err(|error| {
+        let _ = app.emit_to("capsule-preview", "app://exit-freeze", false);
         errors::app_error(
             "updateInstallTaskJoinFailed",
             format!("安装任务执行失败：{error}"),
@@ -249,10 +251,13 @@ pub async fn update_install(
             if should_terminate {
                 desktop::mark_app_exiting(&app);
                 schedule_force_terminate_self();
+            } else {
+                let _ = app.emit_to("capsule-preview", "app://exit-freeze", false);
             }
             Ok(install_result)
         }
         Err(error) => {
+            let _ = app.emit_to("capsule-preview", "app://exit-freeze", false);
             let error_payload = load_saved_error_payload(
                 &result_paths,
                 &error,
@@ -418,6 +423,9 @@ fn begin_install_prepare(app: &tauri::AppHandle, state: &UpdaterState) -> String
     };
 
     for window in windows {
+        if window.label() == "capsule-preview" {
+            let _ = window.emit("app://exit-freeze", true);
+        }
         if let Err(error) = window.emit(INSTALL_PREPARE_EVENT, &payload) {
             state.report_install_prepare(
                 &request_id,
@@ -528,6 +536,9 @@ fn sync_install_prepare_windows(app: &tauri::AppHandle, state: &UpdaterState, re
             state.report_install_prepare(request_id, &label, InstallPrepareWindowStatus::Ready);
             continue;
         };
+        if window.label() == "capsule-preview" {
+            let _ = window.emit("app://exit-freeze", true);
+        }
         if let Err(error) = window.emit(INSTALL_PREPARE_EVENT, &payload) {
             state.report_install_prepare(
                 request_id,

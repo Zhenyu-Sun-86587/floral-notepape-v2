@@ -1,10 +1,11 @@
 import type { Root, Blockquote } from "mdast";
 import type { Plugin } from "unified";
+import { textSourceMap } from "./textSourceMap";
 import { visit } from "unist-util-visit";
 
 const ALERT_RE = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*\n?/;
 
-const remarkAlerts: Plugin<[], Root> = () => (tree) => {
+const remarkAlerts: Plugin<[], Root> = () => (tree, file) => {
   visit(tree, "blockquote", (node: Blockquote) => {
     const first = node.children[0];
     if (first?.type !== "paragraph") return;
@@ -17,7 +18,22 @@ const remarkAlerts: Plugin<[], Root> = () => (tree) => {
 
     const alertType = match[1].toLowerCase();
 
-    // Remove the [!TYPE] marker from the text content
+    // Preserve source coordinates when the display-only alert marker is removed.
+    const start = text.position?.start.offset;
+    const end = text.position?.end.offset;
+    if (start != null && end != null) {
+      const source = String(file.value);
+      const map = textSourceMap(source.slice(start, end), text.value, start);
+      const offset = map?.[match[0].length];
+      if (offset != null && text.position) {
+        const prefix = source.slice(0, offset);
+        text.position.start = {
+          offset,
+          line: prefix.split("\n").length,
+          column: offset - prefix.lastIndexOf("\n"),
+        };
+      }
+    }
     text.value = text.value.slice(match[0].length);
 
     // If the text node is now empty, clean up

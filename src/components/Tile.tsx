@@ -1,5 +1,9 @@
 import chroma from "chroma-js";
-import { displayTitleSelection, singleClickToEdit } from "#platform-note-shell";
+import {
+  displayTitleSelection,
+  singleClickToEdit,
+  liveMarkdownEditing,
+} from "#platform-note-shell";
 import type { CSSProperties, HTMLAttributes, Ref } from "react";
 import { lazy, Suspense, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -36,6 +40,7 @@ export interface TileProps extends Omit<
   contentEditorRef?: Ref<SourceEditorHandle>;
   onEditorActivate?: () => void;
   doubleClickToEdit?: boolean;
+  inlineEditing?: boolean;
   onEditorDeactivate?: () => void;
   locked?: boolean;
   scrollContainerRef?: Ref<HTMLDivElement>;
@@ -71,6 +76,7 @@ export function Tile({
   contentEditorRef,
   onEditorActivate,
   doubleClickToEdit = false,
+  inlineEditing = false,
   onEditorDeactivate,
   locked,
   scrollContainerRef,
@@ -147,6 +153,12 @@ export function Tile({
           <div style={{ color: contentColor }}>
             <Suspense fallback={<div className="min-h-[8rem]" />}>
               <MarkdownSurface
+                presentation={liveMarkdownEditing && inlineEditing ? "live" : "source"}
+                scrollContainerRef={
+                  typeof scrollContainerRef === "object"
+                    ? (scrollContainerRef ?? undefined)
+                    : undefined
+                }
                 content={content}
                 editing={editing}
                 locked={locked}
@@ -156,7 +168,11 @@ export function Tile({
                 onChange={onContentChange}
                 onActivate={onEditorActivate}
                 activationGesture={
-                  singleClickToEdit ? "click" : doubleClickToEdit ? "doubleClick" : "none"
+                  (liveMarkdownEditing ? inlineEditing : singleClickToEdit)
+                    ? "click"
+                    : doubleClickToEdit
+                      ? "doubleClick"
+                      : "none"
                 }
                 onDeactivate={onEditorDeactivate}
                 imageBaseDir={imageBaseDir}

@@ -33,6 +33,222 @@ impl PreviewOccupancy {
     }
 }
 
+// Editing owns the shared preview independently of transient mouse selection.
+#[derive(Clone, Serialize, PartialEq, Debug)]
+#[serde(tag = "kind", content = "key", rename_all = "camelCase")]
+pub enum CapsuleLeaveAction {
+    Dismiss,
+    Restore(String),
+    RestoreEdit(String),
+    Hide(String),
+    ToggleVisibility,
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EditOwner {
+    key: String,
+    generation: u64,
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LeaveRequest {
+    request_id: u64,
+    key: String,
+    generation: u64,
+    action: CapsuleLeaveAction,
+}
+#[derive(Default)]
+struct EditOccupancy {
+    owner: Option<EditOwner>,
+    pending: Option<LeaveRequest>,
+    sequence: u64,
+}
+impl EditOccupancy {
+    fn matches(&self, key: &str, generation: u64) -> bool {
+        self.owner
+            .as_ref()
+            .is_some_and(|o| o.key == key && o.generation == generation)
+    }
+    fn finish(
+        &mut self,
+        key: &str,
+        generation: u64,
+        request: Option<u64>,
+        ready: bool,
+    ) -> Option<Option<CapsuleLeaveAction>> {
+        if !self.matches(key, generation) || self.pending.as_ref().map(|p| p.request_id) != request
+        {
+            return None;
+        }
+        let action = self.pending.take().map(|p| p.action);
+        if !ready {
+            return None;
+        }
+        self.owner = None;
+        Some(action)
+    }
+}
+static EDIT: Mutex<EditOccupancy> = Mutex::new(EditOccupancy {
+    owner: None,
+    pending: None,
+    sequence: 0,
+});
+
+pub fn capsule_is_editing() -> bool {
+    EDIT.lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .owner
+        .is_some()
+}
+
+pub fn forget_capsule_preview() {
+    let mut edit = EDIT.lock().unwrap_or_else(|e| e.into_inner());
+    edit.owner = None;
+    edit.pending = None;
+    PREVIEW_ACTIVE.store(false, Ordering::SeqCst);
+    advance_capsule_preview();
+    *PREVIEW_CONTENT.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+// Loading has not exposed an editable document. Cancel any pending leave intent
+// without waiting for a renderer that cannot initialize its session.
+pub fn abort_capsule_edit(window: &tauri::WebviewWindow, key: &str, generation: u64) {
+    if window.label() != CAPSULE_PREVIEW_LABEL {
+        return;
+    }
+    let mut edit = EDIT.lock().unwrap_or_else(|e| e.into_inner());
+    if edit.matches(key, generation) {
+        edit.owner = None;
+        edit.pending = None;
+    }
+    drop(edit);
+    schedule_check(window.app_handle(), 60);
+}
+
+pub fn begin_capsule_edit(
+    window: &tauri::WebviewWindow,
+    key: &str,
+    generation: u64,
+) -> Result<(), AppError> {
+    let unavailable = || AppError {
+        code: "capsuleEditUnavailable".into(),
+        message: "预览已切换或便签已锁定".into(),
+        details: Default::default(),
+    };
+    if window.label() != CAPSULE_PREVIEW_LABEL || crate::surface_sessions::get(key)?.locked {
+        return Err(unavailable());
+    }
+    let mut edit = EDIT.lock().unwrap_or_else(|e| e.into_inner());
+    let current = PREVIEW_CONTENT.lock().unwrap_or_else(|e| e.into_inner());
+    if PREVIEW_GENERATION.load(Ordering::SeqCst) != generation
+        || !current
+            .as_ref()
+            .is_some_and(|p| p.entry.key == key && p.generation == generation)
+        || (edit.owner.is_some() && !edit.matches(key, generation))
+    {
+        return Err(unavailable());
+    }
+    edit.owner = Some(EditOwner {
+        key: key.to_owned(),
+        generation,
+    });
+    drop(current);
+    drop(edit);
+    if let Err(error) = window.set_focus() {
+        let mut edit = EDIT.lock().unwrap_or_else(|e| e.into_inner());
+        if edit.matches(key, generation) {
+            edit.owner = None;
+        }
+        return Err(error.into());
+    }
+    Ok(())
+}
+
+/// Defer before invalidating a generation or mutating the stored note's presentation.
+pub fn defer_capsule_leave(app: &AppHandle, action: CapsuleLeaveAction) -> Result<bool, AppError> {
+    let request = {
+        let mut edit = EDIT.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(owner) = edit.owner.clone() else {
+            return Ok(false);
+        };
+        if edit.pending.is_some() {
+            return Ok(true);
+        }
+        edit.sequence += 1;
+        let request = LeaveRequest {
+            request_id: edit.sequence,
+            key: owner.key,
+            generation: owner.generation,
+            action,
+        };
+        edit.pending = Some(request.clone());
+        request
+    };
+    if let Err(error) = app.emit_to(CAPSULE_PREVIEW_LABEL, "capsule-prepare-leave", &request) {
+        EDIT.lock().unwrap_or_else(|e| e.into_inner()).pending = None;
+        return Err(error.into());
+    }
+    // A missing/late renderer response never grants permission to hide a draft.
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        let mut edit = EDIT.lock().unwrap_or_else(|e| e.into_inner());
+        if edit
+            .pending
+            .as_ref()
+            .is_some_and(|p| p.request_id == request.request_id)
+        {
+            edit.pending = None;
+        }
+    });
+    Ok(true)
+}
+
+pub fn finish_capsule_edit(
+    window: &tauri::WebviewWindow,
+    key: &str,
+    generation: u64,
+    request: Option<u64>,
+    ready: bool,
+) -> Result<bool, AppError> {
+    if window.label() != CAPSULE_PREVIEW_LABEL {
+        return Ok(false);
+    }
+    let action = EDIT
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .finish(key, generation, request, ready);
+    let Some(action) = action else {
+        return Ok(false);
+    };
+    let app = window.app_handle();
+    let result = match action {
+        Some(CapsuleLeaveAction::Dismiss) => dismiss_capsule_preview(app),
+        Some(CapsuleLeaveAction::Restore(key)) => restore_stored_surface(app, &key),
+        Some(CapsuleLeaveAction::RestoreEdit(key)) => restore_stored_surface_edit(app, &key),
+        Some(CapsuleLeaveAction::Hide(key)) => hide_stored_surface(app, &key),
+        Some(CapsuleLeaveAction::ToggleVisibility) => {
+            toggle_app_visibility(app);
+            Ok(())
+        }
+        None => {
+            schedule_check(app, 60);
+            Ok(())
+        }
+    };
+    if let Err(error) = result {
+        // Window creation can fail after saving. Keep the surviving preview protected.
+        if capsule_preview_state().is_some_and(|p| p.entry.key == key && p.generation == generation)
+        {
+            EDIT.lock().unwrap_or_else(|e| e.into_inner()).owner = Some(EditOwner {
+                key: key.into(),
+                generation,
+            });
+        }
+        return Err(error);
+    }
+    Ok(true)
+}
+
 fn cursor_in_window(window: &tauri::Window, point: PhysicalPosition<f64>) -> bool {
     if !window.is_visible().unwrap_or(false) {
         return false;
@@ -96,6 +312,9 @@ fn schedule_check(app: &AppHandle, delay_ms: u64) {
 }
 
 fn check_capsule_preview(app: &AppHandle) -> Result<bool, AppError> {
+    if capsule_is_editing() {
+        return Ok(false);
+    }
     if PREVIEW_CONTENT
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -179,6 +398,12 @@ pub fn capsule_hover(
     key: Option<&str>,
     session: Option<u64>,
 ) -> u64 {
+    // Native rail mouseEntered calls this outside the worker queue. Keep the
+    // edit lock until generation changes so begin_edit cannot race a new owner.
+    let edit = EDIT.lock().unwrap_or_else(|e| e.into_inner());
+    if edit.owner.is_some() && source == "rail" {
+        return PREVIEW_GENERATION.load(Ordering::SeqCst);
+    }
     let mut occupancy = PREVIEW_OCCUPANCY.lock().unwrap_or_else(|e| e.into_inner());
     // hover 热路径只比对身份，不克隆完整 Markdown 正文。
     let current = PREVIEW_CONTENT.lock().unwrap_or_else(|e| e.into_inner());
@@ -217,6 +442,7 @@ pub fn capsule_hover(
         PREVIEW_GENERATION.load(Ordering::SeqCst)
     };
     drop(occupancy);
+    drop(edit);
     schedule_check(app, 60);
     generation
 }
@@ -263,7 +489,7 @@ pub fn show_capsule_preview(
     anchor_x: f64,
     generation: u64,
 ) -> Result<(), AppError> {
-    if PREVIEW_GENERATION.load(Ordering::SeqCst) != generation {
+    if capsule_is_editing() || PREVIEW_GENERATION.load(Ordering::SeqCst) != generation {
         return Ok(());
     }
     let Some(group) = capsule_groups::owner(rail.label(), key) else {
@@ -290,6 +516,9 @@ pub fn show_capsule_preview(
     let Some(entry) = capsule_entry(key)? else {
         return Ok(());
     };
+    if let Some(root) = &entry.image_root_dir {
+        app.asset_protocol_scope().allow_directory(root, true)?;
+    }
     if PREVIEW_OCCUPANCY
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -336,7 +565,7 @@ pub fn show_capsule_preview(
         work.position.y + work.size.height as i32 - height as i32,
     );
     let window = preview_window(app)?;
-    if PREVIEW_GENERATION.load(Ordering::SeqCst) != generation {
+    if capsule_is_editing() || PREVIEW_GENERATION.load(Ordering::SeqCst) != generation {
         return Ok(());
     }
     crate::macos_surface::position_surface(
@@ -376,6 +605,9 @@ fn hide_capsule_preview_window(window: &tauri::WebviewWindow) -> Result<(), AppE
 }
 
 pub fn dismiss_capsule_preview(app: &AppHandle) -> Result<(), AppError> {
+    if defer_capsule_leave(app, CapsuleLeaveAction::Dismiss)? {
+        return Ok(());
+    }
     PREVIEW_ACTIVE.store(false, Ordering::Relaxed);
     POINTER_CHECK_EPOCH.fetch_add(1, Ordering::SeqCst);
     let generation = advance_capsule_preview();
@@ -391,4 +623,52 @@ pub fn dismiss_capsule_preview(app: &AppHandle) -> Result<(), AppError> {
     }
     app.emit_to(CAPSULE_PREVIEW_LABEL, "capsule-preview-hidden", generation)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod editing_tests {
+    use super::*;
+    fn occupied() -> EditOccupancy {
+        EditOccupancy {
+            owner: Some(EditOwner {
+                key: "note:a".into(),
+                generation: 7,
+            }),
+            pending: Some(LeaveRequest {
+                key: "note:a".into(),
+                generation: 7,
+                request_id: 12,
+                action: CapsuleLeaveAction::Dismiss,
+            }),
+            sequence: 12,
+        }
+    }
+    #[test]
+    fn stale_or_unrequested_confirmation_cannot_release_editor() {
+        let mut state = occupied();
+        assert!(state.finish("note:a", 6, Some(12), true).is_none());
+        assert!(state.finish("note:b", 7, Some(12), true).is_none());
+        assert!(state.finish("note:a", 7, None, true).is_none());
+        assert!(state.finish("note:a", 7, Some(11), true).is_none());
+        assert!(state.owner.is_some());
+        assert_eq!(
+            state.finish("note:a", 7, Some(12), true),
+            Some(Some(CapsuleLeaveAction::Dismiss))
+        );
+        assert!(state.owner.is_none());
+        assert!(state.finish("note:a", 7, Some(12), true).is_none());
+    }
+    #[test]
+    fn cancellation_and_timeout_keep_keyboard_ownership() {
+        let mut state = occupied();
+        assert!(state.finish("note:a", 7, Some(12), false).is_none());
+        assert!(state.owner.is_some());
+        assert!(state.pending.is_none());
+        // A timeout clears the intent, never ownership; late ready cannot hide it.
+        let mut state = occupied();
+        state.pending = None;
+        assert!(state.finish("note:a", 7, Some(12), true).is_none());
+        assert!(state.owner.is_some());
+        assert_eq!(state.finish("note:a", 7, None, true), Some(None));
+    }
 }

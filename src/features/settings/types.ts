@@ -54,6 +54,7 @@ export interface AppConfig extends PlatformConfig {
   externalFileAutoSave: boolean;
   rememberSurfaceSize: boolean;
   tileCtrlClose: boolean;
+  inlineEditing?: boolean;
   tileDoubleClickToEdit: boolean;
   tileSaveReturnsToPin: boolean;
   tileRenderMarkdown: boolean;

@@ -201,14 +201,53 @@ async fn surface_toggle_capsule(app: AppHandle, key: String) -> Result<(), AppEr
 
 #[tauri::command]
 async fn surface_restore_stored(app: AppHandle, key: String) -> Result<(), AppError> {
+    #[cfg(not(target_os = "macos"))]
     desktop::advance_capsule_preview();
     desktop::run_capsule_task(move || desktop::restore_stored_surface(&app, &key)).await
 }
 
 #[tauri::command]
 async fn surface_restore_edit(app: AppHandle, key: String) -> Result<(), AppError> {
+    #[cfg(not(target_os = "macos"))]
     desktop::advance_capsule_preview();
     desktop::run_capsule_task(move || desktop::restore_stored_surface_edit(&app, &key)).await
+}
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+async fn surface_capsule_begin_edit(
+    window: tauri::WebviewWindow,
+    key: String,
+    generation: u64,
+) -> Result<(), AppError> {
+    desktop::run_capsule_task(move || desktop::begin_capsule_edit(&window, &key, generation)).await
+}
+#[cfg(target_os = "macos")]
+#[tauri::command]
+async fn surface_capsule_abort_edit(
+    window: tauri::WebviewWindow,
+    key: String,
+    generation: u64,
+) -> Result<(), AppError> {
+    desktop::run_capsule_task(move || {
+        desktop::abort_capsule_edit(&window, &key, generation);
+        Ok(())
+    })
+    .await
+}
+#[cfg(target_os = "macos")]
+#[tauri::command]
+async fn surface_capsule_finish_edit(
+    window: tauri::WebviewWindow,
+    key: String,
+    generation: u64,
+    request_id: Option<u64>,
+    ready: bool,
+) -> Result<bool, AppError> {
+    desktop::run_capsule_task(move || {
+        desktop::finish_capsule_edit(&window, &key, generation, request_id, ready)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -247,6 +286,7 @@ fn surface_capsule_menu(
 #[tauri::command]
 async fn surface_capsule_dismiss(app: AppHandle) -> Result<(), AppError> {
     // 预览窗的隐藏也交给工作线程，避免 WebView2 在同步 IPC 回调里处理窗口消息。
+    #[cfg(not(target_os = "macos"))]
     desktop::advance_capsule_preview();
     desktop::run_capsule_task(move || desktop::dismiss_capsule_preview(&app)).await
 }
@@ -298,6 +338,7 @@ async fn surface_capsule_drag(
 
 #[tauri::command]
 async fn surface_capsule_hide(app: AppHandle, key: String) -> Result<(), AppError> {
+    #[cfg(not(target_os = "macos"))]
     desktop::advance_capsule_preview();
     desktop::run_capsule_task(move || desktop::hide_stored_surface(&app, &key)).await
 }
@@ -607,8 +648,11 @@ fn images_save(request: tauri::ipc::Request<'_>) -> Result<String, AppError> {
                 details: Default::default(),
             })
     };
-    let note_id = header("x-note-id")?;
     let extension = header("x-image-ext")?;
+    if let Ok(id) = header("x-linked-id") {
+        return linked::save_image(&id, data, &extension);
+    }
+    let note_id = header("x-note-id")?;
     default_store()?.save_image(&note_id, data, &extension)
 }
 
@@ -1143,6 +1187,12 @@ pub fn run() {
             surface_capsule_preview_state,
             #[cfg(target_os = "macos")]
             surface_capsule_material,
+            #[cfg(target_os = "macos")]
+            surface_capsule_begin_edit,
+            #[cfg(target_os = "macos")]
+            surface_capsule_abort_edit,
+            #[cfg(target_os = "macos")]
+            surface_capsule_finish_edit,
             #[cfg(target_os = "macos")]
             macos_fluid_status,
             surface_capsule_present,

@@ -524,6 +524,39 @@ pub fn read(id: &str) -> Result<LinkedContent, AppError> {
     })
 }
 
+/// Persist pasted media beside the bound Markdown file. The caller cannot choose a path.
+pub fn save_image(id: &str, data: &[u8], extension: &str) -> Result<String, AppError> {
+    let _guard = operation_lock()
+        .lock()
+        .map_err(|_| error("io", "外部文件绑定锁不可用"))?;
+    let binding = lookup(&load_index(&index_path()?)?, id)?;
+    let path = fs::canonicalize(&binding.path)?;
+    save_image_beside(&path, data, extension)
+}
+fn save_image_beside(path: &Path, data: &[u8], extension: &str) -> Result<String, AppError> {
+    use std::io::Write;
+    if data.len() > 20 * 1024 * 1024 || data.is_empty() {
+        return Err(error("imageTooLarge", "图片为空或超过 20 MB"));
+    }
+    if !["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"].contains(&extension) {
+        return Err(error("unsupportedFile", "不支持的图片格式"));
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| error("io", "外部文件路径无父目录"))?;
+    let name = format!("floral-image-{}.{}", Uuid::new_v4(), extension);
+    let image = parent.join(&name);
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&image)?;
+    if let Err(cause) = file.write_all(data).and_then(|_| file.sync_all()) {
+        let _ = fs::remove_file(&image);
+        return Err(cause.into());
+    }
+    Ok(name)
+}
+
 pub fn save(
     id: &str,
     content: &str,
@@ -775,5 +808,24 @@ mod tests {
         assert_eq!(files.len(), 1);
         assert!(files[0].ends_with("Today.md"));
         fs::remove_dir_all(&dir).expect("clean test directory");
+    }
+}
+
+#[cfg(test)]
+mod image_tests {
+    use super::*;
+    #[test]
+    fn pasted_images_stay_beside_file_and_reject_path_extensions() {
+        let dir = std::env::temp_dir().join(format!("floral-image-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let note = dir.join("note.md");
+        fs::write(&note, "unchanged").unwrap();
+        assert!(save_image_beside(&note, b"image", "../../escape").is_err());
+        assert!(save_image_beside(&note, b"", "png").is_err());
+        let image = save_image_beside(&note, b"image", "png").unwrap();
+        assert_eq!(Path::new(&image).components().count(), 1);
+        assert_eq!(fs::read(dir.join(image)).unwrap(), b"image");
+        assert_eq!(fs::read_to_string(note).unwrap(), "unchanged");
+        fs::remove_dir_all(dir).unwrap();
     }
 }

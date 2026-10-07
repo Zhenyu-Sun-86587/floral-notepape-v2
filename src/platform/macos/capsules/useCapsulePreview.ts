@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { CapsuleEntry } from "./types";
@@ -7,12 +7,12 @@ import { toggleTaskMarker } from "../../../features/markdown/taskMarker";
 import { getNote, updateNote } from "../../../features/notes/api";
 import { readLinkedFile, saveLinkedFile } from "../../../features/linked/api";
 
-interface Preview {
+export interface Preview {
   entry: CapsuleEntry;
   side: "left" | "right" | "top";
   generation: number;
 }
-export function useCapsulePreview() {
+export function useCapsulePreview(editing: RefObject<boolean>) {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [visible, setVisible] = useState(false);
   const materialReady = useMaterial();
@@ -33,6 +33,13 @@ export function useCapsulePreview() {
     let refreshRunning = false;
     const accept = (value: Preview | null) => {
       if (active && value && value.generation > dismissedGeneration.current) {
+        if (
+          editing.current &&
+          current.current &&
+          (value.entry.key !== current.current.entry.key ||
+            value.generation !== current.current.generation)
+        )
+          return;
         if (current.current && value.generation < current.current.generation) return;
         current.current = value;
         setPreview((old) => (!old || value.generation >= old.generation ? value : old));
@@ -41,7 +48,7 @@ export function useCapsulePreview() {
     };
     const refreshEntry = () => {
       if (!active) return;
-      if (savingTask.current || refreshRunning) {
+      if (editing.current || savingTask.current || refreshRunning) {
         refreshQueued = true;
         return;
       }
@@ -53,7 +60,7 @@ export function useCapsulePreview() {
       const epoch = taskEpoch.current;
       void invoke<CapsuleEntry | null>("surface_capsule_entry", { key: entry.key })
         .then((next) => {
-          if (savingTask.current || taskEpoch.current !== epoch) {
+          if (editing.current || savingTask.current || taskEpoch.current !== epoch) {
             refreshQueued = true;
             return;
           }
@@ -69,7 +76,7 @@ export function useCapsulePreview() {
         .catch(() => undefined)
         .finally(() => {
           refreshRunning = false;
-          if (active && refreshQueued && !savingTask.current) refreshEntry();
+          if (active && refreshQueued && !editing.current && !savingTask.current) refreshEntry();
         });
     };
     reconcile.current = () => {
@@ -147,7 +154,8 @@ export function useCapsulePreview() {
     const generation = preview?.generation ?? -1;
     try {
       await invoke("surface_capsule_dismiss");
-      if (!current.current || current.current.generation <= generation) setVisible(false);
+      if (!editing.current && (!current.current || current.current.generation <= generation))
+        setVisible(false);
     } catch (cause) {
       setError(String(cause));
     } finally {
@@ -186,7 +194,7 @@ export function useCapsulePreview() {
     };
   }, [preview?.entry.key, preview?.generation]);
   const toggleTask = async (offset: number, checked: boolean) => {
-    if (!visible || !preview || busy || savingTask.current) return;
+    if (editing.current || !visible || !preview || busy || savingTask.current) return;
     const key = preview.entry.key;
     const generation = preview.generation;
     const optimistic = toggleTaskMarker(preview.entry.preview, offset, checked);
@@ -242,6 +250,7 @@ export function useCapsulePreview() {
     void taskAction.current(offset, checked);
   }, []);
   return {
+    refresh: () => reconcile.current(),
     preview,
     visible,
     busy,

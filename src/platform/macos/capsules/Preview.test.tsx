@@ -24,6 +24,7 @@ const preview = (generation: number, title = "Glass note") => ({
   entry: { key: "note:test", title, preview: "# Markdown", colorKey: 0, expanded: false },
 });
 async function mount() {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   mocks.invoke.mockImplementation((command: string) =>
     Promise.resolve(
       command === "surface_capsule_material"
@@ -53,7 +54,8 @@ it("presents committed Markdown without waiting for a hidden WebView animation f
   const node = await mount();
   expect(node.querySelector('[data-testid="markdown"]')?.textContent).toBe("# Markdown");
   expect(mocks.invoke).toHaveBeenCalledWith("surface_capsule_present", { generation: 1 });
-  expect(frame).not.toHaveBeenCalled();
+  // CM may request measurements; presentation must succeed even when none run.
+  expect(node.querySelector("article")?.getAttribute("data-visible")).toBe("true");
   frame.mockRestore();
 });
 it("retains one hidden DOM, ignores late sessions and skips hidden note refreshes", async () => {

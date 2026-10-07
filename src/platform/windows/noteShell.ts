@@ -5,3 +5,5 @@ export const displayTitleSelection = {
   className: "select-text",
 };
 export function useNativeNoteShell(_: NoteShellProps) {}
+
+export const liveMarkdownEditing = false;

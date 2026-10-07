@@ -80,6 +80,8 @@ pub struct AppConfig {
     #[serde(default)]
     pub tile_double_click_to_edit: bool,
     #[serde(default)]
+    pub inline_editing: bool,
+    #[serde(default)]
     pub tile_save_returns_to_pin: bool,
     #[serde(default)]
     pub tile_render_markdown: bool,
@@ -255,7 +257,11 @@ pub(crate) fn default_config_dir() -> Result<PathBuf, AppError> {
             }
         }
         if let Some(dir) = dirs::config_dir() {
-            return Ok(dir.join("hermes-surface-dev"));
+            return Ok(dir.join(if cfg!(feature = "test-app") {
+                "folio-test/config"
+            } else {
+                "hermes-surface-dev"
+            }));
         }
         Ok(env::current_dir()?.join("hermes-surface-dev"))
     }
@@ -279,11 +285,19 @@ fn default_data_dir() -> Result<PathBuf, AppError> {
 
         #[cfg(target_os = "macos")]
         if let Some(dir) = dirs::data_dir() {
-            return Ok(dir.join("Hermes Surface Dev"));
+            return Ok(dir.join(if cfg!(feature = "test-app") {
+                "folio-test/data"
+            } else {
+                "Hermes Surface Dev"
+            }));
         }
 
         if let Some(dir) = dirs::document_dir() {
-            return Ok(dir.join("Hermes Surface Dev"));
+            return Ok(dir.join(if cfg!(feature = "test-app") {
+                "folio-test/data"
+            } else {
+                "Hermes Surface Dev"
+            }));
         }
 
         Ok(env::current_dir()?.join("hermes-surface-dev-data"))
@@ -1365,6 +1379,7 @@ impl NoteStore {
             remember_surface_size: default_remember_surface_size(),
             tile_ctrl_close: default_tile_ctrl_close(),
             tile_double_click_to_edit: false,
+            inline_editing: false,
             tile_save_returns_to_pin: false,
             tile_render_markdown: cfg!(target_os = "macos"),
             render_html_markdown: false,
@@ -2238,6 +2253,7 @@ mod tests {
             remember_surface_size: true,
             tile_ctrl_close: true,
             tile_double_click_to_edit: true,
+            inline_editing: false,
             tile_save_returns_to_pin: true,
             tile_render_markdown: false,
             render_html_markdown: false,
