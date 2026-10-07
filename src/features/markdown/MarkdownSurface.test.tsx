@@ -1,3 +1,4 @@
+import type { MarkdownDisplayMode } from "./displayMode";
 // @vitest-environment jsdom
 import { act, createRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -154,4 +155,93 @@ describe("常驻 MarkdownSurface", () => {
     expect(host.querySelector(".markdown-edit-layer")?.hasAttribute("inert")).toBe(false);
     expect(ref.current!.view).toBe(view);
   });
+});
+
+it("三种显示方式切换保持同一正文、选区和撤销；源码及混合阅读层也不可写", async () => {
+  const show = (displayMode: MarkdownDisplayMode, editing: boolean) =>
+    root.render(
+      <MarkdownSurface
+        content={source}
+        editing={editing}
+        markdown
+        presentation="live"
+        displayMode={displayMode}
+        fontSize={14}
+        editorRef={ref}
+        onChange={(value) => {
+          source = value;
+        }}
+        onActivate={activate}
+      />,
+    );
+  await act(async () => show("preview", true));
+  const view = ref.current!.view!;
+  const original = source;
+  await act(async () =>
+    view.dispatch({
+      changes: { from: 0, insert: "新增" },
+      selection: { anchor: 2 },
+      userEvent: "input",
+    }),
+  );
+  for (const mode of ["source", "hybrid", "preview"] as const) {
+    await act(async () => show(mode, false));
+    expect(ref.current!.view).toBe(view);
+    expect(view.state.readOnly).toBe(true);
+    expect(ref.current!.selectionStart).toBe(2);
+    expect(ref.current!.value).toBe("新增" + original);
+    expect(host.querySelector(".markdown-edit-layer")?.hasAttribute("inert")).toBe(
+      mode === "preview",
+    );
+    if (mode === "hybrid") {
+      expect(view.contentDOM.textContent).toContain("**world**");
+      expect(host.querySelector(".cm-live-strong")).not.toBeNull();
+    }
+  }
+  await act(async () => show("source", true));
+  await act(async () => {
+    expect(undo(view)).toBe(true);
+  });
+  expect(source).toBe(original);
+});
+
+it("关闭原位编辑时，源码和混合模式获得焦点不会偷偷进入编辑", async () => {
+  await act(async () =>
+    root.render(
+      <MarkdownSurface
+        content={source}
+        editing={false}
+        markdown
+        displayMode="hybrid"
+        activationGesture="none"
+        fontSize={14}
+        editorRef={ref}
+        onActivate={activate}
+      />,
+    ),
+  );
+  await act(async () => ref.current!.view!.focus());
+  expect(activate).not.toHaveBeenCalled();
+  expect(ref.current!.view!.state.readOnly).toBe(true);
+});
+
+it("混合模式阅读态拖选后不折叠选区或意外进入编辑", async () => {
+  await act(async () =>
+    root.render(
+      <MarkdownSurface
+        content={source}
+        editing={false}
+        markdown
+        displayMode="hybrid"
+        fontSize={14}
+        editorRef={ref}
+        onActivate={activate}
+      />,
+    ),
+  );
+  await act(async () => ref.current!.setSelectionRange(0, 5));
+  await act(async () => host.querySelector<HTMLElement>(".markdown-edit-layer")!.click());
+  expect(activate).not.toHaveBeenCalled();
+  expect(ref.current!.selectionStart).toBe(0);
+  expect(ref.current!.selectionEnd).toBe(5);
 });

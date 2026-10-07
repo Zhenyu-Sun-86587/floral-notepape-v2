@@ -20,7 +20,9 @@ export function liveDecorations(state: EditorState, options: LiveOptions): Decor
   const document = state.doc.toString();
   const frontmatterEnd = document.length - hideLeadingFrontmatter(document).length;
   const hideMetadata =
-    frontmatterEnd > 0 && !state.selection.ranges.some((range) => range.from < frontmatterEnd);
+    !options.showSyntax &&
+    frontmatterEnd > 0 &&
+    !state.selection.ranges.some((range) => range.from < frontmatterEnd);
   if (hideMetadata) ranges.push(Decoration.replace({ block: true }).range(0, frontmatterEnd));
   const lines = new Set<string>();
   const lineStyle = (from: number, to: number, cls: string) => {
@@ -38,9 +40,16 @@ export function liveDecorations(state: EditorState, options: LiveOptions): Decor
   syntaxTree(state).iterate({
     enter({ node, name, from, to }) {
       if (hideMetadata && from < frontmatterEnd && name !== "Document") return false;
-      const selected = active(from, to);
+      const selected = !!options.showSyntax || active(from, to);
       const line = state.doc.lineAt(from);
-      const lineActive = active(line.from, line.to);
+      const lineActive = !!options.showSyntax || active(line.from, line.to);
+      if (
+        options.showSyntax &&
+        /^(HeaderMark|QuoteMark|EmphasisMark|StrikethroughMark|CodeMark|CodeInfo|LinkMark|URL|LinkTitle|TaskMarker|ListMark)$/.test(
+          name,
+        )
+      )
+        mark(from, to, "cm-live-marker");
       const complexBlock =
         (name === "Blockquote" &&
           /^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/.test(
@@ -103,6 +112,7 @@ export function liveDecorations(state: EditorState, options: LiveOptions): Decor
       if (
         (name === "CodeMark" || name === "CodeInfo") &&
         node.parent?.name === "FencedCode" &&
+        !options.showSyntax &&
         !active(node.parent.from, node.parent.to)
       )
         hide(from, to);

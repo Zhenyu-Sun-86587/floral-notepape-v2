@@ -125,3 +125,13 @@
 .source-editor[data-presentation="live"] .cm-live-heading span {
   text-decoration: none;
 }
+
+.cm-live-marker {
+  color: var(--surface-text-muted, #888);
+  opacity: 0.55;
+  font-weight: normal;
+  text-decoration: none;
+}
+.source-editor[data-presentation="hybrid"] .cm-live-heading span {
+  text-decoration: none;
+}

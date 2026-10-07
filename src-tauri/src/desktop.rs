@@ -3204,7 +3204,11 @@ pub fn save_surface_session(
             }
         }
     }
-    if let Err(error) = crate::surface_sessions::update(current.clone()) {
+    if let Err(error) = crate::surface_sessions::mutate(&current.key.clone(), |latest| {
+        // A display choice may arrive while native window settings are being applied.
+        current.display_mode = latest.display_mode;
+        *latest = current.clone();
+    }) {
         for window in &windows {
             let _ = apply_surface_window_mode(window, previous.window_mode, previous.locked);
         }
@@ -4563,6 +4567,7 @@ mod tests {
             tile_ctrl_close: true,
             tile_double_click_to_edit: false,
             inline_editing: false,
+            surface_display_mode: None,
             tile_save_returns_to_pin: false,
             tile_render_markdown: false,
             render_html_markdown: false,
@@ -4655,6 +4660,7 @@ mod tests {
             tile_ctrl_close: true,
             tile_double_click_to_edit: false,
             inline_editing: false,
+            surface_display_mode: None,
             tile_save_returns_to_pin: false,
             tile_render_markdown: false,
             render_html_markdown: false,
@@ -4698,6 +4704,7 @@ mod tests {
             tile_ctrl_close: true,
             tile_double_click_to_edit: true,
             inline_editing: false,
+            surface_display_mode: None,
             tile_save_returns_to_pin: true,
             tile_render_markdown: false,
             render_html_markdown: false,

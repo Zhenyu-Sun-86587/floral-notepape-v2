@@ -1,3 +1,6 @@
+import { DisplayModeControl } from "../../../features/markdown/DisplayModeControl";
+import { defaultDisplayMode } from "../../../features/markdown/displayMode";
+import { useSurfaceDisplayMode } from "../../../features/windows/useSurfaceDisplayMode";
 import { useRef, useEffect } from "react";
 import { MarkdownSurface } from "../../../features/markdown/MarkdownSurface";
 import type { SourceEditorHandle } from "../../../features/markdown/SourceEditor";
@@ -28,6 +31,10 @@ export function CapsulePreview() {
     handleTaskToggle,
   } = useCapsulePreview(occupied);
   const edit = useCapsuleEditing(preview, occupied, editor, pendingImages);
+  const display = useSurfaceDisplayMode(
+    preview?.entry.key ?? null,
+    defaultDisplayMode(edit.config),
+  );
   const imageBase = useImageBaseDir();
   const target = edit.snapshot?.target;
   const linked = target && "binding" in target ? target : null;
@@ -91,6 +98,13 @@ export function CapsulePreview() {
         >
           {preview.entry.title}
         </button>
+        <DisplayModeControl
+          value={display.mode}
+          followingDefault={display.followingDefault}
+          disabled={display.pending || busy || edit.phase === "loading" || edit.phase === "leaving"}
+          onChange={(mode) => void display.change(mode)}
+          onReset={() => void display.change(null)}
+        />
         <button
           className="preview-icon"
           disabled={busy || edit.phase === "loading" || edit.phase === "leaving"}
@@ -142,7 +156,8 @@ export function CapsulePreview() {
             edit.phase === "leaving" ||
             edit.phase === "loading"
           }
-          markdown={edit.config?.tileRenderMarkdown ?? true}
+          markdown={display.mode !== "source"}
+          displayMode={display.mode}
           presentation={inlineSession ? "live" : "source"}
           activationGesture={inlineSession ? "click" : "none"}
           fontSize={edit.config?.surfaceFontSize ?? 14}
@@ -188,6 +203,11 @@ export function CapsulePreview() {
             : "⌘S 保存 · Esc 返回预览"}
         </span>
       </footer>
+      {display.error && (
+        <p role="alert" className="preview-error">
+          {display.error}
+        </p>
+      )}
       {(error || edit.error) && (
         <p role="alert" className="preview-error">
           {edit.error || error}

@@ -31,7 +31,9 @@ async function mount() {
         ? { kind: "glass", opacity: 0.25 }
         : command === "surface_capsule_preview_state"
           ? preview(1)
-          : undefined,
+          : command === "surface_session_get"
+            ? { key: "note:test", displayMode: null }
+            : undefined,
     ),
   );
   const node = document.createElement("div");
@@ -77,4 +79,28 @@ it("retains one hidden DOM, ignores late sessions and skips hidden note refreshe
   );
   expect(node.querySelector("article")?.getAttribute("data-visible")).toBe("true");
   expect(mocks.invoke).toHaveBeenCalledWith("surface_capsule_present", { generation: 3 });
+});
+
+it("胶囊内选择显示模式持久化且不触发展开便签，支持恢复跟随默认", async () => {
+  const node = await mount();
+  const button = (label: string) =>
+    [...node.querySelectorAll<HTMLButtonElement>(".display-mode-control button")].find(
+      (item) => item.textContent === label,
+    )!;
+  await act(async () => button("混合").click());
+  expect(mocks.invoke).toHaveBeenCalledWith("surface_display_mode_set", {
+    key: "note:test",
+    mode: "hybrid",
+  });
+  expect(button("混合").getAttribute("aria-pressed")).toBe("true");
+  expect(node.querySelector(".source-editor")?.getAttribute("data-presentation")).toBe("hybrid");
+  expect(mocks.invoke.mock.calls.some(([command]) => command === "surface_restore_stored")).toBe(
+    false,
+  );
+  await act(async () => button("↺").click());
+  expect(mocks.invoke).toHaveBeenCalledWith("surface_display_mode_set", {
+    key: "note:test",
+    mode: null,
+  });
+  expect(button("预览").getAttribute("aria-pressed")).toBe("true");
 });

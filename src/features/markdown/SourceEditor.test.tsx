@@ -186,7 +186,7 @@ it.each(Object.entries(inlineEditingCases))(
       },
     );
     source = original;
-    const show = (presentation: "source" | "live") =>
+    const show = (presentation: "source" | "live" | "hybrid") =>
       root.render(
         <SourceEditor
           content={source}
@@ -207,6 +207,10 @@ it.each(Object.entries(inlineEditingCases))(
       editor.current!.insertText("\n测试新增");
     });
     expect(source).toBe(original + "\n测试新增");
+    await act(async () => show("hybrid"));
+    expect(editor.current!.view).toBe(view);
+    expect(editor.current!.value).toBe(original + "\n测试新增");
+    expect(host.querySelector(".cm-live-block,.cm-live-inline,.cm-live-task")).toBeNull();
     await act(async () => show("source"));
     expect(editor.current!.view).toBe(view);
     await act(async () => {

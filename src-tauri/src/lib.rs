@@ -130,6 +130,17 @@ fn surface_session_get(key: String) -> Result<surface_sessions::SurfaceSession, 
 }
 
 #[tauri::command]
+fn surface_display_mode_set(
+    app: AppHandle,
+    key: String,
+    mode: Option<surface_sessions::MarkdownDisplayMode>,
+) -> Result<(), AppError> {
+    surface_sessions::mutate(&key, |session| session.display_mode = mode)?;
+    let _ = app.emit("surface-session-changed", surface_sessions::get(&key)?);
+    Ok(())
+}
+
+#[tauri::command]
 async fn surface_session_save(
     app: AppHandle,
     session: surface_sessions::SurfaceSession,
@@ -1171,6 +1182,7 @@ pub fn run() {
             notes_move_category,
             linked_bind,
             surface_session_get,
+            surface_display_mode_set,
             surface_session_save,
             surface_edit_mode,
             surface_unlock_button_bounds,

@@ -1,3 +1,4 @@
+import type { MarkdownDisplayMode } from "../markdown/displayMode";
 import type { PlatformConfig } from "#platform-settings";
 export type ViewMode = "edit" | "split" | "preview";
 
@@ -55,6 +56,7 @@ export interface AppConfig extends PlatformConfig {
   rememberSurfaceSize: boolean;
   tileCtrlClose: boolean;
   inlineEditing?: boolean;
+  surfaceDisplayMode?: MarkdownDisplayMode | null;
   tileDoubleClickToEdit: boolean;
   tileSaveReturnsToPin: boolean;
   tileRenderMarkdown: boolean;

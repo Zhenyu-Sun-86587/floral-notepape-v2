@@ -1,0 +1,30 @@
+.display-mode-control {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 6px;
+  font: 12px/1.5 var(--font-body, sans-serif);
+  color: inherit;
+  user-select: none;
+}
+.display-mode-control button {
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent;
+  color: inherit;
+}
+.display-mode-control button[aria-pressed="true"],
+.display-mode-control button:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.display-mode-control button:focus-visible {
+  outline: 2px solid currentColor;
+}
+.display-mode-control button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

@@ -1,3 +1,5 @@
+import { DisplayModeControl } from "../src/features/markdown/DisplayModeControl";
+import type { MarkdownDisplayMode } from "../src/features/markdown/displayMode";
 import { useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { MarkdownSurface } from "../src/features/markdown/MarkdownSurface";
@@ -5,6 +7,7 @@ import type { SourceEditorHandle } from "../src/features/markdown/SourceEditor";
 import "../src/App.css";
 import { inlineEditingCases as cases } from "../src/features/markdown/inlineEditingCases.testdata";
 function QA() {
+  const [displayMode, setDisplayMode] = useState<MarkdownDisplayMode>("preview");
   const [kind, setKind] = useState("paragraph");
   const [value, setValue] = useState(cases.paragraph);
   const [editing, setEditing] = useState(false);
@@ -14,6 +17,7 @@ function QA() {
   return (
     <div id="qa">
       <div id="controls">
+        <DisplayModeControl value={displayMode} onChange={setDisplayMode} />
         <select
           aria-label="case"
           value={kind}
@@ -49,6 +53,7 @@ function QA() {
       </div>
       <div id="surface" ref={scroll}>
         <MarkdownSurface
+          displayMode={displayMode}
           key={rev}
           content={value}
           editing={editing}

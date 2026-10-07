@@ -1,3 +1,6 @@
+import { DisplayModeControl } from "../features/markdown/DisplayModeControl";
+import { defaultDisplayMode, type MarkdownDisplayMode } from "../features/markdown/displayMode";
+import { useSurfaceDisplayMode } from "../features/windows/useSurfaceDisplayMode";
 import { useNativeNoteShell, liveMarkdownEditing } from "#platform-note-shell";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
@@ -198,6 +201,20 @@ export function NotePad({
   const [tileRenderMarkdown, setTileRenderMarkdown] = useState(false);
   const [allowRemoteImages, setAllowRemoteImages] = useState(false);
   const [inlineEditing, setInlineEditing] = useState(false);
+  const [configuredDisplayMode, setConfiguredDisplayMode] = useState<MarkdownDisplayMode | null>(
+    null,
+  );
+  const display = useSurfaceDisplayMode(
+    liveMarkdownEditing
+      ? initialBindingId
+        ? `linked:${initialBindingId}`
+        : (editingNoteId ?? initialNoteId)
+          ? `note:${editingNoteId ?? initialNoteId}`
+          : null
+      : null,
+    defaultDisplayMode({ surfaceDisplayMode: configuredDisplayMode, tileRenderMarkdown }),
+  );
+
   const [tileDoubleClickToEdit, setTileDoubleClickToEdit] = useState(false);
   const [tileSaveReturnsToPin, setTileSaveReturnsToPin] = useState(false);
   const [tileColor, setTileColor] = useState(() =>
@@ -293,6 +310,7 @@ export function NotePad({
           setAppearanceTheme(loadedConfig.theme);
           setTileRenderMarkdown(loadedConfig.tileRenderMarkdown ?? false);
           setInlineEditing(loadedConfig.inlineEditing ?? false);
+          setConfiguredDisplayMode(loadedConfig.surfaceDisplayMode ?? null);
           setAllowRemoteImages(loadedConfig.allowRemoteImages ?? false);
           setTileDoubleClickToEdit(loadedConfig.tileDoubleClickToEdit ?? false);
           setTileSaveReturnsToPin(loadedConfig.tileSaveReturnsToPin ?? false);
@@ -500,6 +518,7 @@ export function NotePad({
       tileRenderMarkdown?: boolean;
       allowRemoteImages?: boolean;
       inlineEditing?: boolean;
+      surfaceDisplayMode?: MarkdownDisplayMode | null;
       tileDoubleClickToEdit?: boolean;
       tileSaveReturnsToPin?: boolean;
     }>("config-changed", (event) => {
@@ -511,6 +530,7 @@ export function NotePad({
       if (event.payload.surfaceFontSize != null) setSurfaceFontSize(event.payload.surfaceFontSize);
       setAppearanceConfig(event.payload.appearance);
       if (event.payload.theme) setAppearanceTheme(event.payload.theme);
+      setConfiguredDisplayMode(event.payload.surfaceDisplayMode ?? null);
       if (event.payload.inlineEditing != null) setInlineEditing(event.payload.inlineEditing);
       if (event.payload.tileRenderMarkdown != null)
         setTileRenderMarkdown(event.payload.tileRenderMarkdown);
@@ -1332,7 +1352,26 @@ export function NotePad({
           content={content}
           color={tileColor}
           fontSize={displayFontSize}
-          renderMarkdown={tileRenderMarkdown}
+          renderMarkdown={liveMarkdownEditing ? display.mode !== "source" : tileRenderMarkdown}
+          displayMode={liveMarkdownEditing ? display.mode : undefined}
+          displayModeControl={
+            liveMarkdownEditing ? (
+              <div>
+                <DisplayModeControl
+                  value={display.mode}
+                  followingDefault={display.followingDefault}
+                  disabled={display.pending}
+                  onChange={(mode) => void display.change(mode)}
+                  onReset={() => void display.change(null)}
+                />
+                {display.error && (
+                  <p role="alert" className="text-xs">
+                    {display.error}
+                  </p>
+                )}
+              </div>
+            ) : undefined
+          }
           imageBaseDir={linkedImageScope?.baseDir ?? imageBaseDir ?? undefined}
           imageRootDir={linkedImageScope?.rootDir}
           allowRemoteImages={allowRemoteImages}

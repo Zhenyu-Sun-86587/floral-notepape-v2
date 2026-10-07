@@ -1,3 +1,4 @@
+import type { MarkdownDisplayMode } from "../markdown/displayMode";
 import { invoke } from "@tauri-apps/api/core";
 
 export type StartupBehavior = "hidden" | "restoreLast" | "expanded";
@@ -8,6 +9,7 @@ export type ShortcutToggleAction = "store" | "hide";
 
 export interface SurfaceSession {
   key: string;
+  displayMode?: MarkdownDisplayMode | null;
   startupBehavior: StartupBehavior;
   presentation: Presentation;
   shortcut: string;

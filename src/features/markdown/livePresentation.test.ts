@@ -6,7 +6,7 @@ import { ensureSyntaxTree } from "@codemirror/language";
 import { liveDecorations } from "./livePresentation";
 import { mathSyntax } from "./sourceDocument";
 
-function decorations(doc: string, anchor: number, head = anchor) {
+function decorations(doc: string, anchor: number, head = anchor, showSyntax = false) {
   const state = EditorState.create({
     doc,
     selection: { anchor, head },
@@ -14,7 +14,7 @@ function decorations(doc: string, anchor: number, head = anchor) {
   });
   ensureSyntaxTree(state, doc.length, 1000);
   const items: { from: number; to: number; widget?: string; class?: string }[] = [];
-  liveDecorations(state, { fontSize: 14 }).between(0, doc.length, (from, to, value) => {
+  liveDecorations(state, { fontSize: 14, showSyntax }).between(0, doc.length, (from, to, value) => {
     items.push({ from, to, widget: value.spec.widget?.constructor.name, class: value.spec.class });
   });
   return items;
@@ -48,4 +48,21 @@ describe("局部 Markdown 呈现", () => {
     const active = decorations(doc, doc.indexOf("x^2"));
     expect(active.filter((d) => d.widget === "MarkdownWidget")).toHaveLength(2);
   });
+});
+
+it("混合模式保留所有语法，不隐藏元数据或替换复杂块，仍提供格式", () => {
+  const doc =
+    "---\ntitle: test\n---\n\n# Heading\n\n**bold** *em* ~~strike~~ `code`\n\n> quote\n\n- [x] task\n\n[link](https://example.com)\n\n```js\nlet x = 1\n```\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n![alt](test.png)\n\n$$x^2$$\n";
+  const items = decorations(doc, doc.length, doc.length, true);
+  expect(items.every((item) => !!item.class && !item.widget)).toBe(true);
+  for (const cls of [
+    "cm-live-strong",
+    "cm-live-em",
+    "cm-live-strike",
+    "cm-live-code",
+    "cm-live-codeblock",
+    "cm-live-quote",
+    "cm-live-marker",
+  ])
+    expect(items.some((item) => item.class === cls)).toBe(true);
 });

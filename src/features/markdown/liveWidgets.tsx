@@ -4,6 +4,7 @@ import { sourceOffsetAtPoint } from "./sourcePosition";
 import { MarkdownPreview } from "./MarkdownPreview";
 
 export interface LiveOptions {
+  showSyntax?: boolean;
   fontSize: number;
   imageBaseDir?: string;
   imageRootDir?: string;

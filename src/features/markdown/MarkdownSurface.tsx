@@ -1,3 +1,4 @@
+import type { MarkdownDisplayMode } from "./displayMode";
 import {
   useCallback,
   useEffect,
@@ -14,6 +15,7 @@ import { renderedAnchorY, sourceOffsetAtPoint } from "./sourcePosition";
 
 type Anchor = { offset: number; y: number };
 interface SurfaceProps extends Props {
+  displayMode?: MarkdownDisplayMode;
   scrollContainerRef?: RefObject<HTMLElement | null>;
   onReadTaskToggle?: (offset: number, checked: boolean) => void;
   activationGesture?: "click" | "doubleClick" | "none";
@@ -29,6 +31,13 @@ export function MarkdownSurface(props: SurfaceProps) {
   const read = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(props.editing);
   const [composing, setComposing] = useState(false);
+  const [displayMode, setDisplayMode] = useState(props.displayMode);
+  useLayoutEffect(() => {
+    if (!composing && !editor.current?.composing) setDisplayMode(props.displayMode);
+  }, [props.displayMode, composing]);
+  const directSource = displayMode === "source" || displayMode === "hybrid";
+  const editorVisible = active || directSource;
+
   const [presentation, setPresentation] = useState("");
   const entering = useRef<Anchor | null>(null);
   const anchor = useRef<Anchor | null>(null);
@@ -100,7 +109,7 @@ export function MarkdownSurface(props: SurfaceProps) {
       if (
         editor.current?.view?.hasFocus ||
         root.current?.contains(target) ||
-        target.closest("button,input,[role=dialog],[role=menu]") ||
+        target.closest("button,input,select,[role=dialog],[role=menu]") ||
         document.querySelector('[role="dialog"],[role="menu"]')
       )
         return;
@@ -156,7 +165,7 @@ export function MarkdownSurface(props: SurfaceProps) {
           });
         });
       });
-    } else {
+    } else if (!directSource) {
       frame = requestAnimationFrame(() => {
         if (anchor.current && read.current)
           correct(anchor.current, renderedAnchorY(read.current, anchor.current.offset));
@@ -171,7 +180,7 @@ export function MarkdownSurface(props: SurfaceProps) {
 
   // 图片和 Mermaid 可能在切回阅读后才完成布局；用户开始滚动后立即放弃自动校正。
   useEffect(() => {
-    if (active || !read.current || !anchor.current) return;
+    if (active || directSource || !read.current || !anchor.current) return;
     const layer = read.current;
     const scroll =
       latest.current.scrollContainerRef?.current ??
@@ -193,10 +202,11 @@ export function MarkdownSurface(props: SurfaceProps) {
       for (const event of ["wheel", "pointerdown", "keydown", "touchstart"])
         scroll?.removeEventListener(event, stop);
     };
-  }, [active]);
+  }, [active, directSource]);
 
   const activate = (event: MouseEvent<HTMLDivElement>) => {
     if (
+      active ||
       props.locked ||
       event.button !== 0 ||
       (event.target as HTMLElement).closest("a,button,input,summary,[role=button]")
@@ -206,18 +216,28 @@ export function MarkdownSurface(props: SurfaceProps) {
     // 双击会产生原生词语选区，不应阻止显式的双击编辑手势。
     if (
       props.activationGesture !== "doubleClick" &&
-      selection &&
-      !selection.isCollapsed &&
-      read.current?.contains(selection.anchorNode)
+      ((directSource && !editor.current?.view?.state.selection.main.empty) ||
+        (selection && !selection.isCollapsed && read.current?.contains(selection.anchorNode)))
     )
       return;
-    const offset = read.current
-      ? sourceOffsetAtPoint(read.current, event.clientX, event.clientY, event.target as HTMLElement)
-      : null;
+    const offset = directSource
+      ? (editor.current?.view?.posAtCoords({ x: event.clientX, y: event.clientY }) ?? null)
+      : read.current
+        ? sourceOffsetAtPoint(
+            read.current,
+            event.clientX,
+            event.clientY,
+            event.target as HTMLElement,
+          )
+        : null;
     const caret = offset ?? editor.current?.selectionStart ?? 0;
     entering.current = {
       offset: caret,
-      y: read.current ? (renderedAnchorY(read.current, caret) ?? event.clientY) : event.clientY,
+      y: directSource
+        ? (editor.current?.view?.coordsAtPos(caret)?.top ?? event.clientY)
+        : read.current
+          ? (renderedAnchorY(read.current, caret) ?? event.clientY)
+          : event.clientY,
     };
     if (props.activationGesture === "doubleClick") {
       event.preventDefault();
@@ -230,9 +250,9 @@ export function MarkdownSurface(props: SurfaceProps) {
     <div ref={root} className="markdown-surface" data-tile-selectable="true">
       <div
         ref={read}
-        className={`markdown-read-layer ${active ? "is-inactive" : ""}`}
-        inert={active}
-        aria-hidden={active}
+        className={`markdown-read-layer ${editorVisible ? "is-inactive" : ""}`}
+        inert={editorVisible}
+        aria-hidden={editorVisible}
         onClick={(props.activationGesture ?? "click") === "click" ? activate : undefined}
         onDoubleClick={props.activationGesture === "doubleClick" ? activate : undefined}
       >
@@ -260,13 +280,28 @@ export function MarkdownSurface(props: SurfaceProps) {
         )}
       </div>
       <div
-        className={`markdown-edit-layer ${active ? "" : "is-inactive"}`}
-        inert={!active}
-        aria-hidden={!active}
+        className={`markdown-edit-layer ${editorVisible ? "" : "is-inactive"}`}
+        inert={!editorVisible}
+        aria-hidden={!editorVisible}
+        onClick={
+          directSource && (props.activationGesture ?? "click") === "click" ? activate : undefined
+        }
+        onDoubleClick={
+          directSource && props.activationGesture === "doubleClick" ? activate : undefined
+        }
       >
         <SourceEditor
           {...props}
           editing={active}
+          markdown={displayMode === "source" ? false : props.markdown}
+          presentation={
+            displayMode === "hybrid"
+              ? "hybrid"
+              : displayMode === "source"
+                ? "source"
+                : props.presentation
+          }
+          activateOnFocus={!directSource}
           editorRef={editor}
           onDeactivate={deactivate}
           onDocumentChange={documentChanged}

@@ -82,6 +82,8 @@ pub struct AppConfig {
     #[serde(default)]
     pub inline_editing: bool,
     #[serde(default)]
+    pub surface_display_mode: Option<crate::surface_sessions::MarkdownDisplayMode>,
+    #[serde(default)]
     pub tile_save_returns_to_pin: bool,
     #[serde(default)]
     pub tile_render_markdown: bool,
@@ -1380,6 +1382,7 @@ impl NoteStore {
             tile_ctrl_close: default_tile_ctrl_close(),
             tile_double_click_to_edit: false,
             inline_editing: false,
+            surface_display_mode: None,
             tile_save_returns_to_pin: false,
             tile_render_markdown: cfg!(target_os = "macos"),
             render_html_markdown: false,
@@ -2254,6 +2257,7 @@ mod tests {
             tile_ctrl_close: true,
             tile_double_click_to_edit: true,
             inline_editing: false,
+            surface_display_mode: None,
             tile_save_returns_to_pin: true,
             tile_render_markdown: false,
             render_html_markdown: false,

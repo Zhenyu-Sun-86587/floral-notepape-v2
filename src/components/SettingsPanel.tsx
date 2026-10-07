@@ -1,3 +1,5 @@
+import { DisplayModeControl } from "../features/markdown/DisplayModeControl";
+import { defaultDisplayMode } from "../features/markdown/displayMode";
 import { liveMarkdownEditing } from "#platform-note-shell";
 import { PlatformSettings } from "#platform-settings";
 import { invoke } from "@tauri-apps/api/core";
@@ -215,10 +217,37 @@ export function SettingsPanel({
             onChange={(checked) => setConfigValue("rememberSurfaceSize", checked)}
           />
           <ToggleRow
-            label={t("settings.tileRenderMarkdown", { defaultValue: "磁贴渲染 Markdown" })}
+            label={t(
+              liveMarkdownEditing
+                ? "settings.listTileRenderMarkdown"
+                : "settings.tileRenderMarkdown",
+              {
+                defaultValue: liveMarkdownEditing ? "列表磁贴渲染 Markdown" : "磁贴渲染 Markdown",
+              },
+            )}
             checked={config.tileRenderMarkdown}
-            onChange={(checked) => setConfigValue("tileRenderMarkdown", checked)}
+            onChange={(checked) =>
+              onChange({
+                ...config,
+                tileRenderMarkdown: checked,
+                ...(liveMarkdownEditing ? { surfaceDisplayMode: defaultDisplayMode(config) } : {}),
+              })
+            }
           />
+          {liveMarkdownEditing && (
+            <div className="flex items-center justify-between gap-4 py-3">
+              <div className="text-sm">
+                默认显示方式（桌面便签与胶囊）
+                <p className="text-xs text-ink-faint mt-1">
+                  单张便签可覆盖默认值；↺ 恢复跟随默认。
+                </p>
+              </div>
+              <DisplayModeControl
+                value={defaultDisplayMode(config)}
+                onChange={(mode) => setConfigValue("surfaceDisplayMode", mode)}
+              />
+            </div>
+          )}
           {liveMarkdownEditing && (
             <ToggleRow
               label={t("settings.inlineEditing", { defaultValue: "原位编辑（桌面便签与胶囊）" })}

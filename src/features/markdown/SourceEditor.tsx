@@ -47,7 +47,8 @@ export interface SourceEditorHandle {
   toggleTask(offset: number, checked: boolean): void;
 }
 export interface Props {
-  presentation?: "source" | "live";
+  presentation?: "source" | "live" | "hybrid";
+  activateOnFocus?: boolean;
   imageBaseDir?: string;
   imageRootDir?: string;
   allowRemoteImages?: boolean;
@@ -80,8 +81,9 @@ export function SourceEditor(props: SourceProps) {
   const presentation = useRef(new Compartment());
   const liveExtension = useMemo(
     () =>
-      props.presentation === "live" && props.markdown
+      (props.presentation === "live" || props.presentation === "hybrid") && props.markdown
         ? livePresentation({
+            showSyntax: props.presentation === "hybrid",
             fontSize: props.fontSize,
             imageBaseDir: props.imageBaseDir,
             imageRootDir: props.imageRootDir,
@@ -267,7 +269,8 @@ export function SourceEditor(props: SourceProps) {
               return true;
             },
             focus() {
-              if (!latest.current.locked) latest.current.onActivate?.();
+              if (!latest.current.locked && latest.current.activateOnFocus !== false)
+                latest.current.onActivate?.();
               return false;
             },
             blur(event) {
@@ -277,7 +280,7 @@ export function SourceEditor(props: SourceProps) {
               if (
                 !composing.current &&
                 !view.composing &&
-                !next?.closest("button,input,[role=dialog],[role=menu]")
+                !next?.closest("button,input,select,[role=dialog],[role=menu]")
               )
                 latest.current.onDeactivate?.();
               return false;
