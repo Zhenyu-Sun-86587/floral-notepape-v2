@@ -1799,6 +1799,20 @@ pub fn recycle_notepad_window(app: &AppHandle, label: &str) -> Result<(), AppErr
     Ok(())
 }
 
+/// Mac notes are borderless: the outer frame is their full content size. Tao's
+/// retained inner view is inset below our AppKit title, so inner_size() omits
+/// that reserved height and must never be persisted as a whole-note size.
+fn surface_window_size(window: &tauri::WebviewWindow) -> tauri::Result<PhysicalSize<u32>> {
+    #[cfg(target_os = "macos")]
+    {
+        window.outer_size()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        window.inner_size()
+    }
+}
+
 fn save_surface_size(window: &tauri::WebviewWindow) {
     let Ok(store) = default_store() else {
         return;
@@ -1809,7 +1823,7 @@ fn save_surface_size(window: &tauri::WebviewWindow) {
     if !config.remember_surface_size {
         return;
     }
-    let Ok(size) = window.inner_size() else {
+    let Ok(size) = surface_window_size(window) else {
         return;
     };
     let scale = window.scale_factor().unwrap_or(1.0);
@@ -2017,7 +2031,7 @@ fn visible_surface_size(app: &AppHandle) -> Option<(f64, f64)> {
         if !window.is_visible().unwrap_or(false) {
             continue;
         }
-        let size = window.inner_size().ok()?;
+        let size = surface_window_size(&window).ok()?;
         let scale = window.scale_factor().unwrap_or(1.0);
         let logical = size.to_logical::<f64>(scale);
         if logical.width <= 0.0 || logical.height <= 0.0 {
@@ -2265,7 +2279,7 @@ pub fn save_session_bounds(window: &tauri::WebviewWindow) {
     let Ok(Some(monitor)) = window.current_monitor() else {
         return;
     };
-    let (Ok(position), Ok(size)) = (window.outer_position(), window.inner_size()) else {
+    let (Ok(position), Ok(size)) = (window.outer_position(), surface_window_size(window)) else {
         return;
     };
     #[cfg(target_os = "windows")]
