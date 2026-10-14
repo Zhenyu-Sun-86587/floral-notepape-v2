@@ -13,4 +13,6 @@ Mac 恢复改为先设置大小，最后设置保存的左上角位置。内部�
 - Actions ZIP SHA-256 `8cf34d8f822497c607c2a9daa1154acd8c4dbecdfd1875f5dc38f6c78ea212f1`，ZIP 校验与解压完整性通过。
 
 - DMG SHA-256 `b383377c4653583bd2b72dc34f14dd01947f943d1216268c6f65522329dcec62`，2026-10-14 已安装到 /Applications/Folio.app。主程序 arm64、扩展 arm64/x86_64，版本、身份、App Intents 元数据及 deep strict 签名通过。终止的进程仅限本项目宿主与扩展，16 项磁盘文件在替换前后校验一致，真实笔记、外部 Markdown、配置与共享身份保留，旧应用/数据恢复备份留在本机，不分发。
-- PR #22 已合并 main `367b33f6ce00e2c31810b93b9e2a3a28d6779e08`，应用源码与正式构建提交一致。发布结果随后补充。
+- PR #22 已合并 main `367b33f6ce00e2c31810b93b9e2a3a28d6779e08`，应用源码与正式构建提交一致。[GitHub 2.0.6 发布](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/mac-v2.0.6) 已公开，四项资产（DMG、校验清单、构建记录、安装说明）的大小和 SHA-256 在发布前逐项核对一致。
+
+- 十个构建/检查/发布工作流再次核实为 disabled_manually，仅 Issue 标签保持启用。本机旧 2.0.5 DMG 已清理，旧应用恢复 ZIP 和真实数据备份保留在 Documents/Folio-recovery。本机新版仅后台启动交还使用，未进行真实便签测试。
