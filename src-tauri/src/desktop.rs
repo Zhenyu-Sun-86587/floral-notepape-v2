@@ -2216,7 +2216,13 @@ fn apply_window_bounds(
     bounds: Option<WindowBounds>,
 ) -> Result<(), AppError> {
     if let Some(bounds) = bounds {
+        // AppKit resizing changes the frame's top-left when its bottom-left
+        // origin is retained. Restore size first, then the saved top-left;
+        // otherwise reopening and saving that shifted position compounds it.
+        #[cfg(target_os = "macos")]
+        window.set_size(PhysicalSize::new(bounds.width, bounds.height))?;
         window.set_position(PhysicalPosition::new(bounds.x, bounds.y))?;
+        #[cfg(not(target_os = "macos"))]
         window.set_size(PhysicalSize::new(bounds.width, bounds.height))?;
     }
 
