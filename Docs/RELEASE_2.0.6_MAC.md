@@ -8,4 +8,6 @@ Mac 恢复改为先设置大小，最后设置保存的左上角位置。内部�
 
 自动 CI 保持停用，只临时手动运行一次正式 Mac 构建并恢复停用状态。方案功能不在本轮实现。
 
-构建、回归、安装和发布结果随后补充。
+- 正式源码 `c3c08fc` 的 [手动 Mac 完整构建](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/38573361464)通过：前端 161 项、Rust 208 项、Swift/WidgetKit 回归及 App Intents 元数据、签名和打包完成。
+- AppKit 隐藏窗口回归明确复现旧顺序偏移，新顺序不同高度连续恢复 50 次左上角不变。证据为云端原生 API 回归，未执行本机真实便签点击、多屏或视觉测试。Windows 分支代码顺序未改，本轮未重新运行 Windows 编译。
+- Actions ZIP SHA-256 `8cf34d8f822497c607c2a9daa1154acd8c4dbecdfd1875f5dc38f6c78ea212f1`，安装包、安装和发布结果随后补充。
