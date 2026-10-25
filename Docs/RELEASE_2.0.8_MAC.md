@@ -31,7 +31,7 @@ Apple 的 [macOS 27 发布说明](https://developer.apple.com/documentation/maco
 
 真实链路验证以最后一节为准；不能仅凭构建、版本号、合成渲染或时间线接收成功宣称修复完成。
 
-## 容器方向正式产物
+## 容器修复候选记录（已由竖排最终产物替换）
 
 - 正式候选源码 `375797b` 的 [完整 Mac 构建 40217140086](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/40217140086)通过：前端 161 项、Rust 208 项、四种组件配置、WidgetBridge 权限分类/恢复/FFI 以及既有原生回归通过。中间 7e66cee 候选构建已取消，不计作通过。
 - ZIP SHA-256 `5e65af883f0bfa5854dcbb515fb843692a581c9af010a033645cffc56e413603`，DMG SHA-256 `32affb710e62e621a328eb6458c31e9ca136f33fa250e92195c6e8ee041a44a4`，校验与解压完整性通过。已替换首个无效候选，当前安装 /Applications/Folio.app 2.0.8；身份、架构、元数据和 deep strict 签名通过，17 项当前磁盘文件在替换前后校验一致。早期 34 项及隔离的 28 个旧操作备份仍保留，未上传。
@@ -45,17 +45,23 @@ Apple 的 [macOS 27 发布说明](https://developer.apple.com/documentation/maco
 
 新尺寸仅在 macOS 27 及以上注册，旧系统继续原有四种尺寸，最低部署版本仍为 macOS 15。构建切换至 GitHub 官方 xcode-27 runner；本地 SDK 26 不支持该符号，不用私有 API 或猜测枚举值绕过。
 
-前述 375797b 产物为已授权验证的容器修复候选，尚未正式发布；竖排版本需要重新构建，ad-hoc 身份可能变化，安装后应重新确认连接状态，必要时由用户重新授权。自动 CI 继续停用，仅手动构建。最终构建、安装、人工验收和发布结果随后记录。
+前述 375797b 为容器修复候选，未正式分发；最终交付采用下方 8e80c46 竖排产物。ad-hoc 身份可能随构建变化，安装后应确认连接状态，必要时由用户重新授权。自动 CI 继续停用，仅手动构建。
 
 ### 竖排候选构建与安装
 
 - 源码 `8e80c46474e308287276f99ecaf57e5ea75d268c` 的 [Xcode 27.1 完整构建 40219293040](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/40219293040) 成功。前端 161 项、Rust 208 项及原生回归通过，四个 WidgetKit 配置构造成功，macOS 27 新尺寸注册断言通过。
 - Artifact ZIP SHA-256 `2acfa0c2c0e4a8ec5c2567fb4792361baef086fabe9edea311005a05ee07e29e`；DMG SHA-256 `a27dc0b61cbc93bf62a6b58eddfb57eec55b0d7346c44c06b297f1f7de387b46`。完整 ZIP/解压与安装包校验通过。
 - 已安装到 `/Applications/Folio.app`，主应用 arm64、扩展 arm64/x86_64、Bundle ID、2.0.8 版本、App Intents 元数据及 deep strict 签名检查通过，17 项当前磁盘文件替换前后 SHA-256 一致。此前已授权应用和真实数据均另存本地恢复备份。
-- 新签名安装后宿主再次出现容器写入失败，已请用户手动重新授权；竖排真实显示与交互等待人工确认。本次尚未创建正式 Release，不把旧候选授权成功结论套用到新二进制。
+- 新签名安装后宿主再次出现容器写入失败，用户已手动重新授权。当前正常启动宿主 WRITE_OK、扩展 READ_OK，容器方向恢复。
 
 ### 竖排尺寸登记恢复
 
 用户重新授权后，正常启动宿主出现 WRITE_OK，扩展出现 READ_OK，容器方向恢复。但用户反馈图库没有竖排尺寸。检查发现已安装 Mach-O 两种架构均使用 SDK 27.0，系统运行时也通过 macOS 27 availability 判断，chronod 使用的旧描述却仍为 sdkVersion 26.5 且仅四种尺寸。候选包均为 2.0.8，单凭同版本覆盖不能保证描述刷新。
 
-先备份笺影自身的 chrono 缓存，仅重新登记 `/Applications/Folio.app` 及其扩展，不删除系统全局小组件数据库、不改签、不再安装。随后 chronod 日志明确显示 sdkVersion 27.0，supportedFamilies 包含 systemExtraLargePortrait 的五种尺寸。系统描述刷新已验证，图库与竖排交互仍待用户确认。
+先备份笺影自身的 chrono 缓存，仅重新登记 `/Applications/Folio.app` 及其扩展，不删除系统全局小组件数据库、不改签、不再安装。随后 chronod 日志明确显示 sdkVersion 27.0，四个编号的 supportedFamilies 均包含 systemExtraLargePortrait 的五种尺寸。用户重开图库后确认“现在有竖排了”。
+
+## 最终交付与验证边界
+
+交付已安装并重新授权的 8e80c46 原始产物，不重新构建或改签。发布地址：[mac-v2.0.8](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/mac-v2.0.8)，安装包、校验值和验证元数据随 Release 提供。主应用最低 macOS 15；竖排尺寸需要 macOS 27；ad-hoc 未公证，有限分发仍可能需要用户重新授权。
+
+已验证完整构建、签名与身份、数据保留、授权后快照读写、五尺寸系统登记；用户确认容器修复候选交互正常及最终竖排入口出现。最终竖排的逐按钮交互、全文排版、睡眠唤醒、重启后授权、旧系统及跨机器分发尚未逐项人工验收；没有进行性能或能耗测量。不把尺寸入口确认扩大为所有视觉与长期场景已验证。
