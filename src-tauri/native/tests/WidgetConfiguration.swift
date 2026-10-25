@@ -8,6 +8,13 @@ enum WidgetConfigurationCheck {
         for slot in 1...4 {
             _ = FolioNoteWidget(slot: slot).body
         }
+        let families = FolioNoteWidget.supportedFamilies
+        precondition(families.contains(.systemExtraLarge))
+        if #available(macOS 27.0, *) {
+            precondition(families.contains(.systemExtraLargePortrait))
+            precondition(WidgetFamily.systemExtraLargePortrait.rawValue != WidgetFamily.systemExtraLarge.rawValue,
+                         "Portrait and landscape must keep independent pagination keys")
+        }
         print("All four WidgetKit configurations constructed")
     }
 }

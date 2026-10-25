@@ -93,7 +93,7 @@ export function WidgetSettings() {
       <div>macOS 桌面小组件</div>
       <p className="text-[11px] text-ink-faint">
         {status?.available
-          ? "先允许共享便签，再为下方各编号选择内容和字号。右键桌面 → 编辑小组件，添加对应的笺影便签编号。相同编号共享设置；尺寸与外观由系统管理。"
+          ? "先允许共享便签，再为下方各编号选择内容和字号。右键桌面 → 编辑小组件，添加对应的笺影便签编号。相同编号共享设置；尺寸与外观由系统管理，macOS 27 支持超大竖排尺寸。"
           : "当前安装包未启用原生小组件，请使用包含 WidgetKit 扩展的安装包。"}
       </p>
       {status?.available && (
