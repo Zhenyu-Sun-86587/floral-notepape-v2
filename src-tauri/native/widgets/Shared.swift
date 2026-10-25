@@ -93,26 +93,30 @@ enum FolioWidgetStore {
         try data.write(to: inbox.appendingPathComponent(UUID().uuidString + ".json"), options: .atomic)
     }
     static var container: URL? {
+        try? resolveContainer()
+    }
+    static func resolveContainer() throws -> URL {
         if let identifier = privateContainerIdentifier {
             let support: URL
             if identifier == Bundle.main.bundleIdentifier {
                 // Resolve inside the actual sandbox instead of assuming the
                 // filesystem path seen by the containing application.
-                guard let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
+                guard let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { throw CocoaError(.fileNoSuchFile) }
                 support = url
             } else {
                 let data = FileManager.default.homeDirectoryForCurrentUser
                     .appendingPathComponent("Library/Containers/" + identifier + "/Data", isDirectory: true)
                 // Never manufacture a fake sandbox before Launch Services has
                 // created the extension's real container.
-                guard FileManager.default.fileExists(atPath: data.path) else { return nil }
+                _ = try FileManager.default.attributesOfItem(atPath: data.path)
                 support = data.appendingPathComponent("Library/Application Support", isDirectory: true)
             }
             return support.appendingPathComponent("FolioWidgets", isDirectory: true)
         }
         guard let group = Bundle.main.object(forInfoDictionaryKey: "FolioAppGroup") as? String,
-              !group.isEmpty else { return nil }
-        return FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)
+              !group.isEmpty,
+              let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) else { throw CocoaError(.fileNoSuchFile) }
+        return url
     }
     static func read() -> FolioWidgetSnapshot {
         guard let url = container?.appendingPathComponent("notes.json") else { return .empty }

@@ -16,6 +16,7 @@ static SNAPSHOT_WRITE_LOCK: Mutex<()> = Mutex::new(());
 unsafe extern "C" {
     fn folio_widgets_available() -> bool;
     fn folio_widgets_publish(json: *const std::ffi::c_char) -> bool;
+    fn folio_widgets_bridge_status(output: *mut std::ffi::c_char, capacity: i32);
     fn folio_widgets_initialize(
         callback: extern "C" fn(*const std::ffi::c_char),
         task_callback: extern "C" fn(*const std::ffi::c_char),
@@ -25,6 +26,7 @@ unsafe extern "C" {
 #[serde(rename_all = "camelCase")]
 pub struct Status {
     available: bool,
+    bridge: serde_json::Value,
     selected: Vec<String>,
     choices: Vec<Choice>,
     displays: Vec<Display>,
@@ -145,10 +147,25 @@ pub fn status() -> Result<Status, AppError> {
     }
     Ok(Status {
         available: unsafe { folio_widgets_available() },
+        bridge: bridge_status(),
         selected: selected()?,
         choices,
         displays: displays()?,
     })
+}
+fn bridge_status() -> serde_json::Value {
+    let mut bytes = [0u8; 2048];
+    unsafe { folio_widgets_bridge_status(bytes.as_mut_ptr().cast(), bytes.len() as i32) };
+    let length = bytes
+        .iter()
+        .position(|byte| *byte == 0)
+        .unwrap_or(bytes.len());
+    serde_json::from_slice(&bytes[..length])
+        .unwrap_or_else(|_| serde_json::json!({"snapshot":"pending", "actions":"pending"}))
+}
+pub fn refresh_status() -> Result<Status, AppError> {
+    refresh()?;
+    status()
 }
 pub fn select(keys: Vec<String>) -> Result<Status, AppError> {
     let guard = SNAPSHOT_WRITE_LOCK

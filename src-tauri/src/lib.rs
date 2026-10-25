@@ -66,6 +66,31 @@ async fn macos_widgets_select(keys: Vec<String>) -> Result<serde_json::Value, Ap
     }
 }
 
+#[cfg(target_os = "macos")]
+#[tauri::command]
+async fn macos_widgets_refresh() -> Result<serde_json::Value, AppError> {
+    run_settings_task(|| Ok(serde_json::to_value(macos_widgets::refresh_status()?)?)).await
+}
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+async fn macos_widgets_privacy_settings() -> Result<(), AppError> {
+    run_settings_task(|| {
+        let status = std::process::Command::new("/usr/bin/open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders")
+            .status()?;
+        if !status.success() {
+            return Err(AppError {
+                code: "macWidgetSettings".into(),
+                message: "无法打开系统访问设置，请手动打开隐私与安全性中的文件与文件夹".into(),
+                details: Default::default(),
+            });
+        }
+        Ok(())
+    })
+    .await
+}
+
 #[tauri::command]
 async fn macos_widgets_configure(
     slot: usize,
@@ -1117,6 +1142,10 @@ pub fn run() {
             macos_widgets_status,
             macos_widgets_select,
             macos_widgets_configure,
+            #[cfg(target_os = "macos")]
+            macos_widgets_refresh,
+            #[cfg(target_os = "macos")]
+            macos_widgets_privacy_settings,
             notes_list,
             notes_get,
             notes_create,

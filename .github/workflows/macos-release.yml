@@ -42,6 +42,8 @@ jobs:
           swiftc -O src-tauri/native/widgets/Shared.swift src-tauri/native/widgets/Markdown.swift src-tauri/native/tests/WidgetMarkdown.swift -o "$RUNNER_TEMP/widget-regression"
           "$RUNNER_TEMP/widget-regression"
           python3 scripts/test-widget-configuration.py
+          swiftc -parse-as-library src-tauri/native/widgets/Shared.swift src-tauri/native/widgets/Bridge.swift src-tauri/native/tests/WidgetBridge.swift -o "$RUNNER_TEMP/widget-bridge-regression"
+          "$RUNNER_TEMP/widget-bridge-regression"
           swiftc src-tauri/native/tests/WindowBounds.swift -parse-as-library -o "$RUNNER_TEMP/window-bounds-regression"
           "$RUNNER_TEMP/window-bounds-regression"
           npm run tauri build -- --config src-tauri/tauri.macos.conf.json --bundles app

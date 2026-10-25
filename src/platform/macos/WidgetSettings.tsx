@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 interface WidgetStatus {
   available: boolean;
+  bridge?: { snapshot: string; actions: string; errors?: Record<string, string> };
   choices: { key: string; title: string }[];
   selected: string[];
   displays: WidgetDisplay[];
@@ -15,6 +16,25 @@ export function WidgetSettings() {
   const [status, setStatus] = useState<WidgetStatus>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const bridge = status?.bridge;
+  const accessDenied = bridge?.snapshot === "denied" || bridge?.actions === "denied";
+  const bridgeFailed = bridge?.snapshot === "failed" || bridge?.actions === "failed";
+  async function refresh() {
+    setBusy(true);
+    setError("");
+    try {
+      setStatus(await invoke<WidgetStatus>("macos_widgets_refresh"));
+    } catch {
+      setError("小组件快照尚未发布，请检查下方连接状态后重试。");
+      try {
+        setStatus(await invoke<WidgetStatus>("macos_widgets_status"));
+      } catch {
+        /* Keep last state. */
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
   useEffect(() => {
     let active = true;
     void invoke<WidgetStatus>("macos_widgets_status").then(
@@ -78,6 +98,56 @@ export function WidgetSettings() {
       </p>
       {status?.available && (
         <>
+          <div className="space-y-2 rounded border border-paper-deep/40 p-2">
+            <p role="status">
+              {accessDenied
+                ? "系统已拒绝主程序访问小组件容器，内容刷新和展开/待办写回不可用。"
+                : bridgeFailed
+                  ? "小组件容器未就绪或读写失败。请先添加笺影小组件，再重试并查看错误信息。"
+                  : bridge?.snapshot === "ready" && bridge?.actions === "ready"
+                    ? "快照已发布，操作队列已连接；系统决定实际刷新时机。"
+                    : "小组件连接尚未确认。"}
+            </p>
+            {accessDenied && (
+              <p className="text-[11px] text-ink-faint">
+                macOS 27 不再为跨应用容器访问自动弹窗。请在系统设置 → 隐私与安全性 →
+                文件与文件夹中找到
+                Folio，允许访问笺影小组件的数据容器；若系统未提供该项，可自行选择使用完全磁盘访问。授权后保存便签、退出并重新打开
+                Folio，再重试。ad-hoc 签名升级后可能需要重新授权。
+              </p>
+            )}
+            {bridge?.errors && Object.keys(bridge.errors).length > 0 && (
+              <p className="text-[10px] text-ink-faint">
+                {Object.entries(bridge.errors)
+                  .map(
+                    ([operation, detail]) =>
+                      `${operation === "snapshot" ? "快照" : "操作队列"}：${detail}`,
+                  )
+                  .join("；")}
+              </p>
+            )}
+            <button
+              type="button"
+              disabled={busy}
+              className="rounded bg-paper-warm px-2 py-1"
+              onClick={() => void refresh()}
+            >
+              重新发布并检查连接
+            </button>
+            {accessDenied && (
+              <button
+                type="button"
+                className="ml-2 rounded bg-paper-warm px-2 py-1"
+                onClick={() =>
+                  void invoke("macos_widgets_privacy_settings").catch(() =>
+                    setError("请手动打开系统设置 → 隐私与安全性 → 文件与文件夹。"),
+                  )
+                }
+              >
+                打开系统访问设置
+              </button>
+            )}
+          </div>
           <div className="space-y-2">
             {status.displays.map((display, index) => {
               const options = status.choices.filter((note) => status.selected.includes(note.key));
