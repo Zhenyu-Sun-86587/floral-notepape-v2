@@ -1,6 +1,6 @@
 [package]
 name = "hermes-surface-dev"
-version = "2.0.7"
+version = "2.0.8"
 description = "A lightweight cross-platform desktop note app"
 authors = ["Achilng"]
 edition = "2021"

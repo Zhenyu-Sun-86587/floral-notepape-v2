@@ -156,6 +156,31 @@ struct NoteProvider: TimelineProvider {
         return NoteEntry(date: .now, note: note, lines: pages[page], rightLines: spread && page + 1 < pages.count ? pages[page + 1] : [], spread: spread, page: page, pageCount: pages.count, pageKey: key, slot: slot)
     }
 }
+// Keep the readable document in the static timeline hierarchy. WidgetKit may
+// reconstruct an interactive button separately; its label must not own the only
+// copy of a paragraph. The transparent hit target retains the original intent,
+// parameters, accessibility action and bounds, without launching the host.
+struct WidgetContentButton<Intent: AppIntent, Label: View>: View {
+    let intent: Intent
+    let actionLabel: String
+    let label: Label
+    init(intent: Intent, actionLabel: String, @ViewBuilder label: () -> Label) {
+        self.intent = intent
+        self.actionLabel = actionLabel
+        self.label = label()
+    }
+    var body: some View {
+        label.accessibilityHidden(true)
+            .overlay {
+                Button(intent: intent) {
+                    Color.clear.contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(actionLabel))
+            }
+    }
+}
+
 struct NoteWidgetView: View {
     let entry: NoteEntry
     private var step: Int { entry.spread ? 2 : 1 }
@@ -173,17 +198,17 @@ struct NoteWidgetView: View {
                 if line.rule {
                     Divider().frame(height: line.height)
                 } else if let taskLine = line.taskLine {
-                    Button(intent: ToggleNoteTask(noteKey: entry.note?.key ?? "", line: taskLine, checked: !line.taskChecked, expectedLine: line.sourceLine, expectedContent: entry.note?.content ?? "", slot: entry.slot)) {
+                    WidgetContentButton(intent: ToggleNoteTask(noteKey: entry.note?.key ?? "", line: taskLine, checked: !line.taskChecked, expectedLine: line.sourceLine, expectedContent: entry.note?.content ?? "", slot: entry.slot), actionLabel: line.taskChecked ? "取消完成待办" : "完成待办") {
                         Text(line.text)
                             .font(.system(size: line.size))
+                            .foregroundStyle(.primary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .frame(height: line.height, alignment: .topLeading)
                             .contentShape(Rectangle())
-                    }.buttonStyle(.plain)
-                        .accessibilityLabel(line.taskChecked ? "取消完成待办" : "完成待办")
+                    }
                         .help("点击切换待办完成状态")
                 } else {
-                    Button(intent: CopyNoteText(noteKey: entry.note?.key ?? "", text: String(line.text.characters), slot: entry.slot)) {
+                    WidgetContentButton(intent: CopyNoteText(noteKey: entry.note?.key ?? "", text: String(line.text.characters), slot: entry.slot), actionLabel: "复制这一段文字") {
                       HStack(alignment: .top, spacing: 6) {
                         if line.quote { Rectangle().fill(.secondary).frame(width: 2) }
                         Text(line.text)
@@ -192,7 +217,7 @@ struct NoteWidgetView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                       }.frame(height: line.height, alignment: .top)
                        .contentShape(Rectangle())
-                    }.buttonStyle(.plain).accessibilityLabel("复制这一段文字").help("复制这一段文字")
+                    }.help("复制这一段文字")
                 }
             }
         }.frame(maxWidth: .infinity, alignment: .topLeading)
@@ -201,10 +226,11 @@ struct NoteWidgetView: View {
         VStack(alignment: .leading, spacing: 8) {
             if let note = entry.note {
               HStack(spacing: 8) {
-                Button(intent: CopyNoteText(noteKey: note.key, text: note.title, slot: entry.slot)) {
+                WidgetContentButton(intent: CopyNoteText(noteKey: note.key, text: note.title, slot: entry.slot), actionLabel: "复制便签标题") {
                     Text(note.title).font(.headline).lineLimit(1).widgetAccentable()
+                        .foregroundStyle(.primary)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                }.buttonStyle(.plain).accessibilityLabel("复制便签标题").help("复制标题")
+                }.help("复制标题")
                 if note.link != nil {
                   Button(intent: OpenNoteWindow(noteKey: note.key, slot: entry.slot)) {
                     Image(systemName: "arrow.up.right.square").frame(width: 22, height: 22)
