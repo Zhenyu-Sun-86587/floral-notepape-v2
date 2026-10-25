@@ -31,7 +31,7 @@ enum FolioWidgetBridgeDiagnostics {
         states[operation] = denied ? "denied" : "failed"
         failures[operation] = "\(value.domain):\(value.code)"
         lock.unlock()
-        FolioWidgetStore.experimentLog.error("BRIDGE_FAILURE operation=\(operation) denied=\(denied) domain=\(value.domain) code=\(value.code)")
+        FolioWidgetStore.experimentLog.error("BRIDGE_FAILURE operation=\(operation, privacy: .public) denied=\(denied) domain=\(value.domain, privacy: .public) code=\(value.code)")
     }
     static func json() -> Data {
         lock.lock(); defer { lock.unlock() }

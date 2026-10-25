@@ -103,12 +103,12 @@ export function WidgetSettings() {
               {accessDenied
                 ? "系统已拒绝主程序访问小组件容器，内容刷新和展开/待办写回不可用。"
                 : bridgeFailed
-                  ? "小组件容器连接失败，请重试并检查权限。"
+                  ? "小组件容器未就绪或读写失败。请先添加笺影小组件，再重试并查看错误信息。"
                   : bridge?.snapshot === "ready" && bridge?.actions === "ready"
                     ? "快照已发布，操作队列已连接；系统决定实际刷新时机。"
                     : "小组件连接尚未确认。"}
             </p>
-            {(accessDenied || bridgeFailed) && (
+            {accessDenied && (
               <p className="text-[11px] text-ink-faint">
                 macOS 27 不再为跨应用容器访问自动弹窗。请在系统设置 → 隐私与安全性 →
                 文件与文件夹中找到
@@ -134,7 +134,7 @@ export function WidgetSettings() {
             >
               重新发布并检查连接
             </button>
-            {(accessDenied || bridgeFailed) && (
+            {accessDenied && (
               <button
                 type="button"
                 className="ml-2 rounded bg-paper-warm px-2 py-1"

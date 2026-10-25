@@ -76,9 +76,16 @@ async fn macos_widgets_refresh() -> Result<serde_json::Value, AppError> {
 #[tauri::command]
 async fn macos_widgets_privacy_settings() -> Result<(), AppError> {
     run_settings_task(|| {
-        std::process::Command::new("/usr/bin/open")
+        let status = std::process::Command::new("/usr/bin/open")
             .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders")
-            .spawn()?;
+            .status()?;
+        if !status.success() {
+            return Err(AppError {
+                code: "macWidgetSettings".into(),
+                message: "无法打开系统访问设置，请手动打开隐私与安全性中的文件与文件夹".into(),
+                details: Default::default(),
+            });
+        }
         Ok(())
     })
     .await
