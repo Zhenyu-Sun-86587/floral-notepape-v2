@@ -39,10 +39,17 @@ Apple 的 [macOS 27 发布说明](https://developer.apple.com/documentation/maco
 - 用户已手动移除旧条目，重新添加当前 /Applications/Folio.app 并开启完全磁盘访问，随后反馈“测试正常”。没有自动授予权限或操作系统权限数据库。旧签名授权不匹配是可解释升级问题的因素，但未直接读取 TCC 数据库证明其存储原因。
 - 授权后宿主连续 WRITE_OK，扩展连续 READ_OK；Inbox 源文件与快照均为 253 字符，Today 均为 946 字符，两份前 4000 字符逐字一致，待处理操作为 0。真实发布/读取链路恢复且用户确认交互测试正常。没有额外对所有按钮逐项自动点击，没有重启/跨机器/耗电测试。
 
-## 超大竖排尺寸（待构建与人工验收）
+## 超大竖排尺寸
 
 正式 Release 发布前追加 Apple 的 [systemExtraLargePortrait](https://developer.apple.com/documentation/widgetkit/widgetfamily/systemextralargeportrait) 尺寸。四个编号均支持：macOS 27 使用系统超大竖排单栏，按实际可用高度分页；横向超大继续双栏。页码键包含系统尺寸类型，横竖互不覆盖；内容、字号、复制、展开与待办沿用既有链路。
 
 新尺寸仅在 macOS 27 及以上注册，旧系统继续原有四种尺寸，最低部署版本仍为 macOS 15。构建切换至 GitHub 官方 xcode-27 runner；本地 SDK 26 不支持该符号，不用私有 API 或猜测枚举值绕过。
 
 前述 375797b 产物为已授权验证的容器修复候选，尚未正式发布；竖排版本需要重新构建，ad-hoc 身份可能变化，安装后应重新确认连接状态，必要时由用户重新授权。自动 CI 继续停用，仅手动构建。最终构建、安装、人工验收和发布结果随后记录。
+
+### 竖排候选构建与安装
+
+- 源码 `8e80c46474e308287276f99ecaf57e5ea75d268c` 的 [Xcode 27.1 完整构建 40219293040](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/40219293040) 成功。前端 161 项、Rust 208 项及原生回归通过，四个 WidgetKit 配置构造成功，macOS 27 新尺寸注册断言通过。
+- Artifact ZIP SHA-256 `2acfa0c2c0e4a8ec5c2567fb4792361baef086fabe9edea311005a05ee07e29e`；DMG SHA-256 `a27dc0b61cbc93bf62a6b58eddfb57eec55b0d7346c44c06b297f1f7de387b46`。完整 ZIP/解压与安装包校验通过。
+- 已安装到 `/Applications/Folio.app`，主应用 arm64、扩展 arm64/x86_64、Bundle ID、2.0.8 版本、App Intents 元数据及 deep strict 签名检查通过，17 项当前磁盘文件替换前后 SHA-256 一致。此前已授权应用和真实数据均另存本地恢复备份。
+- 新签名安装后宿主再次出现容器写入失败，已请用户手动重新授权；竖排真实显示与交互等待人工确认。本次尚未创建正式 Release，不把旧候选授权成功结论套用到新二进制。
