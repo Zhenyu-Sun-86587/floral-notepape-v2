@@ -262,6 +262,13 @@ struct FolioNoteWidget: Widget {
     let slot: Int
     init() { self.slot = 1 }
     init(slot: Int) { self.slot = slot }
+    static var supportedFamilies: [WidgetFamily] {
+        var families: [WidgetFamily] = [.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge]
+        if #available(macOS 27.0, *) {
+            families.append(.systemExtraLargePortrait)
+        }
+        return families
+    }
     private var displayName: LocalizedStringKey {
         // WidgetKit rejects formatted/interpolated configuration labels at runtime.
         switch slot {
@@ -277,7 +284,7 @@ struct FolioNoteWidget: Widget {
         }
         .configurationDisplayName(displayName)
         .description("显示 Markdown 便签；点击段落复制文字，支持翻页和复制当前页。尺寸由系统管理。")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge])
+        .supportedFamilies(Self.supportedFamilies)
     }
 }
 @main

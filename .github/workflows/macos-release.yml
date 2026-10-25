@@ -21,7 +21,8 @@ concurrency:
 
 jobs:
   macos:
-    runs-on: macos-26
+    # macOS 27 SDK is required for systemExtraLargePortrait; keep deployment 15.
+    runs-on: xcode-27
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
