@@ -30,3 +30,11 @@ Apple 的 [macOS 27 发布说明](https://developer.apple.com/documentation/maco
 首个无效候选的构建为 [40214461143](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/40214461143)，其 DMG SHA-256 06324eb0cec1c3b00ab4824863907b61b44ef78e84e3c982052db07decb722e2，不作为正式修复分发。本机当前仍运行该候选，待替换修正后的版本。
 
 新的完整构建、安装、系统手动授权及真实笔记刷新/展开验证尚未完成；PR #24 保持草稿。不可仅凭构建、版本号、合成渲染或时间线接收成功宣称修复完成。
+
+## 容器方向最终候选
+
+- 正式候选源码 `375797b` 的 [完整 Mac 构建 40217140086](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/40217140086)通过：前端 161 项、Rust 208 项、四种组件配置、WidgetBridge 权限分类/恢复/FFI 以及既有原生回归通过。中间 7e66cee 候选构建已取消，不计作通过。
+- ZIP SHA-256 `5e65af883f0bfa5854dcbb515fb843692a581c9af010a033645cffc56e413603`，DMG SHA-256 `32affb710e62e621a328eb6458c31e9ca136f33fa250e92195c6e8ee041a44a4`，校验与解压完整性通过。已替换首个无效候选，当前安装 /Applications/Folio.app 2.0.8；身份、架构、元数据和 deep strict 签名通过，17 项当前磁盘文件在替换前后校验一致。早期 34 项及隔离的 28 个旧操作备份仍保留，未上传。
+- 本机新日志明确记录 snapshot denied=true / NSCocoaErrorDomain 513，actions denied=true / NSPOSIXErrorDomain 1 (EPERM)，不是仅凭系统发布说明推测。系统设置截图显示 Folio 在文件与文件夹页只有“完全磁盘访问权限”管理项，没有可直接切换的单容器选项。
+- 已请求用户手动移除并重新添加当前 /Applications/Folio.app 的完全磁盘访问条目，以排除 ad-hoc 旧签名授权不匹配；此操作尚待完成，未自动授予任何权限。随后需重启宿主并验证真实新快照与新的操作消费。
+- 自动 CI 仍停用，PR #24 草稿，未合并或正式发布；当前不能宣称故障已恢复。
