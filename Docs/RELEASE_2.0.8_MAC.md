@@ -53,3 +53,9 @@ Apple 的 [macOS 27 发布说明](https://developer.apple.com/documentation/maco
 - Artifact ZIP SHA-256 `2acfa0c2c0e4a8ec5c2567fb4792361baef086fabe9edea311005a05ee07e29e`；DMG SHA-256 `a27dc0b61cbc93bf62a6b58eddfb57eec55b0d7346c44c06b297f1f7de387b46`。完整 ZIP/解压与安装包校验通过。
 - 已安装到 `/Applications/Folio.app`，主应用 arm64、扩展 arm64/x86_64、Bundle ID、2.0.8 版本、App Intents 元数据及 deep strict 签名检查通过，17 项当前磁盘文件替换前后 SHA-256 一致。此前已授权应用和真实数据均另存本地恢复备份。
 - 新签名安装后宿主再次出现容器写入失败，已请用户手动重新授权；竖排真实显示与交互等待人工确认。本次尚未创建正式 Release，不把旧候选授权成功结论套用到新二进制。
+
+### 竖排尺寸登记恢复
+
+用户重新授权后，正常启动宿主出现 WRITE_OK，扩展出现 READ_OK，容器方向恢复。但用户反馈图库没有竖排尺寸。检查发现已安装 Mach-O 两种架构均使用 SDK 27.0，系统运行时也通过 macOS 27 availability 判断，chronod 使用的旧描述却仍为 sdkVersion 26.5 且仅四种尺寸。候选包均为 2.0.8，单凭同版本覆盖不能保证描述刷新。
+
+先备份笺影自身的 chrono 缓存，仅重新登记 `/Applications/Folio.app` 及其扩展，不删除系统全局小组件数据库、不改签、不再安装。随后 chronod 日志明确显示 sdkVersion 27.0，supportedFamilies 包含 systemExtraLargePortrait 的五种尺寸。系统描述刷新已验证，图库与竖排交互仍待用户确认。
