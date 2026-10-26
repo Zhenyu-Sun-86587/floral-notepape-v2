@@ -216,30 +216,19 @@ export function SettingsPanel({
             checked={config.rememberSurfaceSize}
             onChange={(checked) => setConfigValue("rememberSurfaceSize", checked)}
           />
-          <ToggleRow
-            label={t(
-              liveMarkdownEditing
-                ? "settings.listTileRenderMarkdown"
-                : "settings.tileRenderMarkdown",
-              {
-                defaultValue: liveMarkdownEditing ? "列表磁贴渲染 Markdown" : "磁贴渲染 Markdown",
-              },
-            )}
-            checked={config.tileRenderMarkdown}
-            onChange={(checked) =>
-              onChange({
-                ...config,
-                tileRenderMarkdown: checked,
-                ...(liveMarkdownEditing ? { surfaceDisplayMode: defaultDisplayMode(config) } : {}),
-              })
-            }
-          />
+          {!liveMarkdownEditing && (
+            <ToggleRow
+              label={t("settings.tileRenderMarkdown", { defaultValue: "磁贴渲染 Markdown" })}
+              checked={config.tileRenderMarkdown}
+              onChange={(checked) => setConfigValue("tileRenderMarkdown", checked)}
+            />
+          )}
           {liveMarkdownEditing && (
             <div className="flex items-center justify-between gap-4 py-3">
               <div className="text-sm">
-                默认显示方式（桌面便签与胶囊）
+                {t("settings.surfaceDisplayMode")}
                 <p className="text-xs text-ink-faint mt-1">
-                  单张便签可覆盖默认值；↺ 恢复跟随默认。
+                  {t("settings.surfaceDisplayModeHint")}
                 </p>
               </div>
               <DisplayModeControl

@@ -67,6 +67,19 @@
       "important": "重要",
       "warning": "警告",
       "caution": "注意"
+    },
+    "displayMode": {
+      "label": "Markdown 显示方式",
+      "source": "源码",
+      "hybrid": "混合",
+      "preview": "预览",
+      "sourceDescription": "显示完整 Markdown 源码",
+      "hybridDescription": "保留文字标记，渲染图片、表格、公式和图表",
+      "previewDescription": "渲染 Markdown，原位编辑时显示当前语法",
+      "cycle": "显示方式：{{current}}，点击切换为{{next}}",
+      "followDefault": "跟随默认显示方式",
+      "followingDefault": "正在跟随设置中的默认方式",
+      "reset": "恢复跟随默认显示方式"
     }
   },
   "main": {
@@ -439,7 +452,9 @@
         "contain": "完整",
         "repeat": "平铺"
       }
-    }
+    },
+    "surfaceDisplayMode": "默认显示方式（桌面便签与胶囊）",
+    "surfaceDisplayModeHint": "便签顶边条的图标按源码、混合、预览依次切换。"
   },
   "tile": {
     "empty": "空"

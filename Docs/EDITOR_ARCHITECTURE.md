@@ -34,9 +34,11 @@ CodeMirror 动态样式使用页面现有的 Tauri style nonce。胶囊 HTML 提
 
 ## Capsule editing host
 
-`useCapsuleEditing` 在编辑入口先申请原生 `{key, generation}` 占用，再读取正式笔记/绑定文件、版本和配置。内部保存使用 updatedAt，外部保存使用 revision 与有序 linked draft 写入。会话内任务修改走编辑器事务。干净正文可接受外部刷新，脏草稿保留并显示恢复入口。
+`useCapsuleEditing` 在编辑入口先申请原生 `{key, generation}` 占用，再读取正式笔记/绑定文件、版本和配置。内部保存使用 updatedAt，外部保存使用 revision 与有序 linked draft 写入。会话内任务修改走编辑器事务。干净正文可接受外部刷新，脏草稿保留并显示恢复入口。外部刷新另按请求序号校验，并在返回时核对会话、输入序号、原目标版本及重载／冻结边界；迟到结果与错误不能覆盖新版本。
 
 原生编辑占用与鼠标 selecting 独立。悬停不更换编辑 owner；关闭、展开、隐藏和全局显隐动作先产生带 requestId 的离开请求，只有匹配会话的 ready 才执行。取消、失败或超时不放行；系统 CloseRequested 同样受守卫保护。纯悬停仍不抢键盘焦点，点击编辑才 set_focus。
+
+显式重新加载合并为同一任务；输入法与图片操作完成后冻结编辑器，读盘及草稿清理成功才共同替换正文和版本，失败恢复输入并保留原会话。离开、退出及更新准备等待同一重载任务，避免输入、重载与保存交叉。
 
 退出和更新安装复用既有准备协议。capsule-preview 参与保存确认，输入法和图片操作完成后冻结输入并保存；取消退出/更新失败后解冻。macOS 退出始终保留已存在的胶囊 WebView 参与者，未编辑时直接 ready。
 

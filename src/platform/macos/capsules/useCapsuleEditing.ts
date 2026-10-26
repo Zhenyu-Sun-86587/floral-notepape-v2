@@ -39,12 +39,18 @@ export function useCapsuleEditing(
 ) {
   const session = useRef<Session | null>(null);
   const [config, setConfig] = useState<AppConfig | null>(null);
+  const latestConfig = useRef<AppConfig | null>(null);
+  const configRevision = useRef(0);
   const [snapshot, setSnapshot] = useState<Session | null>(null);
   const [phase, setPhase] = useState<"reading" | "loading" | "editing" | "leaving">("reading");
   const [status, setStatus] = useState<"clean" | "dirty" | "saving" | "error">("clean");
   const [error, setError] = useState("");
   const queue = useRef<Promise<void>>(Promise.resolve());
   const loading = useRef<Promise<void> | null>(null);
+  // Close/quit must wait for the same reload, including its confirmation and pending input.
+  const reloadWork = useRef<Promise<void> | null>(null);
+  const [reloading, setReloading] = useState(false);
+  const refreshRevision = useRef(0);
   const leaving = useRef(false);
   const finishing = useRef(false);
   const pendingLeave = useRef<LeaveRequest | undefined>(undefined);
@@ -53,8 +59,10 @@ export function useCapsuleEditing(
   const current = useRef(preview);
   current.current = preview;
   const publish = () => setSnapshot(session.current ? { ...session.current } : null);
-  const autoSave = (s: Session) =>
-    "binding" in s.target ? s.config.externalFileAutoSave : s.config.noteSurfaceAutoSave;
+  const autoSave = (s: Session) => {
+    const value = latestConfig.current ?? s.config;
+    return "binding" in s.target ? value.externalFileAutoSave : value.noteSurfaceAutoSave;
+  };
   const fail = (cause: unknown) => {
     setError(getErrorMessage(cause));
     setStatus("error");
@@ -117,7 +125,10 @@ export function useCapsuleEditing(
           generation: selected.generation,
         });
         acquired = true;
-        const config = await getConfig();
+        const atRead = configRevision.current;
+        const loadedConfig = await getConfig();
+        const config = atRead === configRevision.current ? loadedConfig : latestConfig.current!;
+        latestConfig.current = config;
         setConfig(config);
         if (!config.inlineEditing) throw new Error("原位编辑已关闭，请使用展开编辑入口");
         const linked = selected.entry.key.startsWith("linked:");
@@ -179,8 +190,13 @@ export function useCapsuleEditing(
     if (finishing.current || frozen.current) return;
     finishing.current = true;
     await loading.current;
+    await reloadWork.current;
     const s = session.current;
-    if (!s || (request && (request.key !== s.key || request.generation !== s.generation))) {
+    if (
+      frozen.current ||
+      !s ||
+      (request && (request.key !== s.key || request.generation !== s.generation))
+    ) {
       finishing.current = false;
       return;
     }
@@ -247,66 +263,112 @@ export function useCapsuleEditing(
     }
   };
   // Explicit reload is the conflict recovery path; never silently overwrite local text.
-  const reload = async () => {
+  const reload = (): Promise<void> => {
+    if (reloadWork.current) return reloadWork.current;
     const s = session.current;
-    if (!s || leaving.current || frozen.current) return;
-    const confirmed = await message("重新加载会放弃当前未保存修改。", {
-      title: "重新加载",
-      kind: "warning",
-      buttons: { ok: "重新加载", cancel: "取消" },
+    if (!s || leaving.current || frozen.current || finishing.current) return Promise.resolve();
+    const work = async () => {
+      const confirmed = await message("重新加载会放弃当前未保存修改。", {
+        title: "重新加载",
+        kind: "warning",
+        buttons: { ok: "重新加载", cancel: "取消" },
+      });
+      if (confirmed !== "重新加载") return;
+      let acquired = false;
+      try {
+        await settleInput();
+        if (session.current !== s || leaving.current || frozen.current || finishing.current) return;
+        leaving.current = true;
+        acquired = true;
+        setReloading(true);
+        refreshRevision.current++;
+        await queue.current.catch(() => undefined);
+        const target =
+          "binding" in s.target
+            ? await readLinkedFile(s.target.binding.id)
+            : await getNote(s.target.id);
+        if ("binding" in target)
+          await writeLinkedDraft(target.binding.id, null, target.revision, s.content);
+        // Commit the content and its version together, only after cleanup succeeds.
+        // A failed reload must leave the old draft protected by its original version.
+        s.target = target;
+        s.content = s.saved = target.content;
+        s.sequence++;
+        publish();
+        setError("");
+        setStatus("clean");
+      } catch (cause) {
+        fail(cause);
+      } finally {
+        if (acquired) {
+          leaving.current = false;
+          setReloading(false);
+        }
+      }
+    };
+    const operation = work().catch(fail);
+    reloadWork.current = operation;
+    void operation.then(() => {
+      if (reloadWork.current === operation) reloadWork.current = null;
     });
-    if (confirmed !== "重新加载") return;
-    try {
-      await settleInput();
-      leaving.current = true;
-      await queue.current.catch(() => undefined);
-      s.target =
-        "binding" in s.target
-          ? await readLinkedFile(s.target.binding.id)
-          : await getNote(s.target.id);
-      if ("binding" in s.target)
-        await writeLinkedDraft(s.target.binding.id, null, s.target.revision, s.content);
-      s.content = s.saved = s.target.content;
-      s.sequence++;
-      publish();
-      setError("");
-      setStatus("clean");
-    } catch (cause) {
-      fail(cause);
-    } finally {
-      leaving.current = false;
-    }
+    return operation;
   };
   const refreshClean = async () => {
     const s = session.current;
-    if (!s || s.content !== s.saved || editor.current?.composing || leaving.current) return;
-    const sequence = s.sequence;
-    await queue.current.catch(() => undefined);
-    const target =
-      "binding" in s.target
-        ? await readLinkedFile(s.target.binding.id)
-        : await getNote(s.target.id);
     if (
-      session.current !== s ||
-      sequence !== s.sequence ||
+      !s ||
       s.content !== s.saved ||
-      editor.current?.composing
+      editor.current?.composing ||
+      leaving.current ||
+      frozen.current ||
+      reloadWork.current
     )
       return;
-    s.target = target;
-    s.content = s.saved = target.content;
-    publish();
+    const sequence = s.sequence;
+    // External refreshes do not increment the local edit sequence. Order reads separately.
+    const revision = ++refreshRevision.current;
+    const isCurrent = () =>
+      session.current === s &&
+      sequence === s.sequence &&
+      revision === refreshRevision.current &&
+      s.content === s.saved &&
+      !editor.current?.composing &&
+      !leaving.current &&
+      !frozen.current &&
+      !reloadWork.current;
+    await queue.current.catch(() => undefined);
+    if (!isCurrent()) return;
+    const previousTarget = s.target;
+    try {
+      const target =
+        "binding" in s.target
+          ? await readLinkedFile(s.target.binding.id)
+          : await getNote(s.target.id);
+      if (!isCurrent() || s.target !== previousTarget) return;
+      s.target = target;
+      s.content = s.saved = target.content;
+      publish();
+    } catch (cause) {
+      if (isCurrent() && s.target === previousTarget) fail(cause);
+    }
   };
   useEffect(() => {
     let disposed = false;
     let changed = false;
     const off = listen<AppConfig>("config-changed", ({ payload }) => {
       changed = true;
-      if (!disposed) setConfig(payload);
+      if (!disposed) {
+        configRevision.current++;
+        latestConfig.current = payload;
+        setConfig(payload);
+      }
     });
     void getConfig()
       .then((value) => {
-        if (!disposed && !changed) setConfig(value);
+        if (!disposed && !changed) {
+          latestConfig.current = value;
+          setConfig(value);
+        }
       })
       .catch(fail);
     return () => {
@@ -318,13 +380,21 @@ export function useCapsuleEditing(
   actions.current = { finish, save, fail, settleInput, refreshClean };
   useEffect(() => {
     if (!snapshot || status !== "dirty" || !autoSave(snapshot)) return;
-    const timer = setTimeout(() => {
-      if (!editor.current?.composing && !leaving.current)
+    const attempt = () => {
+      // A committed IME candidate can leave the document text unchanged. Do not
+      // lose the pending save just because the debounce fired during composing.
+      if (editor.current?.composing) {
+        timer = setTimeout(attempt, 100);
+        return;
+      }
+      if (!leaving.current && !frozen.current && session.current && autoSave(session.current))
         void actions.current.save().catch(actions.current.fail);
-    }, 600);
+    };
+    let timer = setTimeout(attempt, 600);
     return () => clearTimeout(timer);
-  }, [snapshot?.content, status, phase]);
+  }, [snapshot?.content, status, phase, config]);
   useEffect(() => {
+    let preparation = 0;
     const subscriptions = [
       listen("notes-changed", () => {
         if (session.current?.key.startsWith("note:"))
@@ -340,18 +410,32 @@ export function useCapsuleEditing(
       }),
       listen<boolean>("app://exit-freeze", ({ payload }) => {
         frozen.current = payload;
-        if (!payload) setInputBlocked(false);
+        refreshRevision.current++;
+        if (!payload) {
+          // Cancel work still waiting for loading, IME, images, or the save queue.
+          preparation++;
+          setInputBlocked(false);
+        }
       }),
       listen<{ requestId: string }>("update://prepare-install", ({ payload }) => {
+        const request = ++preparation;
+        const isCurrent = () => request === preparation;
         void (async () => {
           try {
             await loading.current;
+            if (!isCurrent()) return;
+            await reloadWork.current;
+            if (!isCurrent()) return;
             await actions.current.settleInput();
+            if (!isCurrent()) return;
             setInputBlocked(true);
             await queue.current.catch(() => undefined);
+            if (!isCurrent()) return;
             await actions.current.save();
+            if (!isCurrent()) return;
             await reportInstallPreparation(payload.requestId, "capsule-preview", "ready");
           } catch (cause) {
+            if (!isCurrent()) return;
             actions.current.fail(cause);
             await reportInstallPreparation(
               payload.requestId,
@@ -360,11 +444,21 @@ export function useCapsuleEditing(
               getErrorMessage(cause),
             );
           }
-        })().catch(actions.current.fail);
+        })().catch((cause) => {
+          if (isCurrent()) actions.current.fail(cause);
+        });
       }),
     ];
     const keydown = (event: KeyboardEvent) => {
-      if (!session.current || event.isComposing || editor.current?.composing) return;
+      if (
+        !session.current ||
+        event.isComposing ||
+        editor.current?.composing ||
+        leaving.current ||
+        frozen.current ||
+        reloadWork.current
+      )
+        return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
         void actions.current.save().catch(actions.current.fail);
@@ -378,6 +472,8 @@ export function useCapsuleEditing(
     };
     window.addEventListener("keydown", keydown);
     return () => {
+      preparation++;
+      refreshRevision.current++;
       subscriptions.forEach((p) => void p.then((off) => off()));
       window.removeEventListener("keydown", keydown);
     };
@@ -388,12 +484,13 @@ export function useCapsuleEditing(
     phase,
     status,
     error,
-    inputBlocked,
+    inputBlocked: inputBlocked || reloading,
+    reloading,
     begin,
     change,
     finish,
     reload,
-    save: () => save().catch(fail),
+    save: () => (reloadWork.current ? Promise.resolve() : save().catch(fail)),
     reportError: fail,
   };
 }

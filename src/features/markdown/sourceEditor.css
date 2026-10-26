@@ -54,7 +54,8 @@
   font: inherit;
   color: inherit;
 }
-.markdown-read-layer hr {
+.markdown-read-layer hr,
+.cm-live-block hr {
   background: var(--surface-text-muted, currentColor);
 }
 
@@ -64,6 +65,12 @@
   /* CodeMirror measures line boxes; vertical margins are outside its hit-test geometry. */
   padding-top: 0.6em !important;
   padding-bottom: 0.3em !important;
+}
+.cm-live-metadata,
+.cm-live-metadata span {
+  font-weight: 400 !important;
+  font-style: normal !important;
+  text-decoration: none !important;
 }
 .cm-live-h1 {
   font-size: 1.57em;

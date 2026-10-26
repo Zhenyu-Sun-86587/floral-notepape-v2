@@ -1,5 +1,9 @@
-import { DisplayModeControl } from "../features/markdown/DisplayModeControl";
-import { defaultDisplayMode, type MarkdownDisplayMode } from "../features/markdown/displayMode";
+import { DisplayModeCycleButton } from "../features/markdown/DisplayModeControl";
+import {
+  nextDisplayMode,
+  defaultDisplayMode,
+  type MarkdownDisplayMode,
+} from "../features/markdown/displayMode";
 import { useSurfaceDisplayMode } from "../features/windows/useSurfaceDisplayMode";
 import { useNativeNoteShell, liveMarkdownEditing } from "#platform-note-shell";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -214,6 +218,10 @@ export function NotePad({
       : null,
     defaultDisplayMode({ surfaceDisplayMode: configuredDisplayMode, tileRenderMarkdown }),
   );
+
+  useEffect(() => {
+    if (display.error) showToast(display.error);
+  }, [display.error]);
 
   const [tileDoubleClickToEdit, setTileDoubleClickToEdit] = useState(false);
   const [tileSaveReturnsToPin, setTileSaveReturnsToPin] = useState(false);
@@ -778,6 +786,7 @@ export function NotePad({
     handleDragOver: imageDragOverHandler,
   } = useImagePaste({
     noteId: editingNoteId,
+    linkedBindingId: initialBindingId,
     textareaRef: surfaceMode === "tile" ? tileContentRef : contentRef,
     setContent,
     markDirty: () => setStatus("dirty"),
@@ -1297,6 +1306,8 @@ export function NotePad({
     tile: isTile,
     editing: isTile ? tileWriting : true,
     locked: tileLocked,
+    displayMode: isTile ? display.mode : undefined,
+    displayModePending: display.pending,
     noteKey: initialBindingId
       ? `linked:${initialBindingId}`
       : `note:${editingNoteId ?? initialNoteId ?? ""}`,
@@ -1320,6 +1331,7 @@ export function NotePad({
       setStatus("saved");
     },
     actions: {
+      display: () => display.change(nextDisplayMode(display.mode)),
       edit: () => (isTile ? (tileWriting ? finishTileWriting() : startTileWriting()) : saveNote()),
       lock: () => lockTile(),
       store: () => storeTile(),
@@ -1354,24 +1366,6 @@ export function NotePad({
           fontSize={displayFontSize}
           renderMarkdown={liveMarkdownEditing ? display.mode !== "source" : tileRenderMarkdown}
           displayMode={liveMarkdownEditing ? display.mode : undefined}
-          displayModeControl={
-            liveMarkdownEditing ? (
-              <div>
-                <DisplayModeControl
-                  value={display.mode}
-                  followingDefault={display.followingDefault}
-                  disabled={display.pending}
-                  onChange={(mode) => void display.change(mode)}
-                  onReset={() => void display.change(null)}
-                />
-                {display.error && (
-                  <p role="alert" className="text-xs">
-                    {display.error}
-                  </p>
-                )}
-              </div>
-            ) : undefined
-          }
           imageBaseDir={linkedImageScope?.baseDir ?? imageBaseDir ?? undefined}
           imageRootDir={linkedImageScope?.rootDir}
           allowRemoteImages={allowRemoteImages}
@@ -1409,6 +1403,13 @@ export function NotePad({
               data-note-toolbar="true"
               className="absolute top-2 right-2 z-10 flex items-center gap-1"
             >
+              {liveMarkdownEditing && (
+                <DisplayModeCycleButton
+                  value={display.mode}
+                  disabled={display.pending}
+                  onChange={(mode) => void display.change(mode)}
+                />
+              )}
               <button
                 type="button"
                 aria-label={tileWriting ? "保存并切换阅读模式" : "切换写作模式"}

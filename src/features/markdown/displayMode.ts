@@ -1,9 +1,11 @@
+import type { TFunction } from "i18next";
+
 export type MarkdownDisplayMode = "source" | "hybrid" | "preview";
 
 export const displayModes = [
-  { value: "source", label: "源码", description: "显示完整 Markdown 源码" },
-  { value: "hybrid", label: "混合", description: "保留语法标记，同时显示文字格式" },
-  { value: "preview", label: "预览", description: "渲染 Markdown，原位编辑时显示当前语法" },
+  { value: "source" },
+  { value: "hybrid" },
+  { value: "preview" },
 ] as const;
 
 export function defaultDisplayMode(
@@ -15,4 +17,15 @@ export function defaultDisplayMode(
   return (
     config?.surfaceDisplayMode ?? (config?.tileRenderMarkdown === false ? "source" : "preview")
   );
+}
+
+export function nextDisplayMode(mode: MarkdownDisplayMode): MarkdownDisplayMode {
+  return mode === "source" ? "hybrid" : mode === "hybrid" ? "preview" : "source";
+}
+
+export function displayModeCycleLabel(mode: MarkdownDisplayMode, t: TFunction): string {
+  return t("markdown.displayMode.cycle", {
+    current: t(`markdown.displayMode.${mode}`),
+    next: t(`markdown.displayMode.${nextDisplayMode(mode)}`),
+  });
 }

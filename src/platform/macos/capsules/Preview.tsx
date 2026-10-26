@@ -1,4 +1,4 @@
-import { DisplayModeControl } from "../../../features/markdown/DisplayModeControl";
+import { DisplayModeCycleButton } from "../../../features/markdown/DisplayModeControl";
 import { defaultDisplayMode } from "../../../features/markdown/displayMode";
 import { useSurfaceDisplayMode } from "../../../features/windows/useSurfaceDisplayMode";
 import { useRef, useEffect } from "react";
@@ -98,12 +98,11 @@ export function CapsulePreview() {
         >
           {preview.entry.title}
         </button>
-        <DisplayModeControl
+        <DisplayModeCycleButton
+          className="preview-icon"
           value={display.mode}
-          followingDefault={display.followingDefault}
           disabled={display.pending || busy || edit.phase === "loading" || edit.phase === "leaving"}
           onChange={(mode) => void display.change(mode)}
-          onReset={() => void display.change(null)}
         />
         <button
           className="preview-icon"
@@ -121,7 +120,7 @@ export function CapsulePreview() {
           aria-label="编辑便签"
           title="编辑便签"
           onClick={() => {
-            if (!inlineSession) void act("surface_restore_stored_edit");
+            if (!inlineSession) void act("surface_restore_edit");
             else if (edit.phase === "editing") editor.current?.focus();
             else edit.begin();
           }}
@@ -174,7 +173,9 @@ export function CapsulePreview() {
               ? markdownImageDirectory(linked.binding.path)
               : (preview.entry.imageBaseDir ?? imageBase ?? undefined)
           }
-          imageRootDir={linked?.imageRoot ?? preview.entry.imageRootDir}
+          // Rust serializes absent internal-note paths as null. Use undefined so
+          // the renderer defaults the boundary to the resolved image base.
+          imageRootDir={linked?.imageRoot ?? preview.entry.imageRootDir ?? undefined}
           allowRemoteImages={edit.config?.allowRemoteImages ?? false}
           onPaste={images.handlePaste}
           onDrop={images.handleDrop}
@@ -183,17 +184,19 @@ export function CapsulePreview() {
       </div>
       <footer>
         <span>
-          {edit.phase === "loading"
-            ? "正在载入…"
-            : edit.phase === "reading"
-              ? "悬停预览"
-              : edit.status === "saving"
-                ? "正在保存…"
-                : edit.status === "dirty"
-                  ? "未保存"
-                  : edit.status === "error"
-                    ? "保存失败"
-                    : "编辑中 · 已保存"}
+          {edit.reloading
+            ? "正在重新加载…"
+            : edit.phase === "loading"
+              ? "正在载入…"
+              : edit.phase === "reading"
+                ? "悬停预览"
+                : edit.status === "saving"
+                  ? "正在保存…"
+                  : edit.status === "dirty"
+                    ? "未保存"
+                    : edit.status === "error"
+                      ? "保存失败"
+                      : "编辑中 · 已保存"}
         </span>
         <span>
           {edit.phase === "reading"
@@ -213,8 +216,12 @@ export function CapsulePreview() {
           {edit.error || error}
           {edit.snapshot && (
             <>
-              <button onClick={() => void edit.save()}>重试保存</button>
-              <button onClick={() => void edit.reload()}>重新加载</button>
+              <button disabled={edit.reloading} onClick={() => void edit.save()}>
+                重试保存
+              </button>
+              <button disabled={edit.reloading} onClick={() => void edit.reload()}>
+                重新加载
+              </button>
             </>
           )}
         </p>

@@ -13,6 +13,7 @@ export function useSurfaceDisplayMode(key: string | null, defaultMode: MarkdownD
   const [failure, setFailure] = useState<{ key: string; message: string } | null>(null);
   const saving = useRef(false);
   const latestKey = useRef(key);
+  const eventRevision = useRef(0);
   latestKey.current = key;
   useEffect(() => {
     if (!key) return;
@@ -21,6 +22,7 @@ export function useSurfaceDisplayMode(key: string | null, defaultMode: MarkdownD
     const subscription = listen<SurfaceSession>("surface-session-changed", ({ payload }) => {
       if (!cancelled && payload.key === key) {
         revision++;
+        eventRevision.current++;
         setSaved({ key, mode: payload.displayMode ?? null });
       }
     });
@@ -45,9 +47,12 @@ export function useSurfaceDisplayMode(key: string | null, defaultMode: MarkdownD
     saving.current = true;
     setPendingKey(key);
     setFailure(null);
+    const atSave = eventRevision.current;
     try {
       await invoke("surface_display_mode_set", { key, mode });
-      if (latestKey.current === key) setSaved({ key, mode });
+      // A later broadcast (including another window's selection) is more
+      // authoritative than this command's potentially delayed acknowledgment.
+      if (latestKey.current === key && atSave === eventRevision.current) setSaved({ key, mode });
     } catch {
       setFailure({ key, message: "显示方式保存失败，请重试" });
     } finally {

@@ -16,7 +16,27 @@ pub struct NoteState {
     tile: bool,
     editing: bool,
     locked: bool,
+    #[serde(default)]
+    display_mode: Option<crate::surface_sessions::MarkdownDisplayMode>,
+    #[serde(default)]
+    display_mode_pending: bool,
+    #[serde(default)]
+    display_mode_label: Option<String>,
 }
+fn display_control(
+    mode: crate::surface_sessions::MarkdownDisplayMode,
+) -> (&'static str, &'static str) {
+    use crate::surface_sessions::MarkdownDisplayMode;
+    match mode {
+        MarkdownDisplayMode::Source => (
+            "chevron.left.forwardslash.chevron.right",
+            "显示方式：源码，点击切换为混合",
+        ),
+        MarkdownDisplayMode::Hybrid => ("textformat", "显示方式：混合，点击切换为预览"),
+        MarkdownDisplayMode::Preview => ("eye", "显示方式：预览，点击切换为源码"),
+    }
+}
+
 struct Action {
     app: tauri::AppHandle,
     label: String,
@@ -172,15 +192,21 @@ pub fn update(
         caption.setStringValue(&NSString::from_str(&state.title));caption.setEditable(false);caption.setSelectable(false);caption.setBezeled(false);caption.setDrawsBackground(false);caption.setTextColor(Some(&NSColor::labelColor()));caption.setFont(Some(&NSFont::systemFontOfSize(14.0)));
         caption.setAutoresizingMask(objc2_app_kit::NSAutoresizingMaskOptions::ViewWidthSizable);
         header.addSubview(&caption);
-        let controls=if state.tile {vec![("edit",if state.editing {"checkmark"}else{"pencil"},if state.editing {"保存并切换阅读模式"}else{"切换写作模式"}),("lock","lock","锁定便签并允许鼠标穿透"),("store","rectangle.compress.vertical","收纳到屏幕边缘"),("close","xmark","取消钉屏")]}
+        let mut controls=if state.tile {vec![("edit",if state.editing {"checkmark"}else{"pencil"},if state.editing {"保存并切换阅读模式"}else{"切换写作模式"}),("lock","lock","锁定便签并允许鼠标穿透"),("store","rectangle.compress.vertical","收纳到屏幕边缘"),("close","xmark","取消钉屏")]}
             else {vec![("edit","checkmark","保存便签"),("pin","pin","钉到屏幕"),("close","xmark","关闭便签")]};
+        if state.tile {
+            let (symbol, label) = display_control(state.display_mode.unwrap_or(crate::surface_sessions::MarkdownDisplayMode::Preview));
+            controls.insert(0, ("display", symbol, state.display_mode_label.as_deref().unwrap_or(label)));
+        }
+        // Reserve caption space for all trailing controls, including narrow notes.
+        caption.setFrame(NSRect::new(NSPoint::new(16.0,13.0),NSSize::new((320.0 - 32.0 * controls.len() as f64 - 24.0).max(0.0),24.0)));
         for (i,(name,symbol,label)) in controls.iter().enumerate() {
             let b=NoteButton::alloc(mtm).set_ivars(Action {app:w.app_handle().clone(),label:w.label().into(),name:(*name).into()});
             let b:Retained<NoteButton>=unsafe {msg_send![super(b),initWithFrame:NSRect::new(NSPoint::new(320.0-32.0*(controls.len()-i) as f64,12.0),NSSize::new(24.0,24.0))]};
             b.setBordered(false);b.setFocusRingType(NSFocusRingType::None);b.setImageScaling(NSImageScaling::ScaleProportionallyDown);b.setContentTintColor(Some(&NSColor::secondaryLabelColor()));
             if let Some(image)=NSImage::imageWithSystemSymbolName_accessibilityDescription(&NSString::from_str(symbol),Some(&NSString::from_str(label))){b.setImage(Some(&image));}
             b.setAccessibilityLabel(Some(&NSString::from_str(label)));b.setToolTip(Some(&NSString::from_str(label)));
-            b.setEnabled(!state.locked);b.setAutoresizingMask(objc2_app_kit::NSAutoresizingMaskOptions::ViewMinXMargin);
+            b.setEnabled(if *name == "display" { !state.display_mode_pending } else { !state.locked });b.setAutoresizingMask(objc2_app_kit::NSAutoresizingMaskOptions::ViewMinXMargin);
             unsafe {b.setTarget(Some(&b));b.setAction(Some(sel!(activate:)));}header.addSubview(&b);
         }
         CHROME.with(|chrome| { let mut chrome=chrome.borrow_mut();let body_constraints=if let Some(old)=chrome.remove(w.label()){old.header.removeFromSuperview();old.body_constraints}else{Vec::new()};chrome.insert(w.label().into(),Chrome {state,header,body_constraints}); });

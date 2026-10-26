@@ -59,6 +59,7 @@ export interface Props {
   fontSize: number;
   editorRef?: Ref<SourceEditorHandle>;
   onChange?: (content: string) => void;
+  onReadTaskToggle?: (offset: number, checked: boolean) => void;
   onActivate?: () => void;
   onDeactivate?: () => void;
   onPaste?: HTMLAttributes<HTMLDivElement>["onPaste"];
@@ -84,6 +85,8 @@ export function SourceEditor(props: SourceProps) {
       (props.presentation === "live" || props.presentation === "hybrid") && props.markdown
         ? livePresentation({
             showSyntax: props.presentation === "hybrid",
+            tasksLocked: props.locked,
+            onReadTaskToggle: props.onReadTaskToggle,
             fontSize: props.fontSize,
             imageBaseDir: props.imageBaseDir,
             imageRootDir: props.imageRootDir,
@@ -92,6 +95,8 @@ export function SourceEditor(props: SourceProps) {
         : noPresentation,
     [
       props.presentation,
+      props.locked,
+      props.onReadTaskToggle,
       props.markdown,
       props.fontSize,
       props.imageBaseDir,

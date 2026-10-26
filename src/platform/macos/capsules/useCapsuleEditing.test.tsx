@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { useCapsuleEditing } from "./useCapsuleEditing";
-import type { SourceEditorHandle } from "../../../features/markdown/SourceEditor";
+import { SourceEditor, type SourceEditorHandle } from "../../../features/markdown/SourceEditor";
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -27,6 +27,7 @@ let root: Root;
 let host: HTMLElement;
 let key: string;
 let autoSave: boolean;
+let renderEditor = false;
 function Harness() {
   api = useCapsuleEditing(
     {
@@ -38,7 +39,17 @@ function Harness() {
     editor,
     pendingImages,
   );
-  return null;
+  return renderEditor ? (
+    <SourceEditor
+      content={api.snapshot?.content ?? ""}
+      editing={api.phase === "editing" || api.phase === "leaving"}
+      locked={api.inputBlocked || api.phase === "loading" || api.phase === "leaving"}
+      markdown={false}
+      fontSize={14}
+      onChange={api.change}
+      editorRef={editor}
+    />
+  ) : null;
 }
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -56,6 +67,7 @@ beforeEach(async () => {
   pendingImages.current = null;
   key = "note:test";
   autoSave = true;
+  renderEditor = false;
   mocks.message.mockResolvedValue("保存");
   mocks.invoke.mockImplementation(async (command: string, args: any) => {
     switch (command) {
@@ -94,6 +106,7 @@ afterEach(async () => {
   host.remove();
   vi.clearAllMocks();
   mocks.listeners.clear();
+  vi.useRealTimers();
 });
 async function begin() {
   await act(async () => {
@@ -269,4 +282,389 @@ it("设置关闭后不加载正文，释放占用；设置广播即时更新入�
     mocks.listeners.get("config-changed")?.({ payload: { inlineEditing: true } }),
   );
   expect(api.config?.inlineEditing).toBe(true);
+});
+
+it.each(["note:test", "linked:file"])(
+  "%s 编辑期间关闭自动保存立即生效，重新开启后保存草稿",
+  async (noteKey) => {
+    key = noteKey;
+    await act(async () => root.render(<Harness />));
+    await begin();
+    vi.useFakeTimers();
+    await act(async () => api.change("保留手动草稿"));
+    await act(async () =>
+      mocks.listeners.get("config-changed")!({
+        payload: {
+          inlineEditing: true,
+          noteSurfaceAutoSave: false,
+          externalFileAutoSave: false,
+        },
+      }),
+    );
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(
+      mocks.invoke.mock.calls.some(([command]) =>
+        ["notes_update", "linked_save"].includes(command),
+      ),
+    ).toBe(false);
+    await act(async () => api.finish(undefined, true));
+    expect(api.phase).toBe("editing");
+    await act(async () =>
+      mocks.listeners.get("config-changed")!({
+        payload: {
+          inlineEditing: true,
+          noteSurfaceAutoSave: true,
+          externalFileAutoSave: true,
+        },
+      }),
+    );
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(
+      mocks.invoke.mock.calls.some(
+        ([command]) => command === (noteKey.startsWith("note:") ? "notes_update" : "linked_save"),
+      ),
+    ).toBe(true);
+    expect(api.status).toBe("clean");
+  },
+);
+
+it("自动保存遇到组合输入会等候，候选结束且无后续键入也会保存", async () => {
+  await begin();
+  vi.useFakeTimers();
+  editor.current = { composing: true } as SourceEditorHandle;
+  await act(async () => api.change("中文候选"));
+  await act(async () => vi.advanceTimersByTimeAsync(700));
+  expect(mocks.invoke.mock.calls.some(([command]) => command === "notes_update")).toBe(false);
+  editor.current = { composing: false } as SourceEditorHandle;
+  await act(async () => vi.advanceTimersByTimeAsync(1000));
+  expect(mocks.invoke).toHaveBeenCalledWith(
+    "notes_update",
+    expect.objectContaining({ request: expect.objectContaining({ content: "中文候选" }) }),
+  );
+  expect(api.status).toBe("clean");
+});
+
+it("重新加载清理草稿失败时保留原正文和冲突版本，重试加载成功才切换版本", async () => {
+  key = "linked:file";
+  await act(async () => root.render(<Harness />));
+  await begin();
+  await act(async () => api.change("旧本地草稿"));
+  mocks.message.mockResolvedValue("重新加载");
+  const fallback = mocks.invoke.getMockImplementation()!;
+  let cleanupFails = true;
+  mocks.invoke.mockImplementation((command, args) => {
+    if (command === "linked_read")
+      return Promise.resolve({
+        binding: { id: "file", path: "/tmp/file.md" },
+        content: "外部新版本",
+        revision: "r-new",
+        imageRoot: "/tmp",
+      });
+    if (command === "linked_write_draft" && args.content === null && cleanupFails)
+      return Promise.reject(new Error("草稿清理失败"));
+    if (command === "linked_save" && args.expectedRevision !== "r-new")
+      return Promise.reject(new Error("外部文件冲突"));
+    return fallback(command, args);
+  });
+  await act(async () => api.reload());
+  expect(api.error).toContain("草稿清理失败");
+  expect(api.snapshot?.content).toBe("旧本地草稿");
+  await act(async () => api.save());
+  expect(mocks.invoke).toHaveBeenCalledWith(
+    "linked_save",
+    expect.objectContaining({ content: "旧本地草稿", expectedRevision: "r1" }),
+  );
+  expect(api.error).toContain("外部文件冲突");
+  expect(api.snapshot?.content).toBe("旧本地草稿");
+  cleanupFails = false;
+  await act(async () => api.reload());
+  expect(api.snapshot?.content).toBe("外部新版本");
+  expect(api.status).toBe("clean");
+  expect(api.error).toBe("");
+  await act(async () => api.change("新版本上的修改"));
+  await act(async () => api.save());
+  expect(mocks.invoke).toHaveBeenCalledWith(
+    "linked_save",
+    expect.objectContaining({ content: "新版本上的修改", expectedRevision: "r-new" }),
+  );
+  expect(api.status).toBe("clean");
+});
+
+it("等待图片时取消退出，图片完成后不重新冻结输入或报告过期结果", async () => {
+  await begin();
+  const images = deferred<void>();
+  pendingImages.current = images.promise;
+  await act(async () => {
+    mocks.listeners.get("app://exit-freeze")!({ payload: true });
+    mocks.listeners.get("update://prepare-install")!({ payload: { requestId: "cancelled" } });
+  });
+  await act(async () => mocks.listeners.get("app://exit-freeze")!({ payload: false }));
+  await act(async () => {
+    images.resolve();
+    await images.promise;
+  });
+  expect(api.inputBlocked).toBe(false);
+  expect(mocks.invoke.mock.calls.some(([c]) => c === "update_install_prepare_report")).toBe(false);
+  await act(async () => api.change("取消后继续输入"));
+  expect(api.snapshot?.content).toBe("取消后继续输入");
+});
+
+it("旧准备请求等待图片期间取消，新请求仍可正常保存和解冻", async () => {
+  await begin();
+  const images = deferred<void>();
+  pendingImages.current = images.promise;
+  await act(async () => {
+    mocks.listeners.get("app://exit-freeze")!({ payload: true });
+    mocks.listeners.get("update://prepare-install")!({ payload: { requestId: "old" } });
+  });
+  await act(async () => mocks.listeners.get("app://exit-freeze")!({ payload: false }));
+  await act(async () => {
+    api.change("新请求的草稿");
+    mocks.listeners.get("app://exit-freeze")!({ payload: true });
+    mocks.listeners.get("update://prepare-install")!({ payload: { requestId: "new" } });
+    images.resolve();
+    await images.promise;
+  });
+  const reports = mocks.invoke.mock.calls.filter(([c]) => c === "update_install_prepare_report");
+  expect(reports).toHaveLength(1);
+  expect(reports[0][1]).toMatchObject({ requestId: "new", status: "ready" });
+  expect(api.inputBlocked).toBe(true);
+  expect(api.status).toBe("clean");
+  await act(async () => mocks.listeners.get("app://exit-freeze")!({ payload: false }));
+  await act(async () => api.change("再次继续输入"));
+  expect(api.inputBlocked).toBe(false);
+  expect(api.snapshot?.content).toBe("再次继续输入");
+});
+
+it("取消退出后等待中的图片失败，不显示过期准备错误", async () => {
+  await begin();
+  const images = deferred<void>();
+  pendingImages.current = images.promise;
+  await act(async () => {
+    mocks.listeners.get("app://exit-freeze")!({ payload: true });
+    mocks.listeners.get("update://prepare-install")!({ payload: { requestId: "cancelled" } });
+  });
+  await act(async () => mocks.listeners.get("app://exit-freeze")!({ payload: false }));
+  await act(async () => {
+    images.reject(new Error("过期图片操作失败"));
+    await images.promise.catch(() => undefined);
+  });
+  expect(api.inputBlocked).toBe(false);
+  expect(api.error).toBe("");
+  expect(mocks.invoke.mock.calls.some(([c]) => c === "update_install_prepare_report")).toBe(false);
+});
+
+it("载入编辑会话期间取消退出，载入完成后可以继续输入", async () => {
+  const loaded = deferred<typeof note>();
+  const fallback = mocks.invoke.getMockImplementation()!;
+  mocks.invoke.mockImplementation((command, args) =>
+    command === "notes_get" ? loaded.promise : fallback(command, args),
+  );
+  await begin();
+  expect(api.phase).toBe("loading");
+  await act(async () => {
+    mocks.listeners.get("app://exit-freeze")!({ payload: true });
+    mocks.listeners.get("update://prepare-install")!({ payload: { requestId: "cancelled" } });
+  });
+  await act(async () => mocks.listeners.get("app://exit-freeze")!({ payload: false }));
+  await act(async () => {
+    loaded.resolve({ ...note });
+    await loaded.promise;
+  });
+  expect(api.inputBlocked).toBe(false);
+  expect(api.phase).toBe("editing");
+  expect(mocks.invoke.mock.calls.some(([c]) => c === "update_install_prepare_report")).toBe(false);
+  await act(async () => api.change("载入后继续输入"));
+  expect(api.snapshot?.content).toBe("载入后继续输入");
+});
+
+it("等待已有保存期间取消退出，不再保存取消后输入的内容或报告过期结果", async () => {
+  await begin();
+  const saved = deferred<typeof note>();
+  const fallback = mocks.invoke.getMockImplementation()!;
+  mocks.invoke.mockImplementation((command, args) =>
+    command === "notes_update" ? saved.promise : fallback(command, args),
+  );
+  let saving!: Promise<void>;
+  await act(async () => {
+    api.change("已提交保存的草稿");
+    saving = api.save();
+  });
+  await act(async () => {
+    mocks.listeners.get("app://exit-freeze")!({ payload: true });
+    mocks.listeners.get("update://prepare-install")!({ payload: { requestId: "cancelled" } });
+  });
+  expect(api.inputBlocked).toBe(true);
+  await act(async () => mocks.listeners.get("app://exit-freeze")!({ payload: false }));
+  await act(async () => api.change("取消后新输入"));
+  await act(async () => {
+    saved.resolve({ ...note, content: "已提交保存的草稿", updatedAt: "v2" });
+    await saving;
+  });
+  expect(api.inputBlocked).toBe(false);
+  expect(api.snapshot?.content).toBe("取消后新输入");
+  expect(api.status).toBe("dirty");
+  expect(mocks.invoke.mock.calls.filter(([c]) => c === "notes_update")).toHaveLength(1);
+  expect(mocks.invoke.mock.calls.some(([c]) => c === "update_install_prepare_report")).toBe(false);
+});
+
+it.each(["note:test", "linked:file"])(
+  "%s 的旧刷新结果不能覆盖较新的正文和版本",
+  async (selectedKey) => {
+    key = selectedKey;
+    await act(async () => root.render(<Harness />));
+    await begin();
+    const stale = deferred<any>();
+    const fallback = mocks.invoke.getMockImplementation()!;
+    const linked = key.startsWith("linked:");
+    const command = linked ? "linked_read" : "notes_get";
+    const target = linked ? api.snapshot!.target : note;
+    let reads = 0;
+    mocks.invoke.mockImplementation((cmd, args) => {
+      if (cmd === command)
+        return ++reads === 1
+          ? stale.promise
+          : Promise.resolve({ ...target, content: "newest", updatedAt: "v3", revision: "r3" });
+      return fallback(cmd, args);
+    });
+    const changed = () =>
+      mocks.listeners.get(linked ? "linked-content-changed" : "notes-changed")!({
+        payload: { bindingId: "file" },
+      });
+    await act(async () => changed());
+    await act(async () => changed());
+    expect(api.snapshot?.content).toBe("newest");
+    await act(async () =>
+      stale.resolve({ ...target, content: "stale", updatedAt: "v2", revision: "r2" }),
+    );
+    expect(api.snapshot?.content).toBe("newest");
+    await act(async () => {
+      api.change("edited newest");
+      await api.save();
+    });
+    const saved = mocks.invoke.mock.calls.find(
+      ([cmd]) => cmd === (linked ? "linked_save" : "notes_update"),
+    )![1];
+    expect(linked ? saved.expectedRevision : saved.expectedUpdatedAt).toBe(linked ? "r3" : "v3");
+  },
+);
+
+it.each([false, true])("重新加载期间禁止输入，完成或失败后恢复会话（失败：%s）", async (failed) => {
+  renderEditor = true;
+  await act(async () => root.render(<Harness />));
+  await begin();
+  const read = deferred<typeof note>();
+  const fallback = mocks.invoke.getMockImplementation()!;
+  mocks.message.mockResolvedValue("重新加载");
+  mocks.invoke.mockImplementation((cmd, args) =>
+    cmd === "notes_get" ? read.promise : fallback(cmd, args),
+  );
+  let reload!: Promise<void>;
+  await act(async () => {
+    reload = api.reload();
+  });
+  const view = editor.current!.view!;
+  expect(view.state.readOnly).toBe(true);
+  await act(async () => {
+    if (failed) read.reject(new Error("read failed"));
+    else read.resolve({ ...note, content: "external", updatedAt: "v2" });
+    await reload;
+  });
+  expect(view.state.readOnly).toBe(false);
+  await act(async () =>
+    view.dispatch({
+      changes: { from: view.state.doc.length, insert: " new input" },
+      userEvent: "input",
+    }),
+  );
+  expect(api.snapshot?.content).toBe((failed ? "old" : "external") + " new input");
+});
+
+it("重新加载期间的离开请求等待读取完成；重复重新加载不会重复读盘", async () => {
+  await begin();
+  const read = deferred<typeof note>();
+  const fallback = mocks.invoke.getMockImplementation()!;
+  mocks.message.mockResolvedValue("重新加载");
+  mocks.invoke.mockImplementation((cmd, args) =>
+    cmd === "notes_get" ? read.promise : fallback(cmd, args),
+  );
+  let reload!: Promise<void>;
+  await act(async () => {
+    reload = api.reload();
+  });
+  let leaving!: Promise<void>;
+  await act(async () => {
+    void api.reload();
+    leaving = api.finish({ key, generation: 1, requestId: 4 });
+  });
+  expect(mocks.message).toHaveBeenCalledTimes(1);
+  expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === "surface_capsule_finish_edit")).toBe(
+    false,
+  );
+  await act(async () => {
+    read.resolve({ ...note, content: "reloaded", updatedAt: "v2" });
+    await reload;
+    await leaving;
+  });
+  expect(api.phase).toBe("reading");
+  expect(occupied.current).toBe(false);
+  expect(mocks.invoke).toHaveBeenCalledWith("surface_capsule_finish_edit", {
+    key,
+    generation: 1,
+    requestId: 4,
+    ready: true,
+  });
+  expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === "notes_update")).toBe(false);
+});
+
+it("重新加载取代在途刷新；旧刷新迟到时不能恢复旧正文", async () => {
+  await begin();
+  const old = deferred<typeof note>();
+  const fallback = mocks.invoke.getMockImplementation()!;
+  let reads = 0;
+  mocks.message.mockResolvedValue("重新加载");
+  mocks.invoke.mockImplementation((cmd, args) => {
+    if (cmd === "notes_get")
+      return ++reads === 1
+        ? old.promise
+        : Promise.resolve({ ...note, content: "reloaded", updatedAt: "v3" });
+    return fallback(cmd, args);
+  });
+  await act(async () => mocks.listeners.get("notes-changed")!({ payload: null }));
+  await act(async () => api.reload());
+  await act(async () => old.resolve({ ...note, content: "stale", updatedAt: "v2" }));
+  expect(api.snapshot?.content).toBe("reloaded");
+});
+
+it("重新加载期间取消退出不会提前解除输入冻结，准备保存也等待读取完成", async () => {
+  await begin();
+  const read = deferred<typeof note>();
+  const fallback = mocks.invoke.getMockImplementation()!;
+  mocks.message.mockResolvedValue("重新加载");
+  mocks.invoke.mockImplementation((cmd, args) =>
+    cmd === "notes_get" ? read.promise : fallback(cmd, args),
+  );
+  let reload!: Promise<void>;
+  await act(async () => {
+    reload = api.reload();
+  });
+  await act(async () => {
+    mocks.listeners.get("app://exit-freeze")!({ payload: true });
+    mocks.listeners.get("update://prepare-install")!({ payload: { requestId: "reload-exit" } });
+  });
+  expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === "update_install_prepare_report")).toBe(
+    false,
+  );
+  await act(async () => mocks.listeners.get("app://exit-freeze")!({ payload: false }));
+  expect(api.inputBlocked).toBe(true);
+  await act(async () => {
+    read.resolve({ ...note, content: "reloaded", updatedAt: "v2" });
+    await reload;
+  });
+  expect(api.inputBlocked).toBe(false);
+  expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === "update_install_prepare_report")).toBe(
+    false,
+  );
+  await act(async () => api.change("new input"));
+  expect(api.snapshot?.content).toBe("new input");
 });

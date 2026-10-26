@@ -37,14 +37,34 @@ export function liveDecorations(state: EditorState, options: LiveOptions): Decor
       pos = line.to + 1;
     }
   };
+  const references: string[] = [];
+  if (frontmatterEnd > 0 && !hideMetadata) lineStyle(0, frontmatterEnd - 1, "cm-live-metadata");
+  syntaxTree(state).iterate({
+    enter({ name, from, to }) {
+      if (name === "LinkReference" && from >= frontmatterEnd)
+        references.push(state.sliceDoc(from, to));
+    },
+  });
+  const referenceDefinitions = references.join("\n\n");
   syntaxTree(state).iterate({
     enter({ node, name, from, to }) {
-      if (hideMetadata && from < frontmatterEnd && name !== "Document") return false;
+      // YAML is plain metadata, even while visible in hybrid/editing mode.
+      // The Markdown parser otherwise mistakes its closing --- for a Setext heading.
+      if (from < frontmatterEnd && name !== "Document") return false;
       const selected = !!options.showSyntax || active(from, to);
       const line = state.doc.lineAt(from);
       const lineActive = !!options.showSyntax || active(line.from, line.to);
+      if (options.showSyntax && name === "ListMark") {
+        const task = node.parent?.getChild("Task");
+        if (task && task.from <= line.to) {
+          // Task items match preview: checkbox instead of both a bullet and a marker.
+          hide(from, task.from);
+          return false;
+        }
+      }
       if (
         options.showSyntax &&
+        name !== "TaskMarker" &&
         /^(HeaderMark|QuoteMark|EmphasisMark|StrikethroughMark|CodeMark|CodeInfo|LinkMark|URL|LinkTitle|TaskMarker|ListMark)$/.test(
           name,
         )
@@ -59,12 +79,21 @@ export function liveDecorations(state: EditorState, options: LiveOptions): Decor
         name === "DisplayMath" ||
         name === "HorizontalRule" ||
         (name === "FencedCode" &&
-          /^```mermaid\b/i.test(state.sliceDoc(from, Math.min(to, from + 30))));
+          /^(?:`{3,}|~{3,})[ \t]*mermaid\b/i.test(state.sliceDoc(from, Math.min(to, from + 30))));
       if (complexBlock || name === "Image" || name === "InlineMath") {
-        if (!selected) {
+        // Hybrid retains text markers, but renders complex content until that
+        // range is edited. A parked read-only selection must not reveal source.
+        const revealSource = options.showSyntax ? !state.readOnly && active(from, to) : selected;
+        if (!revealSource) {
           ranges.push(
             Decoration.replace({
-              widget: new MarkdownWidget(state.sliceDoc(from, to), options, complexBlock),
+              widget: new MarkdownWidget(
+                state.sliceDoc(from, to),
+                options,
+                complexBlock,
+                referenceDefinitions,
+                state.readOnly,
+              ),
               block: complexBlock,
             }).range(from, to),
           );
@@ -93,14 +122,18 @@ export function liveDecorations(state: EditorState, options: LiveOptions): Decor
         for (let child = node.firstChild; child; child = child.nextSibling) {
           if (["EmphasisMark", "StrikethroughMark", "CodeMark", "LinkMark"].includes(child.name))
             hide(child.from, child.to);
-          if (name === "Link" && ["URL", "LinkTitle"].includes(child.name))
+          if (name === "Link" && ["URL", "LinkTitle", "LinkLabel"].includes(child.name))
             hide(child.from, child.to);
         }
       }
-      if (name === "TaskMarker" && !selected) {
+      if (name === "TaskMarker" && (options.showSyntax || !selected)) {
         ranges.push(
           Decoration.replace({
-            widget: new TaskWidget(state.sliceDoc(from + 1, from + 2).toLowerCase() === "x"),
+            widget: new TaskWidget(
+              state.sliceDoc(from + 1, from + 2).toLowerCase() === "x",
+              !!options.tasksLocked || (state.readOnly && !options.onReadTaskToggle),
+              options.onReadTaskToggle,
+            ),
           }).range(from, to),
         );
       }
@@ -140,7 +173,10 @@ export function livePresentation(options: LiveOptions) {
           composing = effect.value.composing ?? composing;
         }
       const changed =
-        tr.docChanged || tr.selection || tr.effects.some((e) => e.is(freeze) || e.is(refresh));
+        tr.docChanged ||
+        tr.selection ||
+        tr.startState.readOnly !== tr.state.readOnly ||
+        tr.effects.some((e) => e.is(freeze) || e.is(refresh));
       return {
         pointer,
         composing,

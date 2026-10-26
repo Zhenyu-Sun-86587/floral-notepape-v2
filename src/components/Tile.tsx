@@ -1,5 +1,4 @@
 import type { MarkdownDisplayMode } from "../features/markdown/displayMode";
-import type { ReactNode } from "react";
 import chroma from "chroma-js";
 import {
   displayTitleSelection,
@@ -44,7 +43,6 @@ export interface TileProps extends Omit<
   doubleClickToEdit?: boolean;
   inlineEditing?: boolean;
   displayMode?: MarkdownDisplayMode;
-  displayModeControl?: ReactNode;
   onEditorDeactivate?: () => void;
   locked?: boolean;
   scrollContainerRef?: Ref<HTMLDivElement>;
@@ -82,7 +80,6 @@ export function Tile({
   doubleClickToEdit = false,
   inlineEditing = false,
   displayMode,
-  displayModeControl,
   onEditorDeactivate,
   locked,
   scrollContainerRef,
@@ -138,11 +135,6 @@ export function Tile({
         ref={scrollContainerRef}
         className="px-4 pt-4 pb-4 h-full overflow-y-auto scrollbar-hidden"
       >
-        {displayModeControl && (
-          <div className="flex justify-end mb-3" style={{ color: contentColor }}>
-            {displayModeControl}
-          </div>
-        )}
         {editing && titleEditable ? (
           <input
             value={title ?? ""}

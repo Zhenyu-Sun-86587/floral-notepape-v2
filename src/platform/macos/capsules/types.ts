@@ -5,8 +5,8 @@ export interface CapsuleEntry {
   colorKey: number;
   expanded: boolean;
   locked?: boolean;
-  imageBaseDir?: string;
-  imageRootDir?: string;
+  imageBaseDir?: string | null;
+  imageRootDir?: string | null;
 }
 export interface CapsuleGroup {
   runtimeId: number;

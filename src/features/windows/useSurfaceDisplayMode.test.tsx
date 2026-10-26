@@ -87,3 +87,24 @@ it("保存失败保留旧显示并提示错误", async () => {
   expect(current.mode).toBe("preview");
   expect(current.error).toContain("保存失败");
 });
+
+it("保存回执迟到时不能覆盖已收到的更新模式事件", async () => {
+  await act(async () => render());
+  let resolve!: () => void;
+  mocks.invoke.mockImplementationOnce(
+    () =>
+      new Promise<void>((done) => {
+        resolve = done;
+      }),
+  );
+  let pending!: Promise<void>;
+  await act(async () => {
+    pending = current.change("source");
+  });
+  await act(async () => mocks.listener?.({ payload: { key: "note:a", displayMode: "hybrid" } }));
+  await act(async () => {
+    resolve();
+    await pending;
+  });
+  expect(current.mode).toBe("hybrid");
+});

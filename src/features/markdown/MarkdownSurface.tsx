@@ -17,7 +17,6 @@ type Anchor = { offset: number; y: number };
 interface SurfaceProps extends Props {
   displayMode?: MarkdownDisplayMode;
   scrollContainerRef?: RefObject<HTMLElement | null>;
-  onReadTaskToggle?: (offset: number, checked: boolean) => void;
   activationGesture?: "click" | "doubleClick" | "none";
   imageBaseDir?: string;
   imageRootDir?: string;
@@ -220,8 +219,12 @@ export function MarkdownSurface(props: SurfaceProps) {
         (selection && !selection.isCollapsed && read.current?.contains(selection.anchorNode)))
     )
       return;
+    // Widgets already mapped mousedown to their inner source range. CM's coarse
+    // coordinate hit test would overwrite that with the replacement block's end.
     const offset = directSource
-      ? (editor.current?.view?.posAtCoords({ x: event.clientX, y: event.clientY }) ?? null)
+      ? (event.target as HTMLElement).closest(".cm-live-block,.cm-live-inline")
+        ? (editor.current?.selectionStart ?? null)
+        : (editor.current?.view?.posAtCoords({ x: event.clientX, y: event.clientY }) ?? null)
       : read.current
         ? sourceOffsetAtPoint(
             read.current,
@@ -304,6 +307,7 @@ export function MarkdownSurface(props: SurfaceProps) {
           activateOnFocus={!directSource}
           editorRef={editor}
           onDeactivate={deactivate}
+          onReadTaskToggle={props.onReadTaskToggle ?? toggleTask}
           onDocumentChange={documentChanged}
           onCompositionChange={setComposing}
           onBlurAnchor={capture}
