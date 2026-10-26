@@ -1063,10 +1063,6 @@ fn clear_hidden_window_state(app: &AppHandle) {
 
 fn toggle_app_visibility(app: &AppHandle) {
     #[cfg(target_os = "macos")]
-    if defer_capsule_leave(app, CapsuleLeaveAction::ToggleVisibility).unwrap_or(true) {
-        return;
-    }
-    #[cfg(target_os = "macos")]
     let _ = app.run_on_main_thread(crate::macos_motion::cancel);
     let _ = dismiss_capsule_preview(app);
     let Some(state) = app.try_state::<RuntimeState>() else {
@@ -2879,10 +2875,6 @@ pub fn sync_capsule_windows(app: &AppHandle) -> Result<(), AppError> {
     Ok(())
 }
 pub fn hide_stored_surface(app: &AppHandle, key: &str) -> Result<(), AppError> {
-    #[cfg(target_os = "macos")]
-    if defer_capsule_leave(app, CapsuleLeaveAction::Hide(key.to_owned()))? {
-        return Ok(());
-    }
     if crate::surface_sessions::get(key)?.presentation
         != crate::surface_sessions::Presentation::Stored
     {
@@ -2986,10 +2978,6 @@ pub fn store_surface(app: &AppHandle, key: &str) -> Result<(), AppError> {
 }
 
 pub fn restore_stored_surface(app: &AppHandle, key: &str) -> Result<(), AppError> {
-    #[cfg(target_os = "macos")]
-    if defer_capsule_leave(app, CapsuleLeaveAction::Restore(key.to_owned()))? {
-        return Ok(());
-    }
     let session = crate::surface_sessions::get(key)?;
     if session.presentation == crate::surface_sessions::Presentation::Expanded {
         if let Some(window) = app.get_webview_window(&surface_label(key)) {
@@ -3031,10 +3019,6 @@ pub fn restore_stored_surface(app: &AppHandle, key: &str) -> Result<(), AppError
 }
 
 pub fn restore_stored_surface_edit(app: &AppHandle, key: &str) -> Result<(), AppError> {
-    #[cfg(target_os = "macos")]
-    if defer_capsule_leave(app, CapsuleLeaveAction::RestoreEdit(key.to_owned()))? {
-        return Ok(());
-    }
     if crate::surface_sessions::get(key)?.presentation
         == crate::surface_sessions::Presentation::Expanded
     {

@@ -67,6 +67,7 @@ export interface Props {
   onDragOver?: HTMLAttributes<HTMLDivElement>["onDragOver"];
 }
 interface SourceProps extends Props {
+  onScrollIntoView?: () => boolean;
   onDocumentChange?: (value: string) => void;
   onCompositionChange?: (composing: boolean) => void;
   onBlurAnchor?: () => void;
@@ -226,6 +227,7 @@ export function SourceEditor(props: SourceProps) {
           history(),
           presentation.current.of(liveExtension),
           EditorView.lineWrapping,
+          EditorView.scrollHandler.of(() => latest.current.onScrollIntoView?.() ?? false),
           access.current.of(
             EditorState.readOnly.of(!latest.current.editing || !!latest.current.locked),
           ),
@@ -363,7 +365,7 @@ export function SourceEditor(props: SourceProps) {
       effects: language.current.reconfigure(props.markdown ? markdownExtension : []),
     });
   }, [props.markdown, compositionRevision, markdownExtension]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!composing.current && !viewRef.current?.composing)
       viewRef.current?.dispatch({ effects: presentation.current.reconfigure(liveExtension) });
   }, [liveExtension, compositionRevision]);

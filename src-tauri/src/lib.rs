@@ -224,43 +224,6 @@ async fn surface_restore_edit(app: AppHandle, key: String) -> Result<(), AppErro
     desktop::run_capsule_task(move || desktop::restore_stored_surface_edit(&app, &key)).await
 }
 
-#[cfg(target_os = "macos")]
-#[tauri::command]
-async fn surface_capsule_begin_edit(
-    window: tauri::WebviewWindow,
-    key: String,
-    generation: u64,
-) -> Result<(), AppError> {
-    desktop::run_capsule_task(move || desktop::begin_capsule_edit(&window, &key, generation)).await
-}
-#[cfg(target_os = "macos")]
-#[tauri::command]
-async fn surface_capsule_abort_edit(
-    window: tauri::WebviewWindow,
-    key: String,
-    generation: u64,
-) -> Result<(), AppError> {
-    desktop::run_capsule_task(move || {
-        desktop::abort_capsule_edit(&window, &key, generation);
-        Ok(())
-    })
-    .await
-}
-#[cfg(target_os = "macos")]
-#[tauri::command]
-async fn surface_capsule_finish_edit(
-    window: tauri::WebviewWindow,
-    key: String,
-    generation: u64,
-    request_id: Option<u64>,
-    ready: bool,
-) -> Result<bool, AppError> {
-    desktop::run_capsule_task(move || {
-        desktop::finish_capsule_edit(&window, &key, generation, request_id, ready)
-    })
-    .await
-}
-
 #[tauri::command]
 fn surface_take_edit_request(window: tauri::WebviewWindow) -> bool {
     desktop::take_surface_edit_request(&window)
@@ -1199,12 +1162,6 @@ pub fn run() {
             surface_capsule_preview_state,
             #[cfg(target_os = "macos")]
             surface_capsule_material,
-            #[cfg(target_os = "macos")]
-            surface_capsule_begin_edit,
-            #[cfg(target_os = "macos")]
-            surface_capsule_abort_edit,
-            #[cfg(target_os = "macos")]
-            surface_capsule_finish_edit,
             #[cfg(target_os = "macos")]
             macos_fluid_status,
             surface_capsule_present,

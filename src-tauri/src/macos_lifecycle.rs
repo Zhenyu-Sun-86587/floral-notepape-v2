@@ -80,9 +80,7 @@ fn request_save(app: &tauri::AppHandle, close_main: bool) {
                 .filter(|(label, _)| {
                     label == "main"
                         || (!close_main
-                            && (label.starts_with("notepad-")
-                                || label.starts_with("tile-")
-                                || label == "capsule-preview"))
+                            && (label.starts_with("notepad-") || label.starts_with("tile-")))
                 })
                 .collect::<std::collections::HashMap<_, _>>()
         };

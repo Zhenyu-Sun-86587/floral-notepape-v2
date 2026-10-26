@@ -39,6 +39,7 @@ export function MarkdownSurface(props: SurfaceProps) {
 
   const [presentation, setPresentation] = useState("");
   const entering = useRef<Anchor | null>(null);
+  const pendingScroll = useRef<Anchor | null>(null);
   const anchor = useRef<Anchor | null>(null);
   const latest = useRef(props);
   latest.current = props;
@@ -132,7 +133,6 @@ export function MarkdownSurface(props: SurfaceProps) {
     const view = handle?.view;
     if (!view) return;
     let frame = 0;
-    let measureFrame = 0;
     let cancelled = false;
     const scroll =
       latest.current.scrollContainerRef?.current ??
@@ -151,19 +151,17 @@ export function MarkdownSurface(props: SurfaceProps) {
       } else if (entering.current)
         handle.setSelectionRange(entering.current.offset, entering.current.offset);
       entering.current = null;
+      pendingScroll.current = target;
       view.focus();
-      // 隐藏期间 CM 没有可见 viewport；先让目标源码进入 viewport，再按锚点校正。
-      frame = requestAnimationFrame(() => {
-        view.dispatch({ scrollIntoView: true });
-        measureFrame = requestAnimationFrame(() => {
-          view.requestMeasure({
-            read: () => view.coordsAtPos(view.state.selection.main.head)?.top,
-            write: (y) => {
-              if (target) correct(target, y);
-            },
-          });
-        });
-      });
+      // Let CM materialize the target line, but replace its default scrolling
+      // with one anchor correction in that same measurement, before painting.
+      view.dispatch({ scrollIntoView: true });
+      try {
+        const y = view.coordsAtPos(view.state.selection.main.head)?.top;
+        if (target) correct(target, y);
+      } finally {
+        pendingScroll.current = null;
+      }
     } else if (!directSource) {
       frame = requestAnimationFrame(() => {
         if (anchor.current && read.current)
@@ -173,7 +171,7 @@ export function MarkdownSurface(props: SurfaceProps) {
     return () => {
       cancelled = true;
       cancelAnimationFrame(frame);
-      cancelAnimationFrame(measureFrame);
+      pendingScroll.current = null;
     };
   }, [active]);
 
@@ -311,6 +309,7 @@ export function MarkdownSurface(props: SurfaceProps) {
           onDocumentChange={documentChanged}
           onCompositionChange={setComposing}
           onBlurAnchor={capture}
+          onScrollIntoView={() => pendingScroll.current !== null}
         />
       </div>
     </div>

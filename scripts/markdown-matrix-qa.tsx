@@ -189,28 +189,12 @@ function QA() {
           ))}
         </select>
         <DisplayModeControl value={displayMode} onChange={changeMode} />
-        <button
-          onClick={() => {
-            if (panel === "capsule")
-              document.querySelector<HTMLButtonElement>('[aria-label="编辑便签"]')?.click();
-            else setEditing(!editing);
-          }}
-        >
-          {editing ? "阅读" : "编辑"}
-        </button>
-        <button
-          onClick={() => {
-            if (panel === "capsule")
-              document
-                .querySelector<HTMLElement>(".cm-content")
-                ?.dispatchEvent(
-                  new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }),
-                );
-            else setEditing(false);
-          }}
-        >
-          返回阅读
-        </button>
+        {panel !== "capsule" && (
+          <>
+            <button onClick={() => setEditing(!editing)}>{editing ? "阅读" : "编辑"}</button>
+            <button onClick={() => setEditing(false)}>返回阅读</button>
+          </>
+        )}
         <button
           onClick={() => {
             content = fixture;

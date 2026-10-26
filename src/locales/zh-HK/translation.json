@@ -278,7 +278,7 @@
       "label": "磁貼顏色"
     },
     "tileCtrlClose": "Ctrl+右鍵快速關閉磁貼",
-    "inlineEditing": "原位編輯（桌面便箋與膠囊）",
+    "inlineEditing": "原位編輯（桌面便箋）",
     "tileRenderMarkdown": "磁貼渲染 Markdown",
     "tileDoubleClickToEdit": "雙擊文字區域進入編輯",
     "tileSaveReturnsToPin": "儲存後回到磁貼",

@@ -1,24 +1,18 @@
 import { DisplayModeCycleButton } from "../../../features/markdown/DisplayModeControl";
 import { defaultDisplayMode } from "../../../features/markdown/displayMode";
 import { useSurfaceDisplayMode } from "../../../features/windows/useSurfaceDisplayMode";
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import type { AppConfig } from "../../../features/settings/types";
 import { MarkdownSurface } from "../../../features/markdown/MarkdownSurface";
-import type { SourceEditorHandle } from "../../../features/markdown/SourceEditor";
-import { useImagePaste } from "../../../features/images/useImagePaste";
 import { useImageBaseDir } from "../../../features/images/useImageBaseDir";
-import { markdownImageDirectory } from "../../../features/markdown/imageSrc";
-import { useCapsuleEditing } from "./useCapsuleEditing";
 import { colors } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { useCapsulePreview } from "./useCapsulePreview";
 
 export function CapsulePreview() {
-  const occupied = useRef(false);
-  const editor = useRef<SourceEditorHandle>(null);
-  const pendingImages = useRef<Promise<void> | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const {
-    refresh,
     preview,
     visible,
     busy,
@@ -29,31 +23,27 @@ export function CapsulePreview() {
     act,
     dismiss,
     handleTaskToggle,
-  } = useCapsulePreview(occupied);
-  const edit = useCapsuleEditing(preview, occupied, editor, pendingImages);
-  const display = useSurfaceDisplayMode(
-    preview?.entry.key ?? null,
-    defaultDisplayMode(edit.config),
-  );
-  const imageBase = useImageBaseDir();
-  const target = edit.snapshot?.target;
-  const linked = target && "binding" in target ? target : null;
-  const images = useImagePaste({
-    noteId: target && "id" in target ? target.id : null,
-    linkedBindingId: linked?.binding.id,
-    pendingRef: pendingImages,
-    textareaRef: editor,
-    setContent: edit.change,
-    markDirty: () => {},
-    onEnsureNoteSaved: async () => null,
-    disabled: edit.phase !== "editing",
-    onError: edit.reportError,
-  });
+  } = useCapsulePreview();
+  const [config, setConfig] = useState<AppConfig | null>(null);
   useEffect(() => {
-    if (edit.phase === "reading") refresh();
-  }, [edit.phase]);
-  const inlineEnabled = edit.config?.inlineEditing ?? false;
-  const inlineSession = inlineEnabled || edit.phase !== "reading";
+    let active = true;
+    let revision = 0;
+    const off = listen<AppConfig>("config-changed", ({ payload }) => {
+      revision++;
+      if (active) setConfig(payload);
+    });
+    void invoke<AppConfig>("config_get")
+      .then((value) => {
+        if (active && revision === 0) setConfig(value);
+      })
+      .catch(console.error);
+    return () => {
+      active = false;
+      void off.then((dispose) => dispose());
+    };
+  }, []);
+  const display = useSurfaceDisplayMode(preview?.entry.key ?? null, defaultDisplayMode(config));
+  const imageBase = useImageBaseDir();
   if (!preview) return null;
   return (
     <article
@@ -93,7 +83,7 @@ export function CapsulePreview() {
         <button
           className="preview-title"
           title="展开便签"
-          disabled={busy || edit.phase === "loading" || edit.phase === "leaving"}
+          disabled={busy}
           onClick={() => void act("surface_restore_stored")}
         >
           {preview.entry.title}
@@ -101,32 +91,17 @@ export function CapsulePreview() {
         <DisplayModeCycleButton
           className="preview-icon"
           value={display.mode}
-          disabled={display.pending || busy || edit.phase === "loading" || edit.phase === "leaving"}
+          disabled={display.pending || busy}
           onChange={(mode) => void display.change(mode)}
         />
         <button
           className="preview-icon"
-          disabled={busy || edit.phase === "loading" || edit.phase === "leaving"}
+          disabled={busy}
           aria-label="展开便签"
           onClick={() => void act("surface_restore_stored")}
         >
           <svg viewBox="0 0 24 24">
             <path d="M14 4h6v6M20 4l-9 9M10 4H4v16h16v-6" />
-          </svg>
-        </button>
-        <button
-          className="preview-icon"
-          disabled={busy || edit.phase === "loading" || edit.phase === "leaving"}
-          aria-label="编辑便签"
-          title="编辑便签"
-          onClick={() => {
-            if (!inlineSession) void act("surface_restore_edit");
-            else if (edit.phase === "editing") editor.current?.focus();
-            else edit.begin();
-          }}
-        >
-          <svg viewBox="0 0 24 24">
-            <path d="m4 20 4-1 11-11-3-3L5 16l-1 4ZM14 7l3 3" />
           </svg>
         </button>
         <button
@@ -147,83 +122,32 @@ export function CapsulePreview() {
       </header>
       <div className="preview-body" key={preview.entry.key} ref={scroll}>
         <MarkdownSurface
-          content={edit.snapshot?.content ?? preview.entry.preview}
-          editing={edit.phase === "editing" || edit.phase === "leaving"}
-          locked={
-            edit.inputBlocked ||
-            !!preview.entry.locked ||
-            edit.phase === "leaving" ||
-            edit.phase === "loading"
-          }
+          content={preview.entry.preview}
+          editing={false}
+          locked={!!preview.entry.locked}
           markdown={display.mode !== "source"}
           displayMode={display.mode}
-          presentation={inlineSession ? "live" : "source"}
-          activationGesture={inlineSession ? "click" : "none"}
-          fontSize={edit.config?.surfaceFontSize ?? 14}
-          editorRef={editor}
+          activationGesture="none"
+          fontSize={config?.surfaceFontSize ?? 14}
           scrollContainerRef={scroll}
-          onActivate={edit.begin}
-          onDeactivate={() => {
-            void edit.finish(undefined, true);
-          }}
-          onChange={edit.change}
           onReadTaskToggle={handleTaskToggle}
-          imageBaseDir={
-            linked
-              ? markdownImageDirectory(linked.binding.path)
-              : (preview.entry.imageBaseDir ?? imageBase ?? undefined)
-          }
-          // Rust serializes absent internal-note paths as null. Use undefined so
-          // the renderer defaults the boundary to the resolved image base.
-          imageRootDir={linked?.imageRoot ?? preview.entry.imageRootDir ?? undefined}
-          allowRemoteImages={edit.config?.allowRemoteImages ?? false}
-          onPaste={images.handlePaste}
-          onDrop={images.handleDrop}
-          onDragOver={images.handleDragOver}
+          imageBaseDir={preview.entry.imageBaseDir ?? imageBase ?? undefined}
+          imageRootDir={preview.entry.imageRootDir ?? undefined}
+          allowRemoteImages={config?.allowRemoteImages ?? false}
         />
       </div>
       <footer>
-        <span>
-          {edit.reloading
-            ? "正在重新加载…"
-            : edit.phase === "loading"
-              ? "正在载入…"
-              : edit.phase === "reading"
-                ? "悬停预览"
-                : edit.status === "saving"
-                  ? "正在保存…"
-                  : edit.status === "dirty"
-                    ? "未保存"
-                    : edit.status === "error"
-                      ? "保存失败"
-                      : "编辑中 · 已保存"}
-        </span>
-        <span>
-          {edit.phase === "reading"
-            ? inlineEnabled
-              ? "点击文字编辑 · 点击胶囊展开"
-              : "点击铅笔编辑 · 点击胶囊展开"
-            : "⌘S 保存 · Esc 返回预览"}
-        </span>
+        <span>悬停预览</span>
+        <span>点击胶囊展开 · 拖动移动</span>
       </footer>
       {display.error && (
         <p role="alert" className="preview-error">
           {display.error}
         </p>
       )}
-      {(error || edit.error) && (
+      {error && (
         <p role="alert" className="preview-error">
-          {edit.error || error}
-          {edit.snapshot && (
-            <>
-              <button disabled={edit.reloading} onClick={() => void edit.save()}>
-                重试保存
-              </button>
-              <button disabled={edit.reloading} onClick={() => void edit.reload()}>
-                重新加载
-              </button>
-            </>
-          )}
+          {error}
         </p>
       )}
     </article>

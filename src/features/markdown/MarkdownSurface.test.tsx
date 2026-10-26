@@ -95,13 +95,24 @@ describe("常驻 MarkdownSurface", () => {
       render(true);
     });
     expect(host.querySelector(".markdown-read-layer")?.textContent).not.toContain("hello!");
+    const caret = vi.spyOn(view, "coordsAtPos").mockReturnValue({
+      top: 80,
+      bottom: 100,
+      left: 0,
+      right: 0,
+    });
     await act(async () => render(false));
     expect(ref.current!.view).toBe(view);
     expect(view.state.selection.main.from).toBe(1);
     expect(view.state.selection.main.to).toBe(4);
     expect(host.querySelector(".markdown-read-layer")?.textContent).toContain("hello!");
     expect(host.querySelector(".markdown-edit-layer")?.hasAttribute("inert")).toBe(true);
+    host.scrollTop = 100;
+    caret.mockReturnValue({ top: 240, bottom: 260, left: 0, right: 0 });
     await act(async () => render(true));
+    // Entering must restore the anchor during the commit, before any later frame.
+    expect(host.scrollTop).toBe(260);
+    caret.mockRestore();
     expect(ref.current!.view).toBe(view);
     await act(async () => {
       expect(undo(view)).toBe(true);
