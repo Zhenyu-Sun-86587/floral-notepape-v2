@@ -9,7 +9,13 @@
 - 胶囊编辑功能及其 20 项前端、2 项 Rust 回归一并移除。当前为 **44 文件 / 185 项前端测试**（原有 161 + 功能新增 24）、**210 项 Rust 测试**；下文 205／212 以及胶囊内编辑的说明均属此前阶段。
 - 截图中的 Today 与测试便签来自不同版本，用户已确认无需修改两个入口。
 
-## 最新安装（2026-10-26 21:55）
+## 最新安装（2026-10-26 22:49）
+
+提交 `d91e713` 的测试包已更新至 `/Applications/folio(test).app` 并启动，本机 ad-hoc 签名及严格完整性检查通过。保留原有 25 篇笔记和 1 个外部文件；安装及启动后笔记、图片和绑定文件内容哈希不变。旧包与 44 个数据文件备份于 `/private/tmp/folio-test-readonly-20261026-6iky1gs6/`。构建标记位于包内 `Contents/Resources/FolioTestBuild.json`，版本仍为 2.0.5。
+
+本轮前端 **44 文件 / 185 项**、Rust **210 项**、TypeScript、lint、格式及空白检查、保存确认协议脚本、本机测试包构建通过。Windows 平台别名下综合用例与 macOS 宿主 **3 项通过**。已完成浏览器胶囊三模式切换与只读入口检查、滚动锚点检查；安装版确认启动和数据保留，未将此记为真实输入法或完整胶囊悬停体验验收。
+
+## 历史安装（2026-10-26 21:55）
 
 已从提交 `a92c6e2` 重新构建并替换 `/Applications/folio(test).app`，包含 `706749a` 的原位编辑修复。使用下文的 `--debug --features test-app --bundles app --config src-tauri/tauri.test.conf.json`，并沿用临时 Swift VFS overlay；本机构建成功，无需 GitHub CI。版本仍为 2.0.5，独立 identifier 为 `dev.hermes.surface.inline-test`。
 
