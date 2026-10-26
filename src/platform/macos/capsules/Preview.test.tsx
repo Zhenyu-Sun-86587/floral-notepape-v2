@@ -2,7 +2,6 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
-import { EditorView } from "@codemirror/view";
 import { CapsulePreview } from "./Preview";
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -101,7 +100,7 @@ it("胶囊顶边条单个图标依次循环模式并持久化，不触发展开"
     expect(button().getAttribute("data-display-mode")).toBe(mode);
     expect(button().getAttribute("aria-label")).toContain(label);
     expect(button().textContent).toBe("");
-    expect(EditorView.findFromDOM(node.querySelector(".cm-editor")!)?.state.readOnly).toBe(true);
+    expect(node.querySelector(".cm-editor,[contenteditable=true]")).toBeNull();
   }
   expect(mocks.invoke.mock.calls.some(([command]) => command === "surface_restore_stored")).toBe(
     false,
@@ -115,7 +114,7 @@ it("即使开启原位编辑，胶囊正文也只读且不提供铅笔入口", a
   );
   expect(node.querySelector('button[aria-label="编辑便签"]')).toBeNull();
   await act(async () => node.querySelector<HTMLElement>(".preview-body")!.click());
-  expect(node.querySelector(".markdown-read-layer.is-inactive")).toBeNull();
+  expect(node.querySelector(".cm-editor,[contenteditable=true]")).toBeNull();
   expect(
     mocks.invoke.mock.calls.some(([command]) =>
       ["surface_capsule_begin_edit", "notes_update", "linked_save"].includes(command),

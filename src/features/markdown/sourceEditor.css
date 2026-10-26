@@ -30,6 +30,12 @@
 .source-editor .cm-line {
   padding: 0;
 }
+.source-editor[data-editing="false"] .cm-content {
+  caret-color: transparent;
+}
+.source-editor[data-editing="false"] .cm-cursor {
+  display: none;
+}
 .markdown-surface {
   position: relative;
   min-height: 8rem;

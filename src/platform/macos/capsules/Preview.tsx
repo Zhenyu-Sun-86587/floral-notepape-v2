@@ -1,17 +1,16 @@
 import { DisplayModeCycleButton } from "../../../features/markdown/DisplayModeControl";
 import { defaultDisplayMode } from "../../../features/markdown/displayMode";
 import { useSurfaceDisplayMode } from "../../../features/windows/useSurfaceDisplayMode";
-import { useRef, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { AppConfig } from "../../../features/settings/types";
-import { MarkdownSurface } from "../../../features/markdown/MarkdownSurface";
+import { MarkdownPreview } from "../../../features/markdown/MarkdownPreview";
 import { useImageBaseDir } from "../../../features/images/useImageBaseDir";
 import { colors } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { useCapsulePreview } from "./useCapsulePreview";
 
 export function CapsulePreview() {
-  const scroll = useRef<HTMLDivElement>(null);
   const {
     preview,
     visible,
@@ -120,21 +119,22 @@ export function CapsulePreview() {
           </svg>
         </button>
       </header>
-      <div className="preview-body" key={preview.entry.key} ref={scroll}>
-        <MarkdownSurface
-          content={preview.entry.preview}
-          editing={false}
-          locked={!!preview.entry.locked}
-          markdown={display.mode !== "source"}
-          displayMode={display.mode}
-          activationGesture="none"
-          fontSize={config?.surfaceFontSize ?? 14}
-          scrollContainerRef={scroll}
-          onReadTaskToggle={handleTaskToggle}
-          imageBaseDir={preview.entry.imageBaseDir ?? imageBase ?? undefined}
-          imageRootDir={preview.entry.imageRootDir ?? undefined}
-          allowRemoteImages={config?.allowRemoteImages ?? false}
-        />
+      <div className="preview-body" key={preview.entry.key}>
+        {display.mode === "source" ? (
+          <div className="whitespace-pre-wrap" style={{ fontSize: config?.surfaceFontSize ?? 14 }}>
+            {preview.entry.preview}
+          </div>
+        ) : (
+          <MarkdownPreview
+            content={preview.entry.preview.replace(/\r\n?/g, "\n")}
+            presentation={display.mode}
+            fontSize={config?.surfaceFontSize ?? 14}
+            onTaskToggle={preview.entry.locked ? undefined : handleTaskToggle}
+            imageBaseDir={preview.entry.imageBaseDir ?? imageBase ?? undefined}
+            imageRootDir={preview.entry.imageRootDir ?? undefined}
+            allowRemoteImages={config?.allowRemoteImages ?? false}
+          />
+        )}
       </div>
       <footer>
         <span>悬停预览</span>

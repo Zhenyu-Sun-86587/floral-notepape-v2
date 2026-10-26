@@ -24,7 +24,7 @@ NotePad 的正文值继续作为保存/外部更新适配输入。编辑事务�
 
 ## Focus-driven layering
 
-活动层参与正常流；另一层为绝对定位、零高度、不可命中、`inert` / `aria-hidden`。两层共享外部 scroll context，通过 scrollContainerRef 支持 Tile 与胶囊 preview-body；CodeMirror 始终 mounted。主动点击新位置替换原选区，键盘/工具栏重入保留原选区。拖选阅读文本不触发编辑，任务/链接/按钮优先处理自身操作。工具栏、输入框、对话框与菜单的内部焦点交接不结束编辑；中文组合输入期间不隐藏编辑器。
+活动层参与正常流；另一层为绝对定位、零高度、不可命中、`inert` / `aria-hidden`。两层共享外部 scroll context，通过 scrollContainerRef 接入 Tile；桌面便签的 CodeMirror 始终 mounted。主动点击新位置替换原选区，键盘/工具栏重入保留原选区。拖选阅读文本不触发编辑，任务/链接/按钮优先处理自身操作。工具栏、输入框、对话框与菜单的内部焦点交接不结束编辑；中文组合输入期间不隐藏编辑器。退出编辑时同步关闭 `EditorView.editable` 和 `EditorState.readOnly`、释放正文焦点并隐藏 caret；源码保持 scrollTop，混合/预览在绘制前校正正文锚点。
 
 ## Live presentation and packaged WebViews
 
@@ -34,7 +34,7 @@ CodeMirror 动态样式使用页面现有的 Tauri style nonce。胶囊 HTML 提
 
 ## Capsule preview host
 
-胶囊悬停面板只读，保留源码／混合／预览切换并与单张便签同步。没有正文激活或铅笔入口，需要编辑时展开普通桌面便签。`MarkdownSurface` 始终接收 `editing={false}`、`activationGesture="none"`，源码与混合层沿用只读 EditorState。
+胶囊悬停面板只读，保留源码／混合／预览切换并与单张便签同步。没有正文激活或铅笔入口，需要编辑时展开普通桌面便签。源码直接显示纯文本；混合与预览复用 `MarkdownPreview`，混合用 `remarkHybrid` 保留文字标记并渲染复杂内容。不挂载 `MarkdownSurface` / CodeMirror，不创建编辑状态、撤销历史或隐藏阅读层。
 
 任务勾选保留既有预览路径：读取正式笔记/绑定文件，校验快照与版本后只修改对应任务标记。图片路径边界和远程图片设置继续生效。纯悬停不抢键盘焦点；鼠标选择占用仍保护拖选，退出和更新安装不再等待此只读窗口保存。旧 `useCapsuleEditing`、原生编辑占用/离开确认与对话框权限已移除。
 

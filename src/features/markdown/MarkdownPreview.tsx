@@ -12,6 +12,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import type { Components } from "react-markdown";
 import "katex/dist/katex.min.css";
 import remarkAlerts from "./remarkAlerts";
+import remarkHybrid from "./remarkHybrid";
 import { resolveMarkdownImageSrc } from "./imageSrc";
 import { hideLeadingFrontmatter } from "./frontmatter";
 import remarkTaskOffsets from "./remarkTaskOffsets";
@@ -97,6 +98,7 @@ function extractText(node: React.ReactNode): string {
 
 interface MarkdownPreviewProps {
   content: string;
+  presentation?: "preview" | "hybrid";
   fontSize?: number;
   renderHtml?: boolean;
   sourceMapping?: boolean;
@@ -423,6 +425,7 @@ export const MarkdownPreview = memo(function MarkdownPreview({
   fontSize = 14,
   renderHtml = false,
   sourceMapping = false,
+  presentation = "preview",
   imageBaseDir,
   imageRootDir,
   allowRemoteImages = false,
@@ -439,8 +442,14 @@ export const MarkdownPreview = memo(function MarkdownPreview({
   const previewContent = useMemo(() => hideLeadingFrontmatter(content), [content]);
   const sourceOffset = content.length - previewContent.length;
   const remarkPlugins = useMemo(
-    () => [remarkGfm, remarkMath, remarkAlerts, [remarkTaskOffsets, previewContent, sourceOffset]],
-    [previewContent, sourceOffset],
+    () => [
+      remarkGfm,
+      remarkMath,
+      remarkAlerts,
+      [remarkTaskOffsets, previewContent, sourceOffset],
+      ...(presentation === "hybrid" ? [[remarkHybrid, previewContent]] : []),
+    ],
+    [previewContent, sourceOffset, presentation],
   ) as Parameters<typeof Markdown>[0]["remarkPlugins"];
   const rehypePlugins = useMemo(() => {
     const pipeline = renderHtml ? rehypePluginsWithHtml! : rehypePluginsDefault;
@@ -560,7 +569,13 @@ export const MarkdownPreview = memo(function MarkdownPreview({
     [allowRemoteImages, imageBaseDir, imageRootDir, hasTaskAction, handleTaskToggle, sourceOffset],
   );
   return (
-    <div className="font-body markdown-selectable" style={{ fontSize: `${fontSize}px` }}>
+    <div
+      className={`font-body markdown-selectable ${presentation === "hybrid" ? "markdown-hybrid" : ""}`}
+      style={{ fontSize: `${fontSize}px` }}
+    >
+      {presentation === "hybrid" && sourceOffset > 0 && (
+        <div className="whitespace-pre-wrap">{content.slice(0, sourceOffset)}</div>
+      )}
       {previewContent.trim() ? (
         <Markdown
           remarkPlugins={remarkPlugins}

@@ -13,7 +13,7 @@ import { MarkdownPreview } from "./MarkdownPreview";
 import { SourceEditor, type Props, type SourceEditorHandle } from "./SourceEditor";
 import { renderedAnchorY, sourceOffsetAtPoint } from "./sourcePosition";
 
-type Anchor = { offset: number; y: number };
+type Anchor = { offset: number; y: number; scrollTop?: number };
 interface SurfaceProps extends Props {
   displayMode?: MarkdownDisplayMode;
   scrollContainerRef?: RefObject<HTMLElement | null>;
@@ -87,7 +87,10 @@ export function MarkdownSurface(props: SurfaceProps) {
     if (!view || !activeRef.current) return;
     const offset = view.state.selection.main.head;
     const y = view.coordsAtPos(offset)?.top;
-    if (y != null) anchor.current = { offset, y };
+    const scroll =
+      latest.current.scrollContainerRef?.current ??
+      root.current?.closest<HTMLElement>(".overflow-y-auto");
+    if (y != null) anchor.current = { offset, y, scrollTop: scroll?.scrollTop };
   }, []);
   const deactivate = useCallback(() => {
     if (editor.current?.composing) return;
@@ -132,7 +135,6 @@ export function MarkdownSurface(props: SurfaceProps) {
     const handle = editor.current;
     const view = handle?.view;
     if (!view) return;
-    let frame = 0;
     let cancelled = false;
     const scroll =
       latest.current.scrollContainerRef?.current ??
@@ -162,15 +164,21 @@ export function MarkdownSurface(props: SurfaceProps) {
       } finally {
         pendingScroll.current = null;
       }
-    } else if (!directSource) {
-      frame = requestAnimationFrame(() => {
-        if (anchor.current && read.current)
-          correct(anchor.current, renderedAnchorY(read.current, anchor.current.offset));
-      });
+    } else if (anchor.current) {
+      if (displayMode === "source" && scroll && anchor.current.scrollTop != null)
+        scroll.scrollTop = anchor.current.scrollTop;
+      else
+        correct(
+          anchor.current,
+          directSource
+            ? view.coordsAtPos(anchor.current.offset)?.top
+            : read.current
+              ? renderedAnchorY(read.current, anchor.current.offset)
+              : null,
+        );
     }
     return () => {
       cancelled = true;
-      cancelAnimationFrame(frame);
       pendingScroll.current = null;
     };
   }, [active]);

@@ -105,6 +105,7 @@ describe("常驻 MarkdownSurface", () => {
     expect(ref.current!.view).toBe(view);
     expect(view.state.selection.main.from).toBe(1);
     expect(view.state.selection.main.to).toBe(4);
+    expect(view.contentDOM.getAttribute("contenteditable")).toBe("false");
     expect(host.querySelector(".markdown-read-layer")?.textContent).toContain("hello!");
     expect(host.querySelector(".markdown-edit-layer")?.hasAttribute("inert")).toBe(true);
     host.scrollTop = 100;
@@ -240,6 +241,37 @@ it("混合阅读态只有启用原位编辑且未拖选文字时才响应点击"
   await act(async () => ref.current!.setSelectionRange(0, 0));
   await act(async () => host.querySelector<HTMLElement>(".markdown-edit-layer")!.click());
   expect(activate).toHaveBeenCalledTimes(1);
+  const view = ref.current!.view!;
+  await act(async () =>
+    root.render(
+      <MarkdownSurface
+        content={source}
+        editing
+        markdown
+        displayMode="source"
+        fontSize={14}
+        editorRef={ref}
+      />,
+    ),
+  );
+  await act(async () => view.focus());
+  expect(view.contentDOM.getAttribute("contenteditable")).toBe("true");
+  host.scrollTop = 150;
+  await act(async () =>
+    root.render(
+      <MarkdownSurface
+        content={source}
+        editing={false}
+        markdown
+        displayMode="source"
+        fontSize={14}
+        editorRef={ref}
+      />,
+    ),
+  );
+  expect(view.contentDOM.getAttribute("contenteditable")).toBe("false");
+  expect(document.activeElement).not.toBe(view.contentDOM);
+  expect(host.scrollTop).toBe(150);
 });
 
 it("混合阅读态显示可勾选任务，不显示列表前缀，勾选仅写入对应标记且可撤销", async () => {

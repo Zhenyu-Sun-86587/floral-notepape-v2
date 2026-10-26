@@ -128,6 +128,14 @@ button:disabled {
   user-select: text;
   overflow-wrap: anywhere;
 }
+.markdown-hybrid ul > li:not(.task-list-item),
+.markdown-hybrid ol > li:not(.task-list-item) {
+  list-style: none;
+}
+.markdown-hybrid h1,
+.markdown-hybrid h2 {
+  white-space: pre-wrap;
+}
 .mac-preview footer {
   display: flex;
   justify-content: space-between;

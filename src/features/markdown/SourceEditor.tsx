@@ -228,9 +228,10 @@ export function SourceEditor(props: SourceProps) {
           presentation.current.of(liveExtension),
           EditorView.lineWrapping,
           EditorView.scrollHandler.of(() => latest.current.onScrollIntoView?.() ?? false),
-          access.current.of(
+          access.current.of([
             EditorState.readOnly.of(!latest.current.editing || !!latest.current.locked),
-          ),
+            EditorView.editable.of(latest.current.editing && !latest.current.locked),
+          ]),
           keymap.of([
             { key: "Mod-b", run: wrap("**") },
             { key: "Mod-i", run: wrap("*") },
@@ -282,6 +283,7 @@ export function SourceEditor(props: SourceProps) {
             },
             blur(event) {
               latest.current.onBlurAnchor?.();
+              if (!latest.current.editing) return false;
               const next = event.relatedTarget as HTMLElement | null;
               // 工具栏/对话框的焦点交接属于编辑会话；IME 临时失焦不结束会话。
               if (
@@ -351,7 +353,14 @@ export function SourceEditor(props: SourceProps) {
     const readOnly = !props.editing || !!props.locked;
     if (appliedAccess.current === readOnly) return;
     appliedAccess.current = readOnly;
-    view.dispatch({ effects: access.current.reconfigure(EditorState.readOnly.of(readOnly)) });
+    const hadFocus = view.hasFocus;
+    view.dispatch({
+      effects: access.current.reconfigure([
+        EditorState.readOnly.of(readOnly),
+        EditorView.editable.of(!readOnly),
+      ]),
+    });
+    if (readOnly && hadFocus) view.contentDOM.blur();
   }, [props.editing, props.locked, compositionRevision]);
   useEffect(() => {
     if (
@@ -374,6 +383,7 @@ export function SourceEditor(props: SourceProps) {
       ref={host}
       className="source-editor"
       data-presentation={props.presentation ?? "source"}
+      data-editing={props.editing && !props.locked}
       data-tile-selectable="true"
       style={{ fontSize: props.fontSize }}
       onPasteCapture={props.onPaste}
