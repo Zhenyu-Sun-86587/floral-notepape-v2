@@ -38,14 +38,12 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
 });
-it("旧配置按原来的渲染开关迁移；显式默认值优先", () => {
+it("默认配置兼容、单张覆盖和保存失败保留原模式", async () => {
   expect(defaultDisplayMode({ tileRenderMarkdown: false })).toBe("source");
   expect(defaultDisplayMode({ tileRenderMarkdown: true })).toBe("preview");
   expect(defaultDisplayMode({ tileRenderMarkdown: false, surfaceDisplayMode: "hybrid" })).toBe(
     "hybrid",
   );
-});
-it("无覆盖跟随默认；单张覆盖持久化并同步胶囊，重置恢复跟随", async () => {
   await act(async () => render());
   expect(current.mode).toBe("preview");
   await act(async () => render("note:a", "hybrid"));
@@ -57,6 +55,10 @@ it("无覆盖跟随默认；单张覆盖持久化并同步胶囊，重置恢复�
   });
   await act(async () => render("note:a", "preview"));
   expect(current.mode).toBe("source");
+  mocks.invoke.mockRejectedValueOnce(new Error("disk full"));
+  await act(async () => current.change("hybrid"));
+  expect(current.mode).toBe("source");
+  expect(current.error).toContain("保存失败");
   await act(async () => mocks.listener?.({ payload: { key: "note:a", displayMode: "hybrid" } }));
   expect(current.mode).toBe("hybrid");
   await act(async () => current.change(null));
@@ -79,13 +81,6 @@ it("过期读取不覆盖新事件，切换胶囊不沿用上一张的设置", a
   expect(current.mode).toBe("preview");
   await act(async () => mocks.listener?.({ payload: { key: "note:a", displayMode: "source" } }));
   expect(current.mode).toBe("preview");
-});
-it("保存失败保留旧显示并提示错误", async () => {
-  await act(async () => render());
-  mocks.invoke.mockRejectedValueOnce(new Error("disk full"));
-  await act(async () => current.change("hybrid"));
-  expect(current.mode).toBe("preview");
-  expect(current.error).toContain("保存失败");
 });
 
 it("保存回执迟到时不能覆盖已收到的更新模式事件", async () => {

@@ -93,25 +93,34 @@ describe("AST 源码位置桥接", () => {
   });
 });
 
-it.each([
-  ["> 引用文字\n> 第二行", "引用文字", 2],
-  ["> 引用文字\n> 第二行", "第二行", 1],
-  ["> [!NOTE]\n> 提示文字", "提示文字", 2],
-  ["实体 &amp; 后文", "后文", 1],
-  ["转义 \\*星号\\* 后文", "后文", 1],
-  ["行内 `const value = 1`", "value", 2],
-  ["```js\nconst value = 1;\nconsole.log(value);\n```", "console", 2],
-  ["    indented code", "indented", 2],
-  ["| 姓名 |\n| --- |\n| 张三 |", "张三", 1],
-] as const)("%s 点击正文不回退到段首", (source, token, offset) => {
-  const root = render(source);
+function expectTextOffset(root: HTMLElement, source: string, token: string, offset: number) {
   const walker = document.createTreeWalker(root, 4);
   let node: Node | null;
   while ((node = walker.nextNode())) {
     const index = node.textContent?.indexOf(token) ?? -1;
     if (index < 0) continue;
-    expect(domSourceOffset(root, node, index + offset)).toBe(source.indexOf(token) + offset);
+    expect(domSourceOffset(root, node, index + offset), token).toBe(source.indexOf(token) + offset);
     return;
   }
   throw new Error(`未渲染测试文字 ${token}`);
+}
+
+it("引用续行、提示块、实体与转义的可见文字映射回原文", () => {
+  const source =
+    "> 引用文字\n> 第二行\n\n> [!NOTE]\n> 提示文字\n\n实体 &amp; 后文 😀，转义 \\*星号\\* 尾文";
+  const root = render(source);
+  expectTextOffset(root, source, "第二行", 1);
+  expectTextOffset(root, source, "提示文字", 2);
+  expectTextOffset(root, source, "后文 😀", 5);
+  expectTextOffset(root, source, "尾文", 1);
+});
+
+it("代码不解码实体，表格单元格保持精确源码落点", () => {
+  const source =
+    "行内 `a &amp; literal`\n\n```js\nconst value = 1;\nconsole.log(value);\n```\n\n    indented code\n\n| 姓名 |\n| --- |\n| 张三 |";
+  const root = render(source);
+  expectTextOffset(root, source, "&amp; literal", 6);
+  expectTextOffset(root, source, "console", 2);
+  expectTextOffset(root, source, "indented", 2);
+  expectTextOffset(root, source, "张三", 1);
 });

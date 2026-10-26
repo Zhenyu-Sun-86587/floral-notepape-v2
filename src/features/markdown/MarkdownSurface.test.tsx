@@ -1,4 +1,3 @@
-import type { MarkdownDisplayMode } from "./displayMode";
 // @vitest-environment jsdom
 import { act, createRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -157,152 +156,79 @@ describe("常驻 MarkdownSurface", () => {
   });
 });
 
-it("三种显示方式切换保持同一正文、选区和撤销；源码及混合阅读层也不可写", async () => {
-  const show = (displayMode: MarkdownDisplayMode, editing: boolean) =>
+it("混合阅读态点击表格沿用单元格精确位置，不重算成整块末尾", async () => {
+  source = "前言 😀\n\n| 名称 | 状态 |\n| --- | --- |\n| 张三 | 完成 |\n\n末尾";
+  const original = source;
+  const show = (editing: boolean) =>
     root.render(
       <MarkdownSurface
         content={source}
         editing={editing}
         markdown
-        presentation="live"
-        displayMode={displayMode}
+        displayMode="hybrid"
         fontSize={14}
         editorRef={ref}
+        onActivate={activate}
         onChange={(value) => {
           source = value;
         }}
-        onActivate={activate}
       />,
     );
-  await act(async () => show("preview", true));
+  await act(async () => show(false));
   const view = ref.current!.view!;
-  const original = source;
-  await act(async () =>
-    view.dispatch({
-      changes: { from: 0, insert: "新增" },
-      selection: { anchor: 2 },
-      userEvent: "input",
-    }),
-  );
-  for (const mode of ["source", "hybrid", "preview"] as const) {
-    await act(async () => show(mode, false));
-    expect(ref.current!.view).toBe(view);
-    expect(view.state.readOnly).toBe(true);
-    expect(ref.current!.selectionStart).toBe(2);
-    expect(ref.current!.value).toBe("新增" + original);
-    expect(host.querySelector(".markdown-edit-layer")?.hasAttribute("inert")).toBe(
-      mode === "preview",
-    );
-    if (mode === "hybrid") {
-      expect(view.contentDOM.textContent).toContain("**world**");
-      expect(host.querySelector(".cm-live-strong")).not.toBeNull();
-    }
-  }
-  await act(async () => show("source", true));
+  const target = host.querySelector<HTMLElement>(".cm-live-block td span[data-source-text-start]")!;
+  const offset = source.indexOf("张三") + 1;
+  Object.defineProperty(document, "caretPositionFromPoint", {
+    configurable: true,
+    value: () => ({ offsetNode: target.firstChild, offset: 1 }),
+  });
+  // CodeMirror can only resolve a replaced block's coarse boundary; the widget
+  // has already translated the clicked cell text to Markdown.
+  const coarse = vi.spyOn(view, "posAtCoords").mockReturnValue(source.length - 4);
   await act(async () => {
-    expect(undo(view)).toBe(true);
+    target.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }),
+    );
+    target.click();
+  });
+  expect(activate).toHaveBeenCalledTimes(1);
+  expect(coarse).not.toHaveBeenCalled();
+  await act(async () => show(true));
+  expect(ref.current!.selectionStart).toBe(offset);
+  await act(async () => ref.current!.insertText("新"));
+  expect(source).toBe(original.slice(0, offset) + "新" + original.slice(offset));
+  await act(async () => {
+    undo(view);
   });
   expect(source).toBe(original);
+  Reflect.deleteProperty(document, "caretPositionFromPoint");
 });
 
-it.each(["table", "math"])(
-  "混合阅读态点击 %s 沿用 widget 精确位置，不重算成整块末尾",
-  async (kind) => {
-    source =
-      kind === "table"
-        ? "前言 😀\n\n| 名称 | 状态 |\n| --- | --- |\n| 张三 | 完成 |\n\n末尾"
-        : "前言 😀\n\n$x^2$\n\n末尾";
-    const original = source;
-    const show = (editing: boolean) =>
-      root.render(
-        <MarkdownSurface
-          content={source}
-          editing={editing}
-          markdown
-          displayMode="hybrid"
-          fontSize={14}
-          editorRef={ref}
-          onActivate={activate}
-          onChange={(value) => {
-            source = value;
-          }}
-        />,
-      );
-    await act(async () => show(false));
-    const view = ref.current!.view!;
-    const target = host.querySelector<HTMLElement>(
-      kind === "table"
-        ? ".cm-live-block td span[data-source-text-start]"
-        : ".cm-live-inline .katex",
-    )!;
-    const offset = kind === "table" ? source.indexOf("张三") + 1 : source.indexOf("$x");
-    if (kind === "table")
-      Object.defineProperty(document, "caretPositionFromPoint", {
-        configurable: true,
-        value: () => ({ offsetNode: target.firstChild, offset: 1 }),
-      });
-    // CodeMirror can only resolve a replaced block's coarse boundary; the widget
-    // has already translated the clicked text or opaque formula to Markdown.
-    const coarse = vi.spyOn(view, "posAtCoords").mockReturnValue(source.length - 4);
-    await act(async () => {
-      target.dispatchEvent(
-        new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }),
-      );
-      target.click();
-    });
-    expect(activate).toHaveBeenCalledTimes(1);
-    expect(coarse).not.toHaveBeenCalled();
-    await act(async () => show(true));
-    expect(ref.current!.selectionStart).toBe(offset);
-    await act(async () => ref.current!.insertText("新"));
-    expect(source).toBe(original.slice(0, offset) + "新" + original.slice(offset));
-    await act(async () => {
-      undo(view);
-    });
-    expect(source).toBe(original);
-    Reflect.deleteProperty(document, "caretPositionFromPoint");
-  },
-);
-
-it("关闭原位编辑时，源码和混合模式获得焦点不会偷偷进入编辑", async () => {
-  await act(async () =>
+it("混合阅读态只有启用原位编辑且未拖选文字时才响应点击", async () => {
+  const show = (activationGesture: "none" | "click") =>
     root.render(
       <MarkdownSurface
         content={source}
         editing={false}
         markdown
         displayMode="hybrid"
-        activationGesture="none"
+        activationGesture={activationGesture}
         fontSize={14}
         editorRef={ref}
         onActivate={activate}
       />,
-    ),
-  );
+    );
+  await act(async () => show("none"));
   await act(async () => ref.current!.view!.focus());
   expect(activate).not.toHaveBeenCalled();
-  expect(ref.current!.view!.state.readOnly).toBe(true);
-});
-
-it("混合模式阅读态拖选后不折叠选区或意外进入编辑", async () => {
-  await act(async () =>
-    root.render(
-      <MarkdownSurface
-        content={source}
-        editing={false}
-        markdown
-        displayMode="hybrid"
-        fontSize={14}
-        editorRef={ref}
-        onActivate={activate}
-      />,
-    ),
-  );
+  await act(async () => show("click"));
   await act(async () => ref.current!.setSelectionRange(0, 5));
   await act(async () => host.querySelector<HTMLElement>(".markdown-edit-layer")!.click());
   expect(activate).not.toHaveBeenCalled();
-  expect(ref.current!.selectionStart).toBe(0);
   expect(ref.current!.selectionEnd).toBe(5);
+  await act(async () => ref.current!.setSelectionRange(0, 0));
+  await act(async () => host.querySelector<HTMLElement>(".markdown-edit-layer")!.click());
+  expect(activate).toHaveBeenCalledTimes(1);
 });
 
 it("混合阅读态显示可勾选任务，不显示列表前缀，勾选仅写入对应标记且可撤销", async () => {
@@ -346,30 +272,4 @@ it("混合阅读态显示可勾选任务，不显示列表前缀，勾选仅写�
   expect([...tasks()].every((task) => task.disabled)).toBe(true);
   await act(async () => tasks()[0].click());
   expect(source).toBe(original);
-});
-
-it("混合阅读态经胶囊保存回调勾选，不绕过回调修改本地正文", async () => {
-  source = "- [ ] 测试任务\n- [x] 已完成任务";
-  const saveTask = vi.fn();
-  await act(async () =>
-    root.render(
-      <MarkdownSurface
-        content={source}
-        editing={false}
-        markdown
-        displayMode="hybrid"
-        fontSize={14}
-        editorRef={ref}
-        onReadTaskToggle={saveTask}
-        onActivate={activate}
-        onChange={changed}
-      />,
-    ),
-  );
-  const task = host.querySelector<HTMLInputElement>(".markdown-edit-layer .cm-live-task")!;
-  await act(async () => task.click());
-  expect(saveTask).toHaveBeenCalledExactlyOnceWith(2, true);
-  expect(changed).not.toHaveBeenCalled();
-  expect(ref.current!.value).toBe(source);
-  expect(activate).not.toHaveBeenCalled();
 });

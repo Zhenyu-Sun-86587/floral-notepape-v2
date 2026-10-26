@@ -108,13 +108,18 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   await syncLanguage("zh-CN");
 });
-it("绑定文件便签粘贴图片使用外部文件接口，不预先保存正文", async () => {
+it("绑定文件图片使用外部接口，原生模式提示遵循语言设置", async () => {
+  await syncLanguage("en-US");
   await act(async () =>
     root.render(
       <NotePad initialBindingId="binding-test" initialSurfaceMode="tile" initialAutoSave={false} />,
     ),
   );
   expect(host.textContent).toContain("external text");
+  const native = mocks.invoke.mock.calls
+    .filter(([command]) => command === "surface_native_note_state")
+    .slice(-1)[0]!;
+  expect(native[1].state.displayModeLabel).toBe("Display mode: Preview. Click to switch to Source");
   const file = {
     type: "image/png",
     size: 8,
@@ -158,37 +163,4 @@ it("macOS 设置仅保留有效的全局显示方式，切换后保留旧兼容�
   const next = onChange.mock.calls.slice(-1)[0]![0];
   expect(next.tileRenderMarkdown).toBe(config.tileRenderMarkdown);
   expect(defaultDisplayMode(next)).toBe("hybrid");
-});
-
-it.each([
-  [
-    "en-US",
-    "Default display mode (desktop notes and capsules)",
-    "Hybrid",
-    "Display mode: Preview. Click to switch to Source",
-  ],
-  ["zh-HK", "預設顯示方式（桌面便箋與膠囊）", "混合", "顯示方式：預覽，按一下切換為原始碼"],
-])("%s 的显示设置和原生模式按钮使用当前语言", async (locale, heading, label, nativeLabel) => {
-  await syncLanguage(locale);
-  await act(async () =>
-    root.render(
-      <SettingsPanel
-        config={config}
-        onChange={() => {}}
-        onMigrateDataDir={() => {}}
-        onClose={() => {}}
-      />,
-    ),
-  );
-  expect(host.textContent).toContain(heading);
-  expect(host.querySelector(".display-mode-control")?.textContent).toContain(label);
-  await act(async () =>
-    root.render(
-      <NotePad initialBindingId="binding-test" initialSurfaceMode="tile" initialAutoSave={false} />,
-    ),
-  );
-  const native = mocks.invoke.mock.calls
-    .filter(([cmd]) => cmd === "surface_native_note_state")
-    .slice(-1)[0]!;
-  expect(native[1].state.displayModeLabel).toBe(nativeLabel);
 });

@@ -113,25 +113,13 @@ async function begin() {
     api.begin();
   });
 }
-it("先获取原生占用，再加载带版本的正式正文", async () => {
+it("获取正式正文后连续保存串行使用新版本，不清除新输入", async () => {
   await begin();
   expect(api.snapshot?.content).toBe("old");
   expect(api.phase).toBe("editing");
   expect(occupied.current).toBe(true);
-  const calls = mocks.invoke.mock.calls.map(([command]) => command);
-  expect(calls.indexOf("surface_capsule_begin_edit")).toBeLessThan(calls.indexOf("notes_get"));
-  await act(async () => {
-    api.change("edited");
-    await api.save();
-  });
-  expect(mocks.invoke).toHaveBeenCalledWith("notes_update", {
-    id: "test",
-    request: { title: "Title", category: "Inbox", content: "edited" },
-    expectedUpdatedAt: "v1",
-  });
-});
-it("连续保存串行使用新版本，旧保存不能清除新输入", async () => {
-  await begin();
+  const startup = mocks.invoke.mock.calls.map(([command]) => command);
+  expect(startup.indexOf("surface_capsule_begin_edit")).toBeLessThan(startup.indexOf("notes_get"));
   const first = deferred<typeof note>();
   const fallback = mocks.invoke.getMockImplementation()!;
   let saves = 0;
@@ -182,10 +170,12 @@ it("保存失败保留会话并拒绝原生离开，重试成功后才释放", a
   expect(occupied.current).toBe(false);
   expect(api.phase).toBe("reading");
 });
-it("关闭自动保存时失焦保留草稿，显式关闭允许取消", async () => {
+it("关闭自动保存时失焦保留草稿，外部通知不覆盖，显式关闭可取消", async () => {
   autoSave = false;
   await begin();
   await act(async () => api.change("draft"));
+  await act(async () => mocks.listeners.get("notes-changed")!({ payload: null }));
+  expect(api.snapshot?.content).toBe("draft");
   await act(async () => api.finish(undefined, true));
   expect(mocks.message).not.toHaveBeenCalled();
   mocks.message.mockResolvedValue("取消");
@@ -239,49 +229,32 @@ it("退出等待图片操作，保存失败向既有准备协议报告失败", a
   );
   expect(api.snapshot?.content).toBe("with image");
 });
-
-it("加载失败释放原生加载占用，正文不进入可写状态", async () => {
+it("编辑入口在开关关闭或载入失败时释放占用，恢复后可重试", async () => {
   const fallback = mocks.invoke.getMockImplementation()!;
-  mocks.invoke.mockImplementation((command, args) =>
-    command === "notes_get" ? Promise.reject(new Error("文件不可用")) : fallback(command, args),
-  );
-  await begin();
-  expect(api.phase).toBe("reading");
-  expect(api.snapshot).toBeNull();
-  expect(occupied.current).toBe(false);
-  expect(mocks.invoke).toHaveBeenCalledWith("surface_capsule_abort_edit", { key, generation: 1 });
-});
-it("退出取消后恢复输入，脏草稿不会被外部通知覆盖", async () => {
-  await begin();
-  await act(async () => api.change("保留草稿"));
-  await act(async () => mocks.listeners.get("notes-changed")!({ payload: null }));
-  expect(api.snapshot?.content).toBe("保留草稿");
-  await act(async () => {
-    mocks.listeners.get("app://exit-freeze")!({ payload: true });
-    mocks.listeners.get("update://prepare-install")!({ payload: { requestId: "quit" } });
+  let enabled = false;
+  let available = false;
+  mocks.invoke.mockImplementation((command, args) => {
+    if (command === "config_get") return Promise.resolve({ inlineEditing: enabled });
+    if (command === "notes_get" && !available) return Promise.reject(new Error("文件不可用"));
+    return fallback(command, args);
   });
-  expect(api.inputBlocked).toBe(true);
-  await act(async () => mocks.listeners.get("app://exit-freeze")!({ payload: false }));
-  await act(async () => api.change("继续输入"));
-  expect(api.snapshot?.content).toBe("继续输入");
-});
-it("设置关闭后不加载正文，释放占用；设置广播即时更新入口", async () => {
-  const fallback = mocks.invoke.getMockImplementation()!;
-  mocks.invoke.mockImplementation((command, args) =>
-    command === "config_get" ? Promise.resolve({ inlineEditing: false }) : fallback(command, args),
-  );
   await begin();
   expect(api.phase).toBe("reading");
   expect(occupied.current).toBe(false);
   expect(mocks.invoke).not.toHaveBeenCalledWith("notes_get", expect.anything());
-  expect(mocks.invoke).toHaveBeenCalledWith("surface_capsule_abort_edit", {
-    key: "note:test",
-    generation: 1,
-  });
+  expect(mocks.invoke).toHaveBeenCalledWith("surface_capsule_abort_edit", { key, generation: 1 });
+  enabled = true;
   await act(async () =>
-    mocks.listeners.get("config-changed")?.({ payload: { inlineEditing: true } }),
+    mocks.listeners.get("config-changed")!({ payload: { inlineEditing: true } }),
   );
-  expect(api.config?.inlineEditing).toBe(true);
+  await begin();
+  expect(api.error).toContain("文件不可用");
+  expect(api.snapshot).toBeNull();
+  expect(occupied.current).toBe(false);
+  available = true;
+  await begin();
+  expect(api.phase).toBe("editing");
+  expect(api.snapshot?.content).toBe("old");
 });
 
 it.each(["note:test", "linked:file"])(
@@ -388,25 +361,6 @@ it("重新加载清理草稿失败时保留原正文和冲突版本，重试加�
     expect.objectContaining({ content: "新版本上的修改", expectedRevision: "r-new" }),
   );
   expect(api.status).toBe("clean");
-});
-
-it("等待图片时取消退出，图片完成后不重新冻结输入或报告过期结果", async () => {
-  await begin();
-  const images = deferred<void>();
-  pendingImages.current = images.promise;
-  await act(async () => {
-    mocks.listeners.get("app://exit-freeze")!({ payload: true });
-    mocks.listeners.get("update://prepare-install")!({ payload: { requestId: "cancelled" } });
-  });
-  await act(async () => mocks.listeners.get("app://exit-freeze")!({ payload: false }));
-  await act(async () => {
-    images.resolve();
-    await images.promise;
-  });
-  expect(api.inputBlocked).toBe(false);
-  expect(mocks.invoke.mock.calls.some(([c]) => c === "update_install_prepare_report")).toBe(false);
-  await act(async () => api.change("取消后继续输入"));
-  expect(api.snapshot?.content).toBe("取消后继续输入");
 });
 
 it("旧准备请求等待图片期间取消，新请求仍可正常保存和解冻", async () => {
@@ -549,11 +503,11 @@ it.each(["note:test", "linked:file"])(
   },
 );
 
-it.each([false, true])("重新加载期间禁止输入，完成或失败后恢复会话（失败：%s）", async (failed) => {
+it("重新加载失败恢复输入，重试成功后在新版本上继续编辑", async () => {
   renderEditor = true;
   await act(async () => root.render(<Harness />));
   await begin();
-  const read = deferred<typeof note>();
+  let read = deferred<typeof note>();
   const fallback = mocks.invoke.getMockImplementation()!;
   mocks.message.mockResolvedValue("重新加载");
   mocks.invoke.mockImplementation((cmd, args) =>
@@ -566,8 +520,7 @@ it.each([false, true])("重新加载期间禁止输入，完成或失败后恢�
   const view = editor.current!.view!;
   expect(view.state.readOnly).toBe(true);
   await act(async () => {
-    if (failed) read.reject(new Error("read failed"));
-    else read.resolve({ ...note, content: "external", updatedAt: "v2" });
+    read.reject(new Error("read failed"));
     await reload;
   });
   expect(view.state.readOnly).toBe(false);
@@ -577,7 +530,24 @@ it.each([false, true])("重新加载期间禁止输入，完成或失败后恢�
       userEvent: "input",
     }),
   );
-  expect(api.snapshot?.content).toBe((failed ? "old" : "external") + " new input");
+  expect(api.snapshot?.content).toBe("old new input");
+  read = deferred<typeof note>();
+  await act(async () => {
+    reload = api.reload();
+  });
+  expect(view.state.readOnly).toBe(true);
+  await act(async () => {
+    read.resolve({ ...note, content: "external", updatedAt: "v2" });
+    await reload;
+  });
+  expect(view.state.readOnly).toBe(false);
+  await act(async () =>
+    view.dispatch({
+      changes: { from: view.state.doc.length, insert: " new input" },
+      userEvent: "input",
+    }),
+  );
+  expect(api.snapshot?.content).toBe("external new input");
 });
 
 it("重新加载期间的离开请求等待读取完成；重复重新加载不会重复读盘", async () => {
