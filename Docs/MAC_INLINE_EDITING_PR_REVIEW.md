@@ -2,6 +2,14 @@
 
 更新：2026-10-26。基于 2.0.5，分支 `codex/macos-inline-editing`。这是提交前的审查材料，尚未创建或发布 PR。完整实现过程见 [实现记录](MAC_INLINE_EDITING.md)。
 
+## 最新安装（2026-10-26 21:55）
+
+已从提交 `a92c6e2` 重新构建并替换 `/Applications/folio(test).app`，包含 `706749a` 的原位编辑修复。使用下文的 `--debug --features test-app --bundles app --config src-tauri/tauri.test.conf.json`，并沿用临时 Swift VFS overlay；本机构建成功，无需 GitHub CI。版本仍为 2.0.5，独立 identifier 为 `dev.hermes.surface.inline-test`。
+
+构建产物与安装包均完成本机 ad-hoc 签名及 `codesign --verify --deep --strict` 校验。`Contents/Resources/FolioTestBuild.json` 记录来源提交与构建时间；签名后的可执行文件 SHA-256 为 `5d5a9846b77cc4bff69c3f331127eabcdb5d4058484284ee128da6a4ed55b6cd`，安装副本与构建产物一致。
+
+旧应用及全部 44 个测试数据文件备份在 `/private/tmp/folio-test-update-20261026-lh15wphg/`。替换前后数据逐文件哈希一致；启动后笔记、图片和绑定文件内容仍一致，仅窗口会话文件由应用正常更新。已确认运行进程来自 `/Applications/folio(test).app/Contents/MacOS/folio`，主窗口显示原有 25 篇笔记和 1 个外部文件。本次确认启动和数据保留，未追加胶囊悬停或真实输入法的完整验收。
+
 ## 当前测试精简与验证（2026-10-26）
 
 按实际收集的前端用例统计，2.0.5 基线 `6a8c447` 为 **39 文件 / 161 项**；修复提交 `706749a` 为 **47 文件 / 287 项**。本轮仅整理测试、样例、开发验收页及文档，没有修改产品实现。
@@ -24,7 +32,7 @@
 | TypeScript、oxlint、oxfmt、diff 空白检查  | 通过                                                        |
 | macOS 前端构建                            | 通过                                                        |
 | Windows 平台别名下的综合用例与 macOS 宿主 | **2 文件 / 3 项通过**；显式装载生产 macOS shell hook        |
-| Rust、原生窗口及安装包                    | 本轮未修改或重新执行；修复阶段的结果与人工验收边界见下文    |
+| Rust、原生窗口及安装包                    | 测试精简阶段未重新执行；随后已更新安装包，见本文开头        |
 
 ## 修复阶段验证（2026-10-26，精简前）
 
