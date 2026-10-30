@@ -10,7 +10,14 @@ import {
 } from "react";
 import { Compartment, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  indentWithTab,
+  undo,
+  redo,
+} from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import {
   defaultHighlightStyle,
@@ -24,6 +31,7 @@ import { codeLanguages } from "./codeLanguages";
 import { toggleTaskMarker } from "./taskMarker";
 import "./sourceEditor.css";
 import { livePresentation } from "./livePresentation";
+import { NATIVE_HISTORY_EVENT } from "./nativeEditCommands";
 
 // 保留标准语法分类和字重，但用便签语义色替换仅适合浅色主题的固定颜色。
 const noPresentation: never[] = [];
@@ -319,6 +327,38 @@ export function SourceEditor(props: SourceProps) {
       }),
     });
     viewRef.current = view;
+    const nativeHistory = (event: Event) => {
+      const action = (event as CustomEvent).detail;
+      if (
+        !["undo", "redo"].includes(action) ||
+        latest.current.locked ||
+        composing.current ||
+        view.composing
+      )
+        return;
+      const readOnly = view.state.readOnly;
+      // Reading-mode tasks belong to this history too. Keep the DOM read-only
+      // while allowing only this explicit history transaction, then restore access.
+      if (readOnly)
+        view.dispatch({
+          effects: access.current.reconfigure([
+            EditorState.readOnly.of(false),
+            EditorView.editable.of(false),
+          ]),
+        });
+      try {
+        (action === "undo" ? undo : redo)(view);
+      } finally {
+        if (readOnly)
+          view.dispatch({
+            effects: access.current.reconfigure([
+              EditorState.readOnly.of(true),
+              EditorView.editable.of(false),
+            ]),
+          });
+      }
+    };
+    view.contentDOM.addEventListener(NATIVE_HISTORY_EVENT, nativeHistory);
     syncExternal.current = () => {
       if (composing.current || view.composing) return;
       // 本地输入回传的正文已经是 EditorState 的快照，不再拆分/拼接全文。
@@ -338,6 +378,7 @@ export function SourceEditor(props: SourceProps) {
     latest.current.onDocumentChange?.(documentValue.current);
     return () => {
       disposed = true;
+      view.contentDOM.removeEventListener(NATIVE_HISTORY_EVENT, nativeHistory);
       cancelAnimationFrame(frame);
       syncExternal.current = () => {};
       view.destroy();

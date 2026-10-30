@@ -180,6 +180,12 @@
     "moveToCategory": "移至分類…"
   },
   "notepad": {
+    "fileConflict": {
+      "message": "原始檔案已變更，目前草稿尚未寫入原始檔案。",
+      "reload": "載入磁碟",
+      "overwrite": "覆寫原始檔案",
+      "keep": "保留草稿並關閉"
+    },
     "button": {
       "clear": "清除"
     },

@@ -17,11 +17,32 @@ pub struct NoteState {
     editing: bool,
     locked: bool,
     #[serde(default)]
+    colors: Option<NoteColors>,
+    #[serde(default)]
     display_mode: Option<crate::surface_sessions::MarkdownDisplayMode>,
     #[serde(default)]
     display_mode_pending: bool,
     #[serde(default)]
     display_mode_label: Option<String>,
+}
+#[derive(Clone, Deserialize)]
+struct NoteColors {
+    background: String,
+    foreground: String,
+    muted: String,
+}
+fn color(value: &str) -> Option<Retained<NSColor>> {
+    let digits = value.strip_prefix('#')?;
+    if digits.len() != 6 {
+        return None;
+    }
+    let rgb = u32::from_str_radix(digits, 16).ok()?;
+    Some(NSColor::colorWithSRGBRed_green_blue_alpha(
+        ((rgb >> 16) & 255) as f64 / 255.0,
+        ((rgb >> 8) & 255) as f64 / 255.0,
+        (rgb & 255) as f64 / 255.0,
+        1.0,
+    ))
 }
 fn display_control(
     mode: crate::surface_sessions::MarkdownDisplayMode,
@@ -105,7 +126,13 @@ pub fn layout(window: &WebviewWindow, root: &NSView) {
             if enabled {
                 layer.setBackgroundColor(None);
             } else {
-                layer.setBackgroundColor(Some(&NSColor::windowBackgroundColor().CGColor()));
+                let background = entry
+                    .state
+                    .colors
+                    .as_ref()
+                    .and_then(|colors| color(&colors.background))
+                    .unwrap_or_else(NSColor::windowBackgroundColor);
+                layer.setBackgroundColor(Some(&background.CGColor()));
             }
         }
         // Wry also changes the WebView frame during live resize. Native
@@ -187,9 +214,11 @@ pub fn update(
     let (tx, rx) = std::sync::mpsc::sync_channel(1);
     window.app_handle().run_on_main_thread(move || {
         let mtm=MainThreadMarker::new().unwrap();
+        let foreground = state.colors.as_ref().and_then(|colors| color(&colors.foreground)).unwrap_or_else(NSColor::labelColor);
+        let muted = state.colors.as_ref().and_then(|colors| color(&colors.muted)).unwrap_or_else(NSColor::secondaryLabelColor);
         let header:Retained<Header>=unsafe {msg_send![Header::alloc(mtm),initWithFrame:NSRect::new(NSPoint::new(0.0,0.0),NSSize::new(320.0,HEIGHT))]};
         let caption:Retained<Caption>=unsafe {msg_send![Caption::alloc(mtm),initWithFrame:NSRect::new(NSPoint::new(16.0,13.0),NSSize::new(175.0,24.0))]};
-        caption.setStringValue(&NSString::from_str(&state.title));caption.setEditable(false);caption.setSelectable(false);caption.setBezeled(false);caption.setDrawsBackground(false);caption.setTextColor(Some(&NSColor::labelColor()));caption.setFont(Some(&NSFont::systemFontOfSize(14.0)));
+        caption.setStringValue(&NSString::from_str(&state.title));caption.setEditable(false);caption.setSelectable(false);caption.setBezeled(false);caption.setDrawsBackground(false);caption.setTextColor(Some(&foreground));caption.setFont(Some(&NSFont::systemFontOfSize(14.0)));
         caption.setAutoresizingMask(objc2_app_kit::NSAutoresizingMaskOptions::ViewWidthSizable);
         header.addSubview(&caption);
         let mut controls=if state.tile {vec![("edit",if state.editing {"checkmark"}else{"pencil"},if state.editing {"保存并切换阅读模式"}else{"切换写作模式"}),("lock","lock","锁定便签并允许鼠标穿透"),("store","rectangle.compress.vertical","收纳到屏幕边缘"),("close","xmark","取消钉屏")]}
@@ -203,7 +232,7 @@ pub fn update(
         for (i,(name,symbol,label)) in controls.iter().enumerate() {
             let b=NoteButton::alloc(mtm).set_ivars(Action {app:w.app_handle().clone(),label:w.label().into(),name:(*name).into()});
             let b:Retained<NoteButton>=unsafe {msg_send![super(b),initWithFrame:NSRect::new(NSPoint::new(320.0-32.0*(controls.len()-i) as f64,12.0),NSSize::new(24.0,24.0))]};
-            b.setBordered(false);b.setFocusRingType(NSFocusRingType::None);b.setImageScaling(NSImageScaling::ScaleProportionallyDown);b.setContentTintColor(Some(&NSColor::secondaryLabelColor()));
+            b.setBordered(false);b.setFocusRingType(NSFocusRingType::None);b.setImageScaling(NSImageScaling::ScaleProportionallyDown);b.setContentTintColor(Some(&muted));
             if let Some(image)=NSImage::imageWithSystemSymbolName_accessibilityDescription(&NSString::from_str(symbol),Some(&NSString::from_str(label))){b.setImage(Some(&image));}
             b.setAccessibilityLabel(Some(&NSString::from_str(label)));b.setToolTip(Some(&NSString::from_str(label)));
             b.setEnabled(if *name == "display" { !state.display_mode_pending } else { !state.locked });b.setAutoresizingMask(objc2_app_kit::NSAutoresizingMaskOptions::ViewMinXMargin);

@@ -74,7 +74,7 @@ import {
   tileSurfaceModeUnpinNoteId,
 } from "../features/windows/tileWindowEvents";
 import { NotepadOpenPanel } from "./NotepadOpenPanel";
-import { Tile } from "./Tile";
+import { Tile, tileTextColors } from "./Tile";
 import type { SourceEditorHandle } from "../features/markdown/SourceEditor";
 import { markdownImageDirectory } from "../features/markdown/imageSrc";
 import { continueMarkdownList } from "../features/markdown/listEnter";
@@ -189,6 +189,8 @@ export function NotePad({
   const linkedRevisionRef = useRef("");
   const linkedClosingRef = useRef(false);
   const [linkedConflict, setLinkedConflict] = useState<LinkedContent | null>(null);
+  const [resolvingLinkedConflict, setResolvingLinkedConflict] = useState(false);
+  const linkedResolutionRef = useRef<Promise<unknown> | null>(null);
   const [linkedImageScope, setLinkedImageScope] = useState<{
     baseDir: string;
     rootDir: string;
@@ -370,14 +372,14 @@ export function NotePad({
   }, [applyNote, initialBindingId, initialNoteId, refreshNotes]);
 
   useEffect(() => {
-    if (!initialBindingId || status !== "dirty") return undefined;
+    if (!initialBindingId || status !== "dirty" || resolvingLinkedConflict) return undefined;
     const timer = window.setTimeout(() => {
       void writeLinkedDraft(initialBindingId, content, linkedRevisionRef.current).catch((error) =>
         showToast(getErrorMessage(error)),
       );
     }, 200);
     return () => window.clearTimeout(timer);
-  }, [content, initialBindingId, status]);
+  }, [content, initialBindingId, status, resolvingLinkedConflict]);
 
   useEffect(() => {
     if (!initialBindingId) return undefined;
@@ -388,6 +390,7 @@ export function NotePad({
         .then((latest) => {
           if (
             !active ||
+            linkedResolutionRef.current ||
             linkedRevisionRef.current !== versionAtRead ||
             latest.revision === linkedRevisionRef.current
           )
@@ -661,10 +664,65 @@ export function NotePad({
   saveWorkerRef.current = performSaveNote;
   const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const saveNote = useCallback(() => {
-    const run = saveQueueRef.current.then(() => saveWorkerRef.current());
+    const run = saveQueueRef.current
+      .then(() => saveWorkerRef.current())
+      .catch(async (error) => {
+        if (initialBindingId && (error as { code?: string })?.code === "externalConflict") {
+          const latest = await readLinkedFile(initialBindingId).catch(() => null);
+          if (latest) setLinkedConflict(latest);
+        }
+        throw error;
+      });
     saveQueueRef.current = run.catch(() => undefined);
     return run;
-  }, []);
+  }, [initialBindingId]);
+
+  const resolveLinkedConflict = useCallback(
+    (action: "reload" | "overwrite" | "keep") => {
+      if (!initialBindingId || linkedResolutionRef.current) return;
+      setResolvingLinkedConflict(true);
+      // Use the same queue as autosave/close, so a pending write cannot restore
+      // an old draft after the user has explicitly resolved the conflict.
+      const run = saveQueueRef.current.then(async () => {
+        const snapshot = contentValueRef.current;
+        if (action === "keep") {
+          await writeLinkedDraft(initialBindingId, snapshot, linkedRevisionRef.current);
+          await invoke("surface_session_close_current");
+          await destroyCurrentWindow();
+        } else if (action === "reload") {
+          const latest = await readLinkedFile(initialBindingId);
+          await writeLinkedDraft(initialBindingId, null, latest.revision, snapshot);
+          contentValueRef.current = latest.content;
+          linkedRevisionRef.current = latest.revision;
+          statusRef.current = "opened";
+          setContent(latest.content);
+          setStatus("opened");
+          setLinkedConflict(null);
+        } else {
+          const revision = await saveLinkedFile(
+            initialBindingId,
+            snapshot,
+            linkedRevisionRef.current,
+            true,
+          );
+          linkedRevisionRef.current = revision;
+          await writeLinkedDraft(initialBindingId, null, revision);
+          statusRef.current = contentValueRef.current === snapshot ? "saved" : "dirty";
+          setStatus(statusRef.current);
+          setLinkedConflict(null);
+        }
+      });
+      saveQueueRef.current = run.catch(() => undefined);
+      linkedResolutionRef.current = run;
+      void run
+        .catch((error) => showToast(getErrorMessage(error)))
+        .finally(() => {
+          linkedResolutionRef.current = null;
+          setResolvingLinkedConflict(false);
+        });
+    },
+    [initialBindingId],
+  );
 
   // 通过 ref 持有最新的 saveNote，让下方的 Tauri 监听只注册一次，
   // 避免每次输入（content 变化）都注销再重注册事件监听
@@ -785,6 +843,7 @@ export function NotePad({
     handleDrop: imageDropHandler,
     handleDragOver: imageDragOverHandler,
   } = useImagePaste({
+    disabled: resolvingLinkedConflict,
     noteId: editingNoteId,
     linkedBindingId: initialBindingId,
     textareaRef: surfaceMode === "tile" ? tileContentRef : contentRef,
@@ -1254,7 +1313,13 @@ export function NotePad({
   }, []);
 
   useEffect(() => {
-    if (!noteSurfaceAutoSave || mode !== "new" || status !== "dirty") {
+    if (
+      !noteSurfaceAutoSave ||
+      mode !== "new" ||
+      status !== "dirty" ||
+      linkedConflict ||
+      resolvingLinkedConflict
+    ) {
       return undefined;
     }
     if (!hasDraftContent()) return undefined;
@@ -1264,7 +1329,15 @@ export function NotePad({
     }, 900);
 
     return () => window.clearTimeout(timer);
-  }, [handleSave, hasDraftContent, mode, noteSurfaceAutoSave, status]);
+  }, [
+    handleSave,
+    hasDraftContent,
+    mode,
+    noteSurfaceAutoSave,
+    status,
+    linkedConflict,
+    resolvingLinkedConflict,
+  ]);
 
   const handleDrag = (event: MouseEvent<HTMLElement>) => {
     const target = event.target as HTMLElement;
@@ -1301,11 +1374,22 @@ export function NotePad({
   };
 
   const isTile = surfaceMode === "tile";
+  const appearanceNoteId = initialBindingId
+    ? `linked:${initialBindingId}`
+    : (editingNoteId ?? undefined);
+  const appearanceTokens = resolveAppearance(appearanceTheme, appearanceConfig, appearanceNoteId);
+  const tileColors = useMemo(() => tileTextColors(tileColor), [tileColor]);
   useNativeNoteShell({
     title: title.trim() || "便签",
     tile: isTile,
     editing: isTile ? tileWriting : true,
-    locked: tileLocked,
+    locked: tileLocked || resolvingLinkedConflict,
+    colors: {
+      background: isTile ? tileColor : appearanceTokens.background,
+      foreground: isTile ? tileColors.titleColor : appearanceTokens.foreground,
+      muted: isTile ? tileColors.emptyColor : appearanceTokens.muted,
+    },
+    onError: (error) => showToast(getErrorMessage(error)),
     displayMode: isTile ? display.mode : undefined,
     displayModePending: display.pending,
     noteKey: initialBindingId
@@ -1336,15 +1420,9 @@ export function NotePad({
       lock: () => lockTile(),
       store: () => storeTile(),
       pin: () => handlePin(),
-      close: async () => {
-        if (statusRef.current === "dirty" || statusRef.current === "saveFailed") await saveNote();
-        handleClose();
-      },
+      close: handleClose,
     },
   });
-  const appearanceNoteId = initialBindingId
-    ? `linked:${initialBindingId}`
-    : (editingNoteId ?? undefined);
   const displayFontSize =
     (appearanceNoteId ? appearanceConfig?.notes?.[appearanceNoteId]?.fontSize : undefined) ??
     appearanceConfig?.global?.fontSize ??
@@ -1354,6 +1432,28 @@ export function NotePad({
   const surfaceWrapperClassName = `w-full h-screen flex flex-col bg-transparent ${isTile && desktopAttached ? "desktop-tile-shell" : "p-0"} ${isExiting ? "animate-window-exit" : enterClass}`;
   const padSurfaceClassName =
     "app-surface-frame relative noise-bg w-full h-full min-h-0 bg-cloud overflow-hidden flex flex-col flex-1 border border-paper-deep/70 shadow-[0_1px_10px_rgba(26,26,24,0.06)] transition-all duration-200 ease-out";
+  const conflictNotice =
+    linkedConflict && initialBindingId ? (
+      <div
+        role="alert"
+        className="flex flex-wrap items-center gap-2 text-[12px] text-ink-soft"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <span className="w-full">{t("notepad.fileConflict.message")}</span>
+        <button disabled={resolvingLinkedConflict} onClick={() => resolveLinkedConflict("reload")}>
+          {t("notepad.fileConflict.reload")}
+        </button>
+        <button
+          disabled={resolvingLinkedConflict}
+          onClick={() => resolveLinkedConflict("overwrite")}
+        >
+          {t("notepad.fileConflict.overwrite")}
+        </button>
+        <button disabled={resolvingLinkedConflict} onClick={() => resolveLinkedConflict("keep")}>
+          {t("notepad.fileConflict.keep")}
+        </button>
+      </div>
+    ) : null;
 
   return (
     <div className={surfaceWrapperClassName}>
@@ -1361,6 +1461,7 @@ export function NotePad({
         <Tile
           scrollContainerRef={tileScrollRef}
           title={tileTitle || undefined}
+          notice={conflictNotice}
           content={content}
           color={tileColor}
           fontSize={displayFontSize}
@@ -1382,7 +1483,7 @@ export function NotePad({
             setStatus("dirty");
           }}
           contentEditorRef={tileContentRef}
-          locked={tileLocked}
+          locked={tileLocked || resolvingLinkedConflict}
           onEditorActivate={() => void startTileWriting()}
           doubleClickToEdit={tileDoubleClickToEdit}
           inlineEditing={inlineEditing}
@@ -1623,6 +1724,7 @@ export function NotePad({
 
                 <textarea
                   ref={contentRef}
+                  readOnly={resolvingLinkedConflict}
                   data-tab-indent="true"
                   value={content}
                   onChange={(event) => {
@@ -1702,49 +1804,7 @@ export function NotePad({
                 />
 
                 <div className="flex items-center justify-between mt-auto pt-2 border-t border-paper-deep/30 shrink-0">
-                  {linkedConflict && initialBindingId && (
-                    <div className="flex items-center gap-2 text-[11px] text-red-600">
-                      <span>原文件已变化</span>
-                      <button
-                        onClick={() => {
-                          linkedRevisionRef.current = linkedConflict.revision;
-                          setContent(linkedConflict.content);
-                          setStatus("opened");
-                          setLinkedConflict(null);
-                          void writeLinkedDraft(
-                            initialBindingId,
-                            null,
-                            linkedConflict.revision,
-                            content,
-                          ).catch(() => undefined);
-                        }}
-                      >
-                        载入磁盘
-                      </button>
-                      <button
-                        onClick={() => {
-                          void saveLinkedFile(
-                            initialBindingId,
-                            content,
-                            linkedRevisionRef.current,
-                            true,
-                          )
-                            .then((revision) => {
-                              linkedRevisionRef.current = revision;
-                              setLinkedConflict(null);
-                              setStatus(contentValueRef.current === content ? "saved" : "dirty");
-                              void writeLinkedDraft(initialBindingId, null, revision).catch(
-                                () => undefined,
-                              );
-                            })
-                            .catch((error) => showToast(getErrorMessage(error)));
-                        }}
-                      >
-                        覆盖原文件
-                      </button>
-                      <button onClick={() => setLinkedConflict(null)}>保留草稿</button>
-                    </div>
-                  )}
+                  {conflictNotice}
                   <span className="text-[11px] text-ink-ghost font-mono tabular-nums truncate max-w-[170px]">
                     {`${countNoteChars(content)} ${t("common.wordCountUnit", { defaultValue: "字" })} · ${statusLabel[status]}`}
                   </span>

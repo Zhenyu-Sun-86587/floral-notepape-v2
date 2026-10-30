@@ -826,8 +826,20 @@ fn build_app_menu(app: &AppHandle, config: &AppConfig) -> Result<Menu<Wry>, Box<
         app,
         Some(locales::macos_menu_close_window_label(locale)),
     )?;
-    let undo = PredefinedMenuItem::undo(app, Some(locales::macos_menu_undo_label(locale)))?;
-    let redo = PredefinedMenuItem::redo(app, Some(locales::macos_menu_redo_label(locale)))?;
+    let undo = MenuItem::with_id(
+        app,
+        "macos-undo",
+        locales::macos_menu_undo_label(locale),
+        true,
+        Some("CmdOrCtrl+Z"),
+    )?;
+    let redo = MenuItem::with_id(
+        app,
+        "macos-redo",
+        locales::macos_menu_redo_label(locale),
+        true,
+        Some("CmdOrCtrl+Shift+Z"),
+    )?;
     let cut = PredefinedMenuItem::cut(app, Some(locales::macos_menu_cut_label(locale)))?;
     let copy = PredefinedMenuItem::copy(app, Some(locales::macos_menu_copy_label(locale)))?;
     let paste = PredefinedMenuItem::paste(app, Some(locales::macos_menu_paste_label(locale)))?;
@@ -1254,6 +1266,18 @@ pub fn setup_desktop(app: &mut App) -> Result<(), Box<dyn Error>> {
     app.manage(RuntimeState::default());
     app.manage(NotepadPool::default());
     app.on_menu_event(|app, event| {
+        #[cfg(target_os = "macos")]
+        if let Some(action) = match event.id.as_ref() {
+            "macos-undo" => Some("undo"),
+            "macos-redo" => Some("redo"),
+            _ => None,
+        } {
+            // Capture the key window before dispatching asynchronous work.
+            if let Some(window) = app.get_focused_window() {
+                let _ = app.emit_to(window.label(), "native-edit-action", action);
+            }
+            return;
+        }
         let app = app.clone();
         tauri::async_runtime::spawn_blocking(move || {
             if let Err(error) = handle_app_menu_event(&app, event.id.as_ref()) {

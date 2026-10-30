@@ -4,6 +4,19 @@ import { listen } from "@tauri-apps/api/event";
 import type { NoteShellProps } from "../noteShellTypes";
 import { useTranslation } from "react-i18next";
 import { displayModeCycleLabel } from "../../features/markdown/displayMode";
+import { installNativeEditCommands } from "../../features/markdown/nativeEditCommands";
+export function useNativeEditCommands() {
+  useEffect(() => {
+    const dispose = installNativeEditCommands();
+    const off = listen<"undo" | "redo">("native-edit-action", ({ payload }) =>
+      dispose.run(payload),
+    );
+    return () => {
+      dispose.cleanup();
+      void off.then((fn) => fn());
+    };
+  }, []);
+}
 export const displayTitleSelection = {
   attributes: { "data-note-display-title": "true" },
   className: "select-none",
@@ -21,7 +34,9 @@ export function useNativeNoteShell(props: NoteShellProps) {
   useEffect(() => {
     const off = listen<string>("native-note-action", ({ payload }) => {
       if (document.body.inert) return;
-      void Promise.resolve(actions.current[payload]?.()).catch(console.error);
+      void Promise.resolve()
+        .then(() => actions.current[payload]?.())
+        .catch((error) => (state.current.onError ?? console.error)(error));
     });
     return () => {
       void off.then((fn) => fn());
@@ -45,6 +60,7 @@ export function useNativeNoteShell(props: NoteShellProps) {
         tile: props.tile,
         editing: props.editing,
         locked: props.locked,
+        colors: props.colors,
         displayMode: props.displayMode,
         displayModeLabel,
         displayModePending: props.displayModePending ?? false,
@@ -62,6 +78,9 @@ export function useNativeNoteShell(props: NoteShellProps) {
     props.tile,
     props.editing,
     props.locked,
+    props.colors?.background,
+    props.colors?.foreground,
+    props.colors?.muted,
     props.displayMode,
     displayModeLabel,
     props.displayModePending,

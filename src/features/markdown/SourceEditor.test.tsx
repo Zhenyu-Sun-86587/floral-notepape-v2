@@ -6,6 +6,7 @@ import { forceParsing } from "@codemirror/language";
 import { undo } from "@codemirror/commands";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SourceEditor, type SourceEditorHandle } from "./SourceEditor";
+import { installNativeEditCommands } from "./nativeEditCommands";
 
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (path: string) => `asset://localhost${path}`,
@@ -50,6 +51,57 @@ afterEach(async () => {
   host.remove();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+it("原生菜单路径撤销/重做阅读任务与键入，锁定和组合输入不写入；普通输入框保留原生撤销", async () => {
+  source = "- [ ] task";
+  const show = (editing = false, locked = false) =>
+    root.render(
+      <SourceEditor
+        content={source}
+        editing={editing}
+        locked={locked}
+        markdown
+        fontSize={14}
+        editorRef={editor}
+        onChange={(value) => {
+          source = value;
+        }}
+      />,
+    );
+  const bridge = installNativeEditCommands();
+  try {
+    await act(async () => show());
+    await act(async () => editor.current!.toggleTask(2, true));
+    const view = editor.current!.view!;
+    // Remember the editor before AppKit's menu takes keyboard focus.
+    view.contentDOM.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    await act(async () => bridge.run("undo"));
+    expect(source).toBe("- [ ] task");
+    expect(view.state.readOnly).toBe(true);
+    expect(view.contentDOM.getAttribute("contenteditable")).toBe("false");
+    await act(async () => bridge.run("redo"));
+    expect(source).toBe("- [x] task");
+    await act(async () => show(false, true));
+    await act(async () => bridge.run("undo"));
+    expect(source).toBe("- [x] task");
+    await act(async () => show(true));
+    await act(async () =>
+      view.contentDOM.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true })),
+    );
+    await act(async () => bridge.run("undo"));
+    expect(source).toBe("- [x] task");
+    const input = document.createElement("textarea");
+    host.append(input);
+    input.focus();
+    const exec = vi.fn();
+    Object.defineProperty(document, "execCommand", { configurable: true, value: exec });
+    bridge.run("undo");
+    expect(exec).toHaveBeenCalledWith("undo");
+    Reflect.deleteProperty(document, "execCommand");
+  } finally {
+    bridge.cleanup();
+  }
 });
 
 it("长文连续输入回传不重复拆分全文，外部更新仍最小写入且保留撤销历史", async () => {

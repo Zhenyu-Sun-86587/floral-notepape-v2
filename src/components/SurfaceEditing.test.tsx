@@ -7,11 +7,21 @@ import { SettingsPanel } from "./SettingsPanel";
 import { syncLanguage } from "../locales";
 import { defaultDisplayMode } from "../features/markdown/displayMode";
 import type { AppConfig } from "../features/settings/types";
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), toast: vi.fn(), tile: null as any }));
+const mocks = vi.hoisted(() => ({
+  invoke: vi.fn(),
+  toast: vi.fn(),
+  tile: null as any,
+  listeners: new Map<string, (event: any) => void>(),
+}));
 // Exercise the macOS host on every CI platform, including its production shell hook.
 vi.mock("#platform-note-shell", async () => vi.importActual("../platform/macos/noteShell"));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke, convertFileSrc: (p: string) => p }));
-vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}) }));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: (name: string, callback: any) => {
+    mocks.listeners.set(name, callback);
+    return Promise.resolve(() => mocks.listeners.delete(name));
+  },
+}));
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({
     label: "tile-linked-binding-test",
@@ -27,12 +37,18 @@ vi.mock("../features/settings/theme", () => ({
   applyAppearance: () => {},
   applyTheme: () => {},
   watchSystemTheme: () => () => {},
-  resolveAppearance: () => ({ radius: 12 }),
+  resolveAppearance: () => ({
+    radius: 12,
+    background: "#1a1b26",
+    foreground: "#c0caf5",
+    muted: "#9aa5ce",
+  }),
 }));
 vi.mock("#platform-settings", () => ({ PlatformSettings: () => null }));
 vi.mock("./AppearanceSection", () => ({ AppearanceSection: () => null }));
 vi.mock("./Toast", () => ({ showToast: mocks.toast }));
 vi.mock("./Tile", () => ({
+  tileTextColors: () => ({ titleColor: "#c0caf5", emptyColor: "#c0caf5" }),
   Tile: (props: any) => {
     mocks.tile = props;
     const latest = useRef(props);
@@ -51,7 +67,12 @@ vi.mock("./Tile", () => ({
       }),
       [],
     );
-    return <div data-test-tile>{props.content}</div>;
+    return (
+      <div data-test-tile>
+        {props.content}
+        {props.notice}
+      </div>
+    );
   },
 }));
 let host: HTMLDivElement;
@@ -70,6 +91,7 @@ const config = {
   defaultViewMode: "edit",
 } as AppConfig;
 beforeEach(() => {
+  mocks.listeners.clear();
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.stubGlobal(
     "ResizeObserver",
@@ -120,6 +142,11 @@ it("绑定文件图片使用外部接口，原生模式提示遵循语言设置"
     .filter(([command]) => command === "surface_native_note_state")
     .slice(-1)[0]!;
   expect(native[1].state.displayModeLabel).toBe("Display mode: Preview. Click to switch to Source");
+  expect(native[1].state.colors).toEqual({
+    background: expect.any(String),
+    foreground: "#c0caf5",
+    muted: "#c0caf5",
+  });
   const file = {
     type: "image/png",
     size: 8,
@@ -139,6 +166,90 @@ it("绑定文件图片使用外部接口，原生模式提示遵循语言设置"
     "![](floral-image-test.png)\n",
   );
   expect(mocks.invoke.mock.calls.some(([command]) => command === "linked_save")).toBe(false);
+});
+
+it("桌面冲突提供解决入口，关闭失败可见；载入失败不提前推进磁盘版本", async () => {
+  const originalInvoke = mocks.invoke.getMockImplementation()!;
+  let failClear = true;
+  mocks.invoke.mockImplementation(async (command, args, options) => {
+    if (command === "linked_read_draft") return { content: "local draft", baseRevision: "r0" };
+    if (command === "linked_save" && !args.overwrite)
+      throw { code: "externalConflict", message: "conflict" };
+    if (command === "linked_write_draft" && args.content === null && failClear)
+      throw new Error("draft clear failed");
+    return originalInvoke(command, args, options);
+  });
+  await act(async () =>
+    root.render(<NotePad initialBindingId="binding-test" initialSurfaceMode="tile" />),
+  );
+  const button = (name: string) =>
+    Array.from(host.querySelectorAll("button")).find((item) => item.textContent === name)!;
+  expect(host.textContent).toContain("local draft");
+  expect(button("载入磁盘")).toBeDefined();
+  await act(async () => mocks.listeners.get("native-note-action")!({ payload: "close" }));
+  expect(mocks.toast).toHaveBeenCalledWith("conflict");
+  expect(
+    mocks.invoke.mock.calls.some(([command]) => command === "surface_session_close_current"),
+  ).toBe(false);
+  await act(async () => button("载入磁盘").click());
+  expect(mocks.toast).toHaveBeenCalledWith("draft clear failed");
+  expect(mocks.tile.content).toBe("local draft");
+  await act(async () => mocks.listeners.get("native-note-action")!({ payload: "close" }));
+  expect(
+    mocks.invoke.mock.calls.filter(([command]) => command === "linked_save").slice(-1)[0]![1]
+      .expectedRevision,
+  ).toBe("r0");
+  failClear = false;
+  await act(async () => button("载入磁盘").click());
+  expect(mocks.tile.content).toBe("external text");
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  await act(async () => mocks.listeners.get("native-note-action")!({ payload: "edit" }));
+  await act(async () => mocks.tile.onContentChange("after reload"));
+  await act(async () => mocks.listeners.get("native-note-action")!({ payload: "close" }));
+  expect(
+    mocks.invoke.mock.calls.filter(([command]) => command === "linked_save").slice(-1)[0]![1]
+      .expectedRevision,
+  ).toBe("r1");
+});
+
+it("桌面冲突仅在明确选择时覆盖，保留草稿可直接关闭而不覆盖原文件", async () => {
+  const originalInvoke = mocks.invoke.getMockImplementation()!;
+  mocks.invoke.mockImplementation(async (command, args, options) => {
+    if (command === "linked_read_draft") return { content: "local draft", baseRevision: "r0" };
+    return originalInvoke(command, args, options);
+  });
+  await act(async () =>
+    root.render(<NotePad initialBindingId="binding-test" initialSurfaceMode="tile" />),
+  );
+  await act(async () =>
+    Array.from(host.querySelectorAll("button"))
+      .find((item) => item.textContent === "覆盖原文件")!
+      .click(),
+  );
+  expect(mocks.invoke).toHaveBeenCalledWith("linked_save", {
+    id: "binding-test",
+    content: "local draft",
+    expectedRevision: "r0",
+    overwrite: true,
+  });
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  await act(async () => root.unmount());
+  root = createRoot(host);
+  mocks.invoke.mockClear();
+  await act(async () =>
+    root.render(<NotePad initialBindingId="binding-test" initialSurfaceMode="tile" />),
+  );
+  await act(async () =>
+    Array.from(host.querySelectorAll("button"))
+      .find((item) => item.textContent === "保留草稿并关闭")!
+      .click(),
+  );
+  expect(mocks.invoke.mock.calls.some(([command]) => command === "linked_save")).toBe(false);
+  expect(mocks.invoke).toHaveBeenCalledWith(
+    "linked_write_draft",
+    expect.objectContaining({ id: "binding-test", content: "local draft", baseRevision: "r0" }),
+  );
+  expect(mocks.invoke).toHaveBeenCalledWith("surface_session_close_current");
 });
 
 it("macOS 设置仅保留有效的全局显示方式，切换后保留旧兼容字段", async () => {

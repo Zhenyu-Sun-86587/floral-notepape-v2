@@ -180,6 +180,12 @@
     "moveToCategory": "Move to category…"
   },
   "notepad": {
+    "fileConflict": {
+      "message": "The file has changed. Your draft has not been written to the file.",
+      "reload": "Load from disk",
+      "overwrite": "Overwrite file",
+      "keep": "Keep draft and close"
+    },
     "button": {
       "clear": "Clear"
     },
