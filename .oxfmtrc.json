@@ -2,6 +2,7 @@
   "ignorePatterns": [
     "**/*.hbs",
     ".github/pull_request_template.md",
+    "Docs/fixtures/mac-markdown-acceptance.md",
     "src-tauri/vendor/wry/**",
     "src-tauri/vendor/tao/**"
   ]

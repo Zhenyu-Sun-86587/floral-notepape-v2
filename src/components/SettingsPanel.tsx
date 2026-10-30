@@ -1,3 +1,6 @@
+import { DisplayModeControl } from "../features/markdown/DisplayModeControl";
+import { defaultDisplayMode } from "../features/markdown/displayMode";
+import { liveMarkdownEditing } from "#platform-note-shell";
 import { PlatformSettings } from "#platform-settings";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -213,16 +216,41 @@ export function SettingsPanel({
             checked={config.rememberSurfaceSize}
             onChange={(checked) => setConfigValue("rememberSurfaceSize", checked)}
           />
-          <ToggleRow
-            label={t("settings.tileRenderMarkdown", { defaultValue: "磁贴渲染 Markdown" })}
-            checked={config.tileRenderMarkdown}
-            onChange={(checked) => setConfigValue("tileRenderMarkdown", checked)}
-          />
-          <ToggleRow
-            label={t("settings.tileDoubleClickToEdit", { defaultValue: "双击文字区域进入编辑" })}
-            checked={config.tileDoubleClickToEdit ?? false}
-            onChange={(checked) => setConfigValue("tileDoubleClickToEdit", checked)}
-          />
+          {!liveMarkdownEditing && (
+            <ToggleRow
+              label={t("settings.tileRenderMarkdown", { defaultValue: "磁贴渲染 Markdown" })}
+              checked={config.tileRenderMarkdown}
+              onChange={(checked) => setConfigValue("tileRenderMarkdown", checked)}
+            />
+          )}
+          {liveMarkdownEditing && (
+            <div className="flex items-center justify-between gap-4 py-3">
+              <div className="text-sm">
+                {t("settings.surfaceDisplayMode")}
+                <p className="text-xs text-ink-faint mt-1">
+                  {t("settings.surfaceDisplayModeHint")}
+                </p>
+              </div>
+              <DisplayModeControl
+                value={defaultDisplayMode(config)}
+                onChange={(mode) => setConfigValue("surfaceDisplayMode", mode)}
+              />
+            </div>
+          )}
+          {liveMarkdownEditing && (
+            <ToggleRow
+              label={t("settings.inlineEditing", { defaultValue: "原位编辑（桌面便签与胶囊）" })}
+              checked={config.inlineEditing ?? false}
+              onChange={(checked) => setConfigValue("inlineEditing", checked)}
+            />
+          )}
+          {(!liveMarkdownEditing || !config.inlineEditing) && (
+            <ToggleRow
+              label={t("settings.tileDoubleClickToEdit", { defaultValue: "双击文字区域进入编辑" })}
+              checked={config.tileDoubleClickToEdit ?? false}
+              onChange={(checked) => setConfigValue("tileDoubleClickToEdit", checked)}
+            />
+          )}
           <ToggleRow
             label={t("settings.tileSaveReturnsToPin", { defaultValue: "保存后回到磁贴" })}
             checked={config.tileSaveReturnsToPin ?? false}

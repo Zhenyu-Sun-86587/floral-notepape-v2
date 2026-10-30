@@ -1,6 +1,11 @@
+import type { MarkdownDisplayMode } from "../features/markdown/displayMode";
 import chroma from "chroma-js";
-import { displayTitleSelection, singleClickToEdit } from "#platform-note-shell";
-import type { CSSProperties, HTMLAttributes, Ref } from "react";
+import {
+  displayTitleSelection,
+  singleClickToEdit,
+  liveMarkdownEditing,
+} from "#platform-note-shell";
+import type { CSSProperties, HTMLAttributes, Ref, ReactNode } from "react";
 import { lazy, Suspense, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { DEFAULT_TILE_COLOR, normalizeTileColor } from "../features/settings/tileColor";
@@ -29,6 +34,7 @@ export interface TileProps extends Omit<
   imageRootDir?: string;
   allowRemoteImages?: boolean;
   onTaskToggle?: (offset: number, checked: boolean) => void;
+  notice?: ReactNode;
   editing?: boolean;
   titleEditable?: boolean;
   onTitleChange?: (value: string) => void;
@@ -36,6 +42,8 @@ export interface TileProps extends Omit<
   contentEditorRef?: Ref<SourceEditorHandle>;
   onEditorActivate?: () => void;
   doubleClickToEdit?: boolean;
+  inlineEditing?: boolean;
+  displayMode?: MarkdownDisplayMode;
   onEditorDeactivate?: () => void;
   locked?: boolean;
   scrollContainerRef?: Ref<HTMLDivElement>;
@@ -52,6 +60,19 @@ export function textAgainst(background: string, target: string, contrast: number
   return target;
 }
 
+export function tileTextColors(tileColor: string) {
+  const isLightBg = chroma(tileColor).luminance() > 0.18;
+  const mixTarget = isLightBg ? "#141816" : "#f7f8f4";
+  const accentTarget = isLightBg ? "#254f3a" : "#a8d2ae";
+  return {
+    borderColor: chroma.mix(tileColor, mixTarget, 0.18).alpha(0.55).css(),
+    titleColor: textAgainst(tileColor, mixTarget, 7),
+    contentColor: textAgainst(tileColor, mixTarget, 4.5),
+    emptyColor: textAgainst(tileColor, mixTarget, 3),
+    accentColor: textAgainst(tileColor, accentTarget, 4.5),
+  };
+}
+
 export function Tile({
   title,
   content,
@@ -64,6 +85,7 @@ export function Tile({
   imageRootDir,
   allowRemoteImages = false,
   onTaskToggle,
+  notice,
   editing = false,
   titleEditable = false,
   onTitleChange,
@@ -71,6 +93,8 @@ export function Tile({
   contentEditorRef,
   onEditorActivate,
   doubleClickToEdit = false,
+  inlineEditing = false,
+  displayMode,
   onEditorDeactivate,
   locked,
   scrollContainerRef,
@@ -84,18 +108,10 @@ export function Tile({
 }: TileProps) {
   const { t } = useTranslation();
   const tileColor = normalizeTileColor(color);
-  const { borderColor, titleColor, contentColor, emptyColor, accentColor } = useMemo(() => {
-    const isLightBg = chroma(tileColor).luminance() > 0.18;
-    const mixTarget = isLightBg ? "#141816" : "#f7f8f4";
-    const accentTarget = isLightBg ? "#254f3a" : "#a8d2ae";
-    return {
-      borderColor: chroma.mix(tileColor, mixTarget, 0.18).alpha(0.55).css(),
-      titleColor: textAgainst(tileColor, mixTarget, 7),
-      contentColor: textAgainst(tileColor, mixTarget, 4.5),
-      emptyColor: textAgainst(tileColor, mixTarget, 3),
-      accentColor: textAgainst(tileColor, accentTarget, 4.5),
-    };
-  }, [tileColor]);
+  const { borderColor, titleColor, contentColor, emptyColor, accentColor } = useMemo(
+    () => tileTextColors(tileColor),
+    [tileColor],
+  );
   const mergedStyle: CSSProperties & Record<`--${string}`, string> = {
     width,
     backgroundColor: `color-mix(in srgb, ${tileColor} var(--appearance-opacity-percent, 100%), transparent)`,
@@ -119,15 +135,16 @@ export function Tile({
   return (
     <div
       {...divProps}
-      className={`app-surface-frame relative border overflow-hidden select-none shadow-[0_1px_8px_rgba(26,26,24,0.04)] hover:shadow-[0_6px_24px_rgba(26,26,24,0.07)] ${className}`}
+      className={`app-surface-frame relative border overflow-hidden select-none shadow-[0_1px_8px_rgba(26,26,24,0.04)] hover:shadow-[0_6px_24px_rgba(26,26,24,0.07)] ${notice ? "flex flex-col" : ""} ${className}`}
       style={mergedStyle}
     >
       <div
         ref={scrollContainerRef}
-        className="px-4 pt-4 pb-4 h-full overflow-y-auto scrollbar-hidden"
+        className={`px-4 pt-4 pb-4 ${notice ? "flex-1 min-h-0" : "h-full"} overflow-y-auto scrollbar-hidden`}
       >
         {editing && titleEditable ? (
           <input
+            {...displayTitleSelection.attributes}
             value={title ?? ""}
             onChange={(event) => onTitleChange?.(event.target.value)}
             aria-label="便签标题"
@@ -147,6 +164,13 @@ export function Tile({
           <div style={{ color: contentColor }}>
             <Suspense fallback={<div className="min-h-[8rem]" />}>
               <MarkdownSurface
+                displayMode={displayMode}
+                presentation={liveMarkdownEditing && inlineEditing ? "live" : "source"}
+                scrollContainerRef={
+                  typeof scrollContainerRef === "object"
+                    ? (scrollContainerRef ?? undefined)
+                    : undefined
+                }
                 content={content}
                 editing={editing}
                 locked={locked}
@@ -156,7 +180,11 @@ export function Tile({
                 onChange={onContentChange}
                 onActivate={onEditorActivate}
                 activationGesture={
-                  singleClickToEdit ? "click" : doubleClickToEdit ? "doubleClick" : "none"
+                  (liveMarkdownEditing ? inlineEditing : singleClickToEdit)
+                    ? "click"
+                    : doubleClickToEdit
+                      ? "doubleClick"
+                      : "none"
                 }
                 onDeactivate={onEditorDeactivate}
                 imageBaseDir={imageBaseDir}
@@ -208,6 +236,7 @@ export function Tile({
         )}
       </div>
 
+      {notice && <div className="shrink-0 px-4 py-3 border-t border-paper-deep">{notice}</div>}
       {children}
     </div>
   );

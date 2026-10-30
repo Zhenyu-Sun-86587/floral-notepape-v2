@@ -67,6 +67,19 @@
       "important": "重要",
       "warning": "警告",
       "caution": "注意"
+    },
+    "displayMode": {
+      "label": "Markdown 顯示方式",
+      "source": "原始碼",
+      "hybrid": "混合",
+      "preview": "預覽",
+      "sourceDescription": "顯示完整 Markdown 原始碼",
+      "hybridDescription": "保留文字標記，呈現圖片、表格、公式及圖表",
+      "previewDescription": "呈現 Markdown，原位編輯時顯示目前語法",
+      "cycle": "顯示方式：{{current}}，按一下切換為{{next}}",
+      "followDefault": "跟隨預設顯示方式",
+      "followingDefault": "正在跟隨設定中的預設方式",
+      "reset": "恢復跟隨預設顯示方式"
     }
   },
   "main": {
@@ -167,6 +180,12 @@
     "moveToCategory": "移至分類…"
   },
   "notepad": {
+    "fileConflict": {
+      "message": "原始檔案已變更，目前草稿尚未寫入原始檔案。",
+      "reload": "載入磁碟",
+      "overwrite": "覆寫原始檔案",
+      "keep": "保留草稿並關閉"
+    },
     "button": {
       "clear": "清除"
     },
@@ -265,6 +284,7 @@
       "label": "磁貼顏色"
     },
     "tileCtrlClose": "Ctrl+右鍵快速關閉磁貼",
+    "inlineEditing": "原位編輯（桌面便箋）",
     "tileRenderMarkdown": "磁貼渲染 Markdown",
     "tileDoubleClickToEdit": "雙擊文字區域進入編輯",
     "tileSaveReturnsToPin": "儲存後回到磁貼",
@@ -419,7 +439,9 @@
         "contain": "完整",
         "repeat": "平鋪"
       }
-    }
+    },
+    "surfaceDisplayMode": "預設顯示方式（桌面便箋與膠囊）",
+    "surfaceDisplayModeHint": "便箋頂邊列的圖示依原始碼、混合、預覽順序切換。"
   },
   "tile": {
     "empty": "空"

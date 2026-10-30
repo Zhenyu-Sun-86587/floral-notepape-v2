@@ -19,3 +19,7 @@ export function getImagesBaseDir(): Promise<string> {
 export function cleanUnusedImages(noteId: string, content: string): Promise<string[]> {
   return invoke("images_clean_unused", { noteId, content });
 }
+
+export function saveLinkedImage(id: string, data: Uint8Array, extension: string): Promise<string> {
+  return invoke("images_save", data, { headers: { "x-linked-id": id, "x-image-ext": extension } });
+}

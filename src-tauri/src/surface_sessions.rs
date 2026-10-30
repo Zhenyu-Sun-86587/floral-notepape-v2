@@ -57,6 +57,14 @@ pub enum ShortcutToggleAction {
     Hide,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum MarkdownDisplayMode {
+    Source,
+    Hybrid,
+    Preview,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExpandedBounds {
@@ -73,6 +81,8 @@ pub struct ExpandedBounds {
 #[serde(rename_all = "camelCase")]
 pub struct SurfaceSession {
     pub key: String,
+    #[serde(default)]
+    pub display_mode: Option<MarkdownDisplayMode>,
     #[serde(default)]
     pub startup_behavior: StartupBehavior,
     #[serde(default)]
@@ -357,5 +367,29 @@ mod tests {
         assert_eq!(choose_capsule_color(&map, &next), 1);
         map.clear();
         assert_eq!(choose_capsule_color(&map, &next), 0);
+    }
+}
+
+#[cfg(test)]
+mod display_mode_tests {
+    use super::{MarkdownDisplayMode, SurfaceSession};
+    #[test]
+    fn old_sessions_follow_default_and_overrides_roundtrip() {
+        let old: SurfaceSession = serde_json::from_str(r#"{"key":"note:test"}"#).unwrap();
+        assert_eq!(old.display_mode, None);
+        for mode in [
+            MarkdownDisplayMode::Source,
+            MarkdownDisplayMode::Hybrid,
+            MarkdownDisplayMode::Preview,
+        ] {
+            let session = SurfaceSession {
+                display_mode: Some(mode),
+                ..old.clone()
+            };
+            let restored: SurfaceSession =
+                serde_json::from_str(&serde_json::to_string(&session).unwrap()).unwrap();
+            assert_eq!(restored.display_mode, Some(mode));
+        }
+        assert!(serde_json::from_str::<MarkdownDisplayMode>(r#""unknown""#).is_err());
     }
 }

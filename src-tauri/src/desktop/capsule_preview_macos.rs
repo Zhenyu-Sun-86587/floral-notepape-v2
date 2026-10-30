@@ -290,6 +290,9 @@ pub fn show_capsule_preview(
     let Some(entry) = capsule_entry(key)? else {
         return Ok(());
     };
+    if let Some(root) = &entry.image_root_dir {
+        app.asset_protocol_scope().allow_directory(root, true)?;
+    }
     if PREVIEW_OCCUPANCY
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -391,4 +394,10 @@ pub fn dismiss_capsule_preview(app: &AppHandle) -> Result<(), AppError> {
     }
     app.emit_to(CAPSULE_PREVIEW_LABEL, "capsule-preview-hidden", generation)?;
     Ok(())
+}
+
+pub fn forget_capsule_preview() {
+    PREVIEW_ACTIVE.store(false, Ordering::SeqCst);
+    advance_capsule_preview();
+    *PREVIEW_CONTENT.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }

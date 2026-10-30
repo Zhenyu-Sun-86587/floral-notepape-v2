@@ -1,4 +1,11 @@
+import { DisplayModeCycleButton } from "../../../features/markdown/DisplayModeControl";
+import { defaultDisplayMode } from "../../../features/markdown/displayMode";
+import { useSurfaceDisplayMode } from "../../../features/windows/useSurfaceDisplayMode";
+import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import type { AppConfig } from "../../../features/settings/types";
 import { MarkdownPreview } from "../../../features/markdown/MarkdownPreview";
+import { useImageBaseDir } from "../../../features/images/useImageBaseDir";
 import { colors } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { useCapsulePreview } from "./useCapsulePreview";
@@ -16,6 +23,26 @@ export function CapsulePreview() {
     dismiss,
     handleTaskToggle,
   } = useCapsulePreview();
+  const [config, setConfig] = useState<AppConfig | null>(null);
+  useEffect(() => {
+    let active = true;
+    let revision = 0;
+    const off = listen<AppConfig>("config-changed", ({ payload }) => {
+      revision++;
+      if (active) setConfig(payload);
+    });
+    void invoke<AppConfig>("config_get")
+      .then((value) => {
+        if (active && revision === 0) setConfig(value);
+      })
+      .catch(console.error);
+    return () => {
+      active = false;
+      void off.then((dispose) => dispose());
+    };
+  }, []);
+  const display = useSurfaceDisplayMode(preview?.entry.key ?? null, defaultDisplayMode(config));
+  const imageBase = useImageBaseDir();
   if (!preview) return null;
   return (
     <article
@@ -60,6 +87,12 @@ export function CapsulePreview() {
         >
           {preview.entry.title}
         </button>
+        <DisplayModeCycleButton
+          className="preview-icon"
+          value={display.mode}
+          disabled={display.pending || busy}
+          onChange={(mode) => void display.change(mode)}
+        />
         <button
           className="preview-icon"
           disabled={busy}
@@ -68,17 +101,6 @@ export function CapsulePreview() {
         >
           <svg viewBox="0 0 24 24">
             <path d="M14 4h6v6M20 4l-9 9M10 4H4v16h16v-6" />
-          </svg>
-        </button>
-        <button
-          className="preview-icon"
-          disabled={busy}
-          aria-label="编辑便签"
-          title="编辑便签"
-          onClick={() => void act("surface_restore_edit")}
-        >
-          <svg viewBox="0 0 24 24">
-            <path d="m4 20 4-1 11-11-3-3L5 16l-1 4ZM14 7l3 3" />
           </svg>
         </button>
         <button
@@ -98,20 +120,31 @@ export function CapsulePreview() {
         </button>
       </header>
       <div className="preview-body" key={preview.entry.key}>
-        {preview.entry.preview.trim() ? (
-          <MarkdownPreview
-            content={preview.entry.preview}
-            fontSize={14}
-            onTaskToggle={handleTaskToggle}
-          />
+        {display.mode === "source" ? (
+          <div className="whitespace-pre-wrap" style={{ fontSize: config?.surfaceFontSize ?? 14 }}>
+            {preview.entry.preview}
+          </div>
         ) : (
-          <p className="preview-empty">空白便签</p>
+          <MarkdownPreview
+            content={preview.entry.preview.replace(/\r\n?/g, "\n")}
+            presentation={display.mode}
+            fontSize={config?.surfaceFontSize ?? 14}
+            onTaskToggle={preview.entry.locked ? undefined : handleTaskToggle}
+            imageBaseDir={preview.entry.imageBaseDir ?? imageBase ?? undefined}
+            imageRootDir={preview.entry.imageRootDir ?? undefined}
+            allowRemoteImages={config?.allowRemoteImages ?? false}
+          />
         )}
       </div>
       <footer>
         <span>悬停预览</span>
         <span>点击胶囊展开 · 拖动移动</span>
       </footer>
+      {display.error && (
+        <p role="alert" className="preview-error">
+          {display.error}
+        </p>
+      )}
       {error && (
         <p role="alert" className="preview-error">
           {error}

@@ -1,0 +1,85 @@
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+main {
+  height: 100%;
+  padding: 16px;
+  background: #e9ede9;
+  color: #24302c;
+  --surface-text-primary: #24302c;
+  --surface-text-muted: #7b857f;
+}
+main.qa-dark {
+  background: #161a18;
+  color: #edf2ee;
+  --surface-text-primary: #edf2ee;
+  --surface-text-muted: #8a948d;
+  --chrome: #202723;
+}
+#qa-controls {
+  height: 62px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+#qa-controls > button,
+#qa-controls select {
+  border: 1px solid #88968e;
+  border-radius: 5px;
+  padding: 4px 8px;
+}
+#qa-panel {
+  width: 760px;
+  height: 520px;
+  overflow: hidden;
+  border: 1px solid #81958a;
+  background: #fafbf9;
+  border-radius: 16px;
+}
+main[data-panel="capsule"] #qa-panel {
+  width: 420px;
+  height: 520px;
+}
+main.qa-dark #qa-panel {
+  background: #202723;
+}
+.qa-main {
+  height: 100%;
+  display: flex;
+}
+.qa-main > section {
+  width: 100%;
+  min-width: 0;
+  overflow: auto;
+  padding: 16px;
+}
+.qa-main > section + section {
+  border-left: 1px solid #899b8f;
+}
+#qa-source {
+  display: block;
+  margin-top: 8px;
+  width: 760px;
+  height: 90px;
+  font: 11px monospace;
+}
+#qa-panel .mac-preview {
+  color: #24302c;
+  --surface-text-primary: #24302c;
+  --surface-text-muted: #737f78;
+  --chrome: #f7faf7;
+  --muted: #737f78;
+}
+.qa-dark #qa-panel .mac-preview {
+  color: #edf2ee;
+  --surface-text-primary: #edf2ee;
+  --surface-text-muted: #a8b4ab;
+  --chrome: #262e29;
+  --muted: #a8b4ab;
+}
