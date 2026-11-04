@@ -1,5 +1,12 @@
 import { hideLeadingFrontmatter } from "./frontmatter";
-import { StateEffect, StateField, type EditorState, type Range } from "@codemirror/state";
+import {
+  StateEffect,
+  StateField,
+  RangeSet,
+  type ChangeDesc,
+  type EditorState,
+  type Range,
+} from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
 import { Decoration, EditorView, ViewPlugin, type DecorationSet } from "@codemirror/view";
 import { MarkdownWidget, TaskWidget, TextWidget, type LiveOptions } from "./liveWidgets";
@@ -7,7 +14,14 @@ import { MarkdownWidget, TaskWidget, TextWidget, type LiveOptions } from "./live
 const freeze = StateEffect.define<{ pointer?: boolean; composing?: boolean }>();
 const refresh = StateEffect.define<null>();
 
-export function liveDecorations(state: EditorState, options: LiveOptions): DecorationSet {
+type Span = { from: number; to: number };
+function renderBlock(
+  state: EditorState,
+  options: LiveOptions,
+  span: Span,
+  frontmatterEnd: number,
+  referenceDefinitions: string,
+): DecorationSet {
   const ranges: Range<Decoration>[] = [];
   const active = (from: number, to: number) =>
     state.selection.ranges.some((r) => r.from <= to && r.to >= from);
@@ -17,13 +31,12 @@ export function liveDecorations(state: EditorState, options: LiveOptions): Decor
   const mark = (from: number, to: number, name: string) => {
     if (to > from) ranges.push(Decoration.mark({ class: name }).range(from, to));
   };
-  const document = state.doc.toString();
-  const frontmatterEnd = document.length - hideLeadingFrontmatter(document).length;
   const hideMetadata =
     !options.showSyntax &&
     frontmatterEnd > 0 &&
     !state.selection.ranges.some((range) => range.from < frontmatterEnd);
-  if (hideMetadata) ranges.push(Decoration.replace({ block: true }).range(0, frontmatterEnd));
+  if (hideMetadata && span.from === 0)
+    ranges.push(Decoration.replace({ block: true }).range(0, frontmatterEnd));
   const lines = new Set<string>();
   const lineStyle = (from: number, to: number, cls: string) => {
     for (let pos = state.doc.lineAt(from).from; pos <= to; ) {
@@ -37,17 +50,14 @@ export function liveDecorations(state: EditorState, options: LiveOptions): Decor
       pos = line.to + 1;
     }
   };
-  const references: string[] = [];
-  if (frontmatterEnd > 0 && !hideMetadata) lineStyle(0, frontmatterEnd - 1, "cm-live-metadata");
+  if (span.from === 0 && frontmatterEnd > 0 && !hideMetadata)
+    lineStyle(0, frontmatterEnd - 1, "cm-live-metadata");
   syntaxTree(state).iterate({
-    enter({ name, from, to }) {
-      if (name === "LinkReference" && from >= frontmatterEnd)
-        references.push(state.sliceDoc(from, to));
-    },
-  });
-  const referenceDefinitions = references.join("\n\n");
-  syntaxTree(state).iterate({
+    from: span.from,
+    to: span.to,
     enter({ node, name, from, to }) {
+      if (name === "Document") return;
+      if (from < span.from || from >= span.to) return false;
       // YAML is plain metadata, even while visible in hybrid/editing mode.
       // The Markdown parser otherwise mistakes its closing --- for a Setext heading.
       if (from < frontmatterEnd && name !== "Document") return false;
@@ -154,17 +164,127 @@ export function liveDecorations(state: EditorState, options: LiveOptions): Decor
   return Decoration.set(ranges, true);
 }
 
+interface Block extends Span {
+  name: string;
+  references: string;
+  selection: string;
+  decorations: DecorationSet;
+}
+export interface LiveLayout {
+  blocks: Block[];
+  frontmatterEnd: number;
+  references: string;
+  decorations: DecorationSet;
+  // Deterministic work count for regression/benchmark checks, not UI telemetry.
+  rebuiltBlocks: number;
+}
+function selectionIn(state: EditorState, span: Span) {
+  return state.selection.ranges
+    .filter((r) => r.from <= span.to && r.to >= span.from)
+    .map((r) => `${Math.max(r.from, span.from) - span.from}:${Math.min(r.to, span.to) - span.from}`)
+    .join(",");
+}
+
+/** Cache only the current document. Unchanged blocks share immutable decorations. */
+export function buildLiveLayout(
+  state: EditorState,
+  options: LiveOptions,
+  previous?: LiveLayout,
+  changes?: ChangeDesc,
+): LiveLayout {
+  const docChanged = !!changes && !changes.empty;
+  const content = !previous || docChanged ? state.doc.toString() : null;
+  const frontmatterEnd =
+    content == null
+      ? previous!.frontmatterEnd
+      : content.length - hideLeadingFrontmatter(content).length;
+  const touched: Span[] = [];
+  changes?.iterChangedRanges((from, to) => touched.push({ from, to }));
+  const reusable = new Map<number, Block>();
+  if (previous && previous.frontmatterEnd === frontmatterEnd) {
+    for (const old of previous.blocks) {
+      if (touched.some((r) => r.from <= old.to && r.to >= old.from)) continue;
+      const from = changes?.mapPos(old.from, 1) ?? old.from;
+      const to = changes?.mapPos(old.to, -1) ?? old.to;
+      reusable.set(from, {
+        ...old,
+        from,
+        to,
+        decorations: docChanged ? old.decorations.map(changes!) : old.decorations,
+      });
+    }
+  }
+  const spans: (Span & { name: string })[] = [];
+  if (frontmatterEnd > 0) spans.push({ from: 0, to: frontmatterEnd, name: "Metadata" });
+  for (let node = syntaxTree(state).topNode.firstChild; node; node = node.nextSibling)
+    if (node.from >= frontmatterEnd) spans.push({ from: node.from, to: node.to, name: node.name });
+  const blocks = spans.map((span) => {
+    const old = reusable.get(span.from);
+    if (old?.to === span.to && old.name === span.name) return old;
+    const definitions: string[] = [];
+    if (span.name !== "Metadata")
+      syntaxTree(state).iterate({
+        from: span.from,
+        to: span.to,
+        enter({ name, from, to }) {
+          if (name === "Document") return;
+          if (from < span.from || from >= span.to) return false;
+          if (name === "LinkReference") definitions.push(state.sliceDoc(from, to));
+        },
+      });
+    return {
+      ...span,
+      references: definitions.join("\n\n"),
+      selection: "!",
+      decorations: Decoration.none,
+    };
+  });
+  const references = blocks
+    .map((b) => b.references)
+    .filter(Boolean)
+    .join("\n\n");
+  let rebuiltBlocks = 0;
+  const result = blocks.map((block) => {
+    const selection = selectionIn(state, block);
+    if (block.selection === selection && previous?.references === references) return block;
+    rebuiltBlocks++;
+    return {
+      ...block,
+      selection,
+      decorations: renderBlock(state, options, block, frontmatterEnd, references),
+    };
+  });
+  return {
+    blocks: result,
+    frontmatterEnd,
+    references,
+    rebuiltBlocks,
+    decorations: RangeSet.join(result.map((b) => b.decorations)),
+  };
+}
+
+export function liveDecorations(state: EditorState, options: LiveOptions): DecorationSet {
+  return buildLiveLayout(state, options).decorations;
+}
+
 export function livePresentation(options: LiveOptions) {
   const field = StateField.define<{
+    layout: LiveLayout;
     decorations: DecorationSet;
     pointer: boolean;
     composing: boolean;
+    stale: boolean;
   }>({
-    create: (state) => ({
-      decorations: liveDecorations(state, options),
-      pointer: false,
-      composing: false,
-    }),
+    create: (state) => {
+      const layout = buildLiveLayout(state, options);
+      return {
+        layout,
+        decorations: layout.decorations,
+        pointer: false,
+        composing: false,
+        stale: false,
+      };
+    },
     update(value, tr) {
       let { pointer, composing } = value;
       for (const effect of tr.effects)
@@ -172,21 +292,30 @@ export function livePresentation(options: LiveOptions) {
           pointer = effect.value.pointer ?? pointer;
           composing = effect.value.composing ?? composing;
         }
+      const parsed = tr.effects.some((e) => e.is(refresh));
       const changed =
         tr.docChanged ||
-        tr.selection ||
+        !!tr.selection ||
         tr.startState.readOnly !== tr.state.readOnly ||
-        tr.effects.some((e) => e.is(freeze) || e.is(refresh));
-      return {
-        pointer,
-        composing,
-        decorations:
-          pointer || composing
-            ? value.decorations.map(tr.changes)
-            : changed
-              ? liveDecorations(tr.state, options)
-              : value.decorations,
-      };
+        tr.effects.some((e) => e.is(freeze)) ||
+        parsed;
+      if (pointer || composing)
+        return {
+          ...value,
+          pointer,
+          composing,
+          stale: value.stale || tr.docChanged || parsed,
+          decorations: value.decorations.map(tr.changes),
+        };
+      if (!changed) return value;
+      const reusable = !value.stale && !parsed && tr.startState.readOnly === tr.state.readOnly;
+      const layout = buildLiveLayout(
+        tr.state,
+        options,
+        reusable ? value.layout : undefined,
+        reusable ? tr.changes : undefined,
+      );
+      return { layout, decorations: layout.decorations, pointer, composing, stale: false };
     },
     provide: (field) => EditorView.decorations.from(field, (value) => value.decorations),
   });

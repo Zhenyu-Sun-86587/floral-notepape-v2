@@ -265,7 +265,7 @@ export function MarkdownSurface(props: SurfaceProps) {
         onClick={(props.activationGesture ?? "click") === "click" ? activate : undefined}
         onDoubleClick={props.activationGesture === "doubleClick" ? activate : undefined}
       >
-        {props.markdown ? (
+        {!editorVisible && props.markdown ? (
           <MarkdownPreview
             content={presentation}
             fontSize={props.fontSize}
@@ -275,7 +275,7 @@ export function MarkdownSurface(props: SurfaceProps) {
             allowRemoteImages={props.allowRemoteImages}
             onTaskToggle={props.locked ? undefined : (props.onReadTaskToggle ?? toggleTask)}
           />
-        ) : (
+        ) : !editorVisible ? (
           <div
             className="whitespace-pre-wrap"
             style={{ fontSize: props.fontSize }}
@@ -286,7 +286,7 @@ export function MarkdownSurface(props: SurfaceProps) {
           >
             {presentation || " "}
           </div>
-        )}
+        ) : null}
       </div>
       <div
         className={`markdown-edit-layer ${editorVisible ? "" : "is-inactive"}`}
@@ -304,11 +304,13 @@ export function MarkdownSurface(props: SurfaceProps) {
           editing={active}
           markdown={displayMode === "source" ? false : props.markdown}
           presentation={
-            displayMode === "hybrid"
-              ? "hybrid"
-              : displayMode === "source"
-                ? "source"
-                : props.presentation
+            !editorVisible
+              ? "source"
+              : displayMode === "hybrid"
+                ? "hybrid"
+                : displayMode === "source"
+                  ? "source"
+                  : props.presentation
           }
           activateOnFocus={!directSource}
           editorRef={editor}

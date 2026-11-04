@@ -2,6 +2,32 @@ import { textSourceMap, codeSourceMap } from "./textSourceMap";
 import type { Element, Root, RootContent } from "hast";
 import type { Plugin } from "unified";
 
+// Store runs of equal source/rendered offset delta, rather than one JSON number
+// per character. Exact cursor mapping is retained across escapes and code lines.
+function encodeMap(map: number[]): string {
+  const runs: number[][] = [];
+  for (let i = 0; i < map.length; i++) {
+    const delta = map[i] - i;
+    if (!runs.length || runs[runs.length - 1][1] !== delta) runs.push([i, delta]);
+  }
+  return JSON.stringify({ length: map.length, runs });
+}
+function readMap(element: HTMLElement): number[] {
+  const encoded = element.dataset.sourceTextMap!;
+  const cached = mappedText.get(element);
+  if (cached?.encoded === encoded) return cached.map;
+  const value = JSON.parse(encoded) as { length: number; runs: number[][] };
+  const map: number[] = [];
+  let run = 0;
+  for (let i = 0; i < value.length; i++) {
+    while (run + 1 < value.runs.length && value.runs[run + 1][0] <= i) run++;
+    map.push(i + value.runs[run][1]);
+  }
+  mappedText.set(element, { encoded, map });
+  return map;
+}
+const mappedText = new WeakMap<HTMLElement, { encoded: string; map: number[] }>();
+
 const opaque = new Set(["pre", "code", "svg", "math", "textarea", "button", "input"]);
 
 /** 在渲染器加工 KaTeX/代码之前登记 AST 位置；不推算 Markdown 标记或视觉宽度。 */
@@ -28,7 +54,7 @@ export const rehypeSourcePosition: Plugin<[string, number], Root> = (source, bas
             base + start,
             child.tagName === "pre",
           );
-          if (map) child.properties.dataSourceTextMap = JSON.stringify(map);
+          if (map) child.properties.dataSourceTextMap = encodeMap(map);
         }
         if (!opaque.has(child.tagName)) walk(child);
       } else if (child.type === "text" && start != null && end != null) {
@@ -44,7 +70,7 @@ export const rehypeSourcePosition: Plugin<[string, number], Root> = (source, bas
             dataSourceStart: base + start,
             dataSourceEnd: base + end,
             ...(exact ? { dataSourceTextStart: base + start, dataSourceTextEnd: base + end } : {}),
-            ...(map ? { dataSourceTextMap: JSON.stringify(map) } : {}),
+            ...(map ? { dataSourceTextMap: encodeMap(map) } : {}),
           },
           children: [child],
         };
@@ -81,7 +107,7 @@ export function domSourceOffset(root: HTMLElement, node: Node, offset: number): 
     range.setStart(leaf, 0);
     range.setEnd(node, offset);
     if (leaf.dataset.sourceTextMap) {
-      const map: number[] = JSON.parse(leaf.dataset.sourceTextMap);
+      const map = readMap(leaf);
       return map[Math.min(range.toString().length, map.length - 1)] ?? null;
     }
     return textSourceOffset(
@@ -136,9 +162,7 @@ export function renderedAnchorY(root: HTMLElement, offset: number): number | nul
   const anchor = findSourceAnchor(root, offset);
   if (!anchor) return null;
   if (anchor.dataset.sourceTextStart != null || anchor.dataset.sourceTextMap) {
-    const map: number[] | null = anchor.dataset.sourceTextMap
-      ? JSON.parse(anchor.dataset.sourceTextMap)
-      : null;
+    const map: number[] | null = anchor.dataset.sourceTextMap ? readMap(anchor) : null;
     let index = map
       ? map.findIndex((value) => value >= offset)
       : offset - Number(anchor.dataset.sourceTextStart);

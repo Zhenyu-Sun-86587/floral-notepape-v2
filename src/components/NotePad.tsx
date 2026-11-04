@@ -663,6 +663,7 @@ export function NotePad({
   const saveWorkerRef = useRef(performSaveNote);
   saveWorkerRef.current = performSaveNote;
   const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const pendingImageRef = useRef<Promise<void> | null>(null);
   const saveNote = useCallback(() => {
     const run = saveQueueRef.current
       .then(() => saveWorkerRef.current())
@@ -680,10 +681,11 @@ export function NotePad({
   const resolveLinkedConflict = useCallback(
     (action: "reload" | "overwrite" | "keep") => {
       if (!initialBindingId || linkedResolutionRef.current) return;
-      setResolvingLinkedConflict(true);
       // Use the same queue as autosave/close, so a pending write cannot restore
       // an old draft after the user has explicitly resolved the conflict.
       const run = saveQueueRef.current.then(async () => {
+        await pendingImageRef.current;
+        setResolvingLinkedConflict(true);
         const snapshot = contentValueRef.current;
         if (action === "keep") {
           await writeLinkedDraft(initialBindingId, snapshot, linkedRevisionRef.current);
@@ -735,6 +737,7 @@ export function NotePad({
     storingRef.current = true;
     try {
       if (tileContentRef.current?.composing) return;
+      await pendingImageRef.current;
       if (statusRef.current === "dirty" || statusRef.current === "saveFailed")
         await saveNoteRef.current();
       // 后端先建立边缘入口，再销毁原窗口；失败时原便签保留，可直接重试。
@@ -758,6 +761,7 @@ export function NotePad({
     if (!initialBindingId || linkedClosingRef.current) return;
     linkedClosingRef.current = true;
     try {
+      await pendingImageRef.current;
       await saveQueueRef.current;
       if (statusRef.current === "dirty" || statusRef.current === "saveFailed")
         await saveNoteRef.current();
@@ -786,6 +790,7 @@ export function NotePad({
     const unlisten = listen<UpdateInstallPrepareRequest>("update://prepare-install", (event) => {
       const respond = async () => {
         const windowLabel = windowLabelRef.current || "notepad";
+        await pendingImageRef.current;
         await saveQueueRef.current;
         if (statusRef.current !== "dirty" && statusRef.current !== "saveFailed") {
           await reportInstallPreparation(event.payload.requestId, windowLabel, "ready");
@@ -843,12 +848,19 @@ export function NotePad({
     handleDrop: imageDropHandler,
     handleDragOver: imageDragOverHandler,
   } = useImagePaste({
-    disabled: resolvingLinkedConflict,
+    disabled: resolvingLinkedConflict || tileLocked,
+    pendingRef: pendingImageRef,
     noteId: editingNoteId,
     linkedBindingId: initialBindingId,
     textareaRef: surfaceMode === "tile" ? tileContentRef : contentRef,
-    setContent,
-    markDirty: () => setStatus("dirty"),
+    setContent: (value) => {
+      contentValueRef.current = value;
+      setContent(value);
+    },
+    markDirty: () => {
+      statusRef.current = "dirty";
+      setStatus("dirty");
+    },
     onEnsureNoteSaved: ensureNoteSaved,
     onError: showToast,
     t,
@@ -893,6 +905,7 @@ export function NotePad({
   const handleSave = useCallback(
     async ({ isAutoSave = false }: { isAutoSave?: boolean } = {}) => {
       try {
+        await pendingImageRef.current;
         const savedNote = await saveNote();
         const key = initialBindingId ? `linked:${initialBindingId}` : `note:${savedNote.id}`;
         const desktopAttached =
@@ -952,6 +965,7 @@ export function NotePad({
   const finishTileWriting = useCallback(async () => {
     if (!tileWriting || tileContentRef.current?.composing) return;
     try {
+      await pendingImageRef.current;
       await saveNote();
       await invoke("surface_edit_mode", { editing: false });
       setTileWriting(false);
@@ -997,6 +1011,7 @@ export function NotePad({
       ? `linked:${initialBindingId}`
       : `note:${editingNoteId ?? initialNoteId ?? ""}`;
     try {
+      await pendingImageRef.current;
       await saveQueueRef.current;
       if (statusRef.current === "dirty" || statusRef.current === "saveFailed") await saveNote();
       await reportLockButtonBounds();
@@ -1136,6 +1151,7 @@ export function NotePad({
 
   const handleOpenNote = async (noteId: string) => {
     try {
+      await pendingImageRef.current;
       await saveQueueRef.current;
       if (statusRef.current === "dirty" || statusRef.current === "saveFailed") await saveNote();
       const epoch = ++noteLoadEpoch.current;
@@ -1206,6 +1222,7 @@ export function NotePad({
 
   const handleClose = useCallback(async () => {
     try {
+      await pendingImageRef.current;
       await saveQueueRef.current;
       if (statusRef.current === "dirty" || statusRef.current === "saveFailed") await saveNote();
       closeSavedWindow();
@@ -1416,7 +1433,10 @@ export function NotePad({
     },
     actions: {
       display: () => display.change(nextDisplayMode(display.mode)),
-      edit: () => (isTile ? (tileWriting ? finishTileWriting() : startTileWriting()) : saveNote()),
+      edit: async () => {
+        await pendingImageRef.current;
+        return isTile ? (tileWriting ? finishTileWriting() : startTileWriting()) : saveNote();
+      },
       lock: () => lockTile(),
       store: () => storeTile(),
       pin: () => handlePin(),

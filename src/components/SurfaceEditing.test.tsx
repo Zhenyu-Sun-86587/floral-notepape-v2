@@ -29,6 +29,7 @@ vi.mock("@tauri-apps/api/window", () => ({
     onMoved: () => Promise.resolve(() => {}),
     onResized: () => Promise.resolve(() => {}),
     onCloseRequested: () => Promise.resolve(() => {}),
+    destroy: () => mocks.invoke("test-destroy-window"),
   }),
 }));
 vi.mock("../features/windows/useInitialWindowReveal", () => ({ useInitialWindowReveal: () => {} }));
@@ -62,7 +63,9 @@ vi.mock("./Tile", () => ({
         selectionStart: 0,
         selectionEnd: 0,
         focus() {},
-        insertText: vi.fn(),
+        insertText: vi.fn((text: string) =>
+          latest.current.onContentChange(latest.current.content + text),
+        ),
         composing: false,
       }),
       [],
@@ -274,4 +277,38 @@ it("macOS 设置仅保留有效的全局显示方式，切换后保留旧兼容�
   const next = onChange.mock.calls.slice(-1)[0]![0];
   expect(next.tileRenderMarkdown).toBe(config.tileRenderMarkdown);
   expect(defaultDisplayMode(next)).toBe("hybrid");
+});
+it("closing a linked note waits for image insertion and saves its reference", async () => {
+  const original = mocks.invoke.getMockImplementation()!;
+  let finish!: (name: string) => void;
+  const writing = new Promise<string>((resolve) => {
+    finish = resolve;
+  });
+  mocks.invoke.mockImplementation((command: string, args: any, options: any) =>
+    command === "images_save" ? writing : original(command, args, options),
+  );
+  await act(async () =>
+    root.render(
+      <NotePad initialBindingId="binding-test" initialSurfaceMode="tile" initialAutoSave={false} />,
+    ),
+  );
+  const file = { type: "image/png", size: 8, arrayBuffer: async () => new Uint8Array(8).buffer };
+  await act(async () =>
+    mocks.tile.onEditorPaste({
+      preventDefault: vi.fn(),
+      clipboardData: { items: [{ kind: "file", type: "image/png", getAsFile: () => file }] },
+    }),
+  );
+  expect(mocks.invoke.mock.calls.some(([c]) => c === "images_save")).toBe(true);
+  await act(async () => mocks.listeners.get("native-note-action")!({ payload: "close" }));
+  expect(mocks.invoke.mock.calls.some(([c]) => c === "test-destroy-window")).toBe(false);
+  expect(mocks.invoke.mock.calls.some(([c]) => c === "linked_save")).toBe(false);
+  await act(async () => {
+    finish("floral-image-saved.png");
+    await writing;
+  });
+  expect(mocks.invoke.mock.calls.some(([c]) => c === "test-destroy-window")).toBe(true);
+  expect(mocks.invoke.mock.calls.find(([c]) => c === "linked_save")![1].content).toContain(
+    "floral-image-saved.png",
+  );
 });

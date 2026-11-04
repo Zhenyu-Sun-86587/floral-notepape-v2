@@ -133,6 +133,7 @@ export function useImagePaste({
             ? error.message
             : (t?.("errors.imagePasteFailed", { defaultValue: "图片粘贴失败" }) ?? "图片粘贴失败");
         onError?.(message);
+        throw error;
       } finally {
         insertion?.cancel();
         processingRef.current = false;
@@ -150,9 +151,10 @@ export function useImagePaste({
       if (processingRef.current) return;
       const work = processFiles(files);
       if (pendingRef) pendingRef.current = work;
-      void work.finally(() => {
+      const settle = () => {
         if (pendingRef?.current === work) pendingRef.current = null;
-      });
+      };
+      void work.then(settle, settle);
     },
     [disabled, processFiles, pendingRef],
   );
@@ -166,9 +168,10 @@ export function useImagePaste({
       if (processingRef.current) return;
       const work = processFiles(files);
       if (pendingRef) pendingRef.current = work;
-      void work.finally(() => {
+      const settle = () => {
         if (pendingRef?.current === work) pendingRef.current = null;
-      });
+      };
+      void work.then(settle, settle);
     },
     [disabled, processFiles, pendingRef],
   );

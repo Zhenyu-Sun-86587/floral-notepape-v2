@@ -1515,12 +1515,16 @@ fn setup_tray(app: &mut App) -> Result<(), Box<dyn Error>> {
     let menu = build_tray_menu(app.handle(), &config)?;
     let locale = locale_from_config(&config);
 
+    let tray_icon = app
+        .default_window_icon()
+        .expect("missing default window icon")
+        .clone();
+
     TrayIconBuilder::with_id(TRAY_ID)
-        .icon(
-            app.default_window_icon()
-                .expect("missing default window icon")
-                .clone(),
-        )
+        .icon(tray_icon)
+        // Preserve the existing lily's alpha silhouette. AppKit supplies black,
+        // white and selected-state tint automatically; no replacement artwork.
+        .icon_as_template(cfg!(target_os = "macos"))
         .tooltip(locales::tray_tooltip(locale))
         .menu(&menu)
         .show_menu_on_left_click(cfg!(target_os = "macos"))

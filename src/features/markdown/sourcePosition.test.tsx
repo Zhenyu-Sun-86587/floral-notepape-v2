@@ -124,3 +124,11 @@ it("代码不解码实体，表格单元格保持精确源码落点", () => {
   expectTextOffset(root, source, "indented", 2);
   expectTextOffset(root, source, "张三", 1);
 });
+
+it("long literal code retains exact offsets with a compact DOM map", () => {
+  const root = render("```\n" + "a".repeat(20000) + "\n```");
+  const pre = root.querySelector("pre")!;
+  expect(pre.dataset.sourceTextMap!.length).toBeLessThan(150);
+  const text = pre.querySelector("code")!.firstChild!;
+  expect(domSourceOffset(root, text, 19000)).toBe(19004);
+});

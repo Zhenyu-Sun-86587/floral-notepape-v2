@@ -95,7 +95,12 @@ export class MarkdownWidget extends WidgetType {
       other.readOnly === this.readOnly &&
       other.referenceDefinitions === this.referenceDefinitions &&
       other.options.onReadTaskToggle === this.options.onReadTaskToggle &&
-      JSON.stringify(other.options) === JSON.stringify(this.options)
+      other.options.fontSize === this.options.fontSize &&
+      other.options.showSyntax === this.options.showSyntax &&
+      other.options.tasksLocked === this.options.tasksLocked &&
+      other.options.imageBaseDir === this.options.imageBaseDir &&
+      other.options.imageRootDir === this.options.imageRootDir &&
+      other.options.allowRemoteImages === this.options.allowRemoteImages
     );
   }
   toDOM(view: EditorView) {

@@ -31,7 +31,7 @@ import { codeLanguages } from "./codeLanguages";
 import { toggleTaskMarker } from "./taskMarker";
 import "./sourceEditor.css";
 import { livePresentation } from "./livePresentation";
-import { NATIVE_HISTORY_EVENT } from "./nativeEditCommands";
+import { NATIVE_HISTORY_EVENT, rememberHistoryTarget } from "./nativeEditCommands";
 
 // 保留标准语法分类和字重，但用便签语义色替换仅适合浅色主题的固定颜色。
 const noPresentation: never[] = [];
@@ -265,8 +265,10 @@ export function SourceEditor(props: SourceProps) {
               !update.transactions.every(
                 (tr) => tr.annotation(Transaction.userEvent) === "external",
               )
-            )
+            ) {
+              rememberHistoryTarget(update.view.contentDOM);
               latest.current.onChange?.(value);
+            }
             latest.current.onDocumentChange?.(value);
           }),
           EditorView.domEventHandlers({

@@ -316,3 +316,60 @@ it("混合阅读态显示可勾选任务，不显示列表前缀，勾选仅写�
   await act(async () => tasks()[0].click());
   expect(source).toBe(original);
 });
+// No native app or user files: verify rendering lifetime and history routing.
+it("hybrid unmounts the hidden full preview while retaining the live math widget", async () => {
+  source = "opening\n\n$$\nx^2\n$$\n\nending";
+  await act(async () =>
+    root.render(
+      <MarkdownSurface
+        content={source}
+        editing={false}
+        markdown
+        fontSize={14}
+        displayMode="hybrid"
+        presentation="source"
+        editorRef={ref}
+      />,
+    ),
+  );
+  const { forceParsing } = await import("@codemirror/language");
+  await act(async () => {
+    forceParsing(ref.current!.view!, source.length, 1000);
+  });
+  expect(host.querySelector(".markdown-read-layer")!.classList.contains("is-inactive")).toBe(true);
+  expect(host.querySelector(".markdown-read-layer .katex")).toBeNull();
+  expect(host.querySelector(".markdown-edit-layer .katex")).not.toBeNull();
+});
+it("a first read-mode task routes native undo without entering the editor", async () => {
+  source = "- [ ] task";
+  const { installNativeEditCommands } = await import("./nativeEditCommands");
+  const bridge = installNativeEditCommands();
+  try {
+    await act(async () => render(false));
+    await act(async () => (host.querySelector("input[type=checkbox]") as HTMLInputElement).click());
+    expect(ref.current!.value).toBe("- [x] task");
+    await act(async () => bridge.run("undo"));
+    expect(ref.current!.value).toBe("- [ ] task");
+  } finally {
+    bridge.cleanup();
+  }
+});
+
+it("preview reading disables complex widgets in the parked editor", async () => {
+  source = "opening\n\n$$\nx^2\n$$";
+  await act(async () =>
+    root.render(
+      <MarkdownSurface
+        content={source}
+        editing={false}
+        markdown
+        fontSize={14}
+        displayMode="preview"
+        presentation="live"
+        editorRef={ref}
+      />,
+    ),
+  );
+  expect(host.querySelector(".markdown-read-layer .katex")).not.toBeNull();
+  expect(host.querySelector(".markdown-edit-layer .cm-live-block")).toBeNull();
+});

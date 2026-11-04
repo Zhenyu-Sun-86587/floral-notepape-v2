@@ -492,6 +492,7 @@ export function MainWindow({
   const loadEpoch = useLoadEpoch();
   // 串行化所有保存请求，避免自动保存与切换触发的保存并发写同一篇笔记
   const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const pendingImageRef = useRef<Promise<void> | null>(null);
 
   const selectedNote = useMemo(
     () => notes.find((note) => note.id === selectedId) ?? null,
@@ -1423,7 +1424,16 @@ export function MainWindow({
 
   const saveCurrentNote = useCallback(
     (force = false): Promise<boolean> => {
-      const run = saveQueueRef.current.then(() => performSave(force));
+      const run = saveQueueRef.current.then(async () => {
+        try {
+          await pendingImageRef.current;
+          return performSave(force);
+        } catch {
+          saveStateRef.current = "error";
+          setSaveState("error");
+          return false;
+        }
+      });
       saveQueueRef.current = run.catch(() => undefined);
       return run;
     },
@@ -1434,6 +1444,7 @@ export function MainWindow({
     const unlisten = listen<UpdateInstallPrepareRequest>("update://prepare-install", (event) => {
       const respond = async () => {
         const windowLabel = windowLabelRef.current;
+        await pendingImageRef.current;
         await flushSettingsRef.current();
         await saveQueueRef.current;
         if (saveStateRef.current === "saved" || saveStateRef.current === "idle") {
@@ -1927,8 +1938,12 @@ export function MainWindow({
     handleDragOver: imageDragOverHandler,
   } = useImagePaste({
     noteId: selectedId,
+    pendingRef: pendingImageRef,
     textareaRef: contentRef,
-    setContent,
+    setContent: (value) => {
+      contentValueRef.current = value;
+      setContent(value);
+    },
     markDirty,
     onEnsureNoteSaved: ensureNoteSaved,
     disabled: isExternal,
