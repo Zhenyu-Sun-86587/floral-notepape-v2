@@ -1915,7 +1915,9 @@ export function MainWindow({
   };
 
   const markDirty = () => {
-    if (!selectedId) return;
+    // The first image paste can create the note asynchronously; its callback
+    // still belongs to the render before creation, so use the current identity.
+    if (!selectedIdRef.current) return;
     saveStateRef.current = "dirty";
     setSaveState("dirty");
   };
