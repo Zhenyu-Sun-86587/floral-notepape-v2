@@ -1,6 +1,6 @@
 [package]
 name = "hermes-surface-dev"
-version = "2.0.8"
+version = "2.1.0"
 description = "A lightweight cross-platform desktop note app"
 authors = ["Achilng"]
 edition = "2021"
@@ -14,6 +14,10 @@ default-run = "hermes-surface-dev"
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "floral_notepaper_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+# Local, separately installed review application. Production defaults stay unchanged.
+test-app = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

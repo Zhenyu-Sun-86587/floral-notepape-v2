@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EditorState, Transaction } from "@codemirror/state";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import { syntaxTree } from "@codemirror/language";
+import { ensureSyntaxTree } from "@codemirror/language";
 import { history, undo } from "@codemirror/commands";
 import { mathSyntax, sourceChange } from "./sourceDocument";
 
@@ -13,7 +13,7 @@ describe("常驻 Markdown 源文档", () => {
   });
   it("源码语法树保留 Markdown 与数学标记", () => {
     expect(state.doc.toString()).toBe(content);
-    expect(syntaxTree(state).toString()).toContain("DisplayMath");
+    expect(ensureSyntaxTree(state, content.length, 1000)?.toString()).toContain("DisplayMath");
   });
   it("外部局部更新映射光标，普通输入仍可撤销", () => {
     let current = state.update({ selection: { anchor: content.indexOf("world") + 2 } }).state;

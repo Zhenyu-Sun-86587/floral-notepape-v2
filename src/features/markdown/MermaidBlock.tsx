@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { prepareMermaidSvg, restoreMermaidInlineStyles } from "./mermaidStyles";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 let diagramSequence = 0;
 let mermaidLoader: Promise<(typeof import("mermaid"))["default"]> | null = null;
@@ -14,10 +15,15 @@ function loadMermaid() {
 }
 
 export function MermaidBlock({ source }: { source: string }) {
+  const container = useRef<HTMLDivElement>(null);
   const [themeRevision, setThemeRevision] = useState(0);
   const [result, setResult] = useState<{ source: string; svg?: string; error?: string }>({
     source,
   });
+
+  useLayoutEffect(() => {
+    restoreMermaidInlineStyles(container.current);
+  }, [result]);
 
   useEffect(() => {
     const observer = new MutationObserver(() => setThemeRevision((value) => value + 1));
@@ -52,7 +58,14 @@ export function MermaidBlock({ source }: { source: string }) {
         });
         const { svg } = await mermaid.render(`hermes-mermaid-${++diagramSequence}`, source);
         // 编辑期间旧图异步完成时，不能覆盖新源码的预览。
-        if (active) setResult({ source, svg });
+        if (active)
+          setResult({
+            source,
+            svg: prepareMermaidSvg(
+              svg,
+              document.querySelector<HTMLStyleElement>("style[nonce]")?.nonce ?? "",
+            ),
+          });
       })
       .catch((error) => {
         if (active) setResult({ source, error: String(error) });
@@ -65,6 +78,7 @@ export function MermaidBlock({ source }: { source: string }) {
   if (result.source === source && result.svg) {
     return (
       <div
+        ref={container}
         className="my-3 overflow-x-auto rounded bg-paper-warm/80 p-3 text-center"
         dangerouslySetInnerHTML={{ __html: result.svg }}
       />

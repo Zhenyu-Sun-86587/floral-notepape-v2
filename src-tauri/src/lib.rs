@@ -155,6 +155,17 @@ fn surface_session_get(key: String) -> Result<surface_sessions::SurfaceSession, 
 }
 
 #[tauri::command]
+fn surface_display_mode_set(
+    app: AppHandle,
+    key: String,
+    mode: Option<surface_sessions::MarkdownDisplayMode>,
+) -> Result<(), AppError> {
+    surface_sessions::mutate(&key, |session| session.display_mode = mode)?;
+    let _ = app.emit("surface-session-changed", surface_sessions::get(&key)?);
+    Ok(())
+}
+
+#[tauri::command]
 async fn surface_session_save(
     app: AppHandle,
     session: surface_sessions::SurfaceSession,
@@ -226,12 +237,14 @@ async fn surface_toggle_capsule(app: AppHandle, key: String) -> Result<(), AppEr
 
 #[tauri::command]
 async fn surface_restore_stored(app: AppHandle, key: String) -> Result<(), AppError> {
+    #[cfg(not(target_os = "macos"))]
     desktop::advance_capsule_preview();
     desktop::run_capsule_task(move || desktop::restore_stored_surface(&app, &key)).await
 }
 
 #[tauri::command]
 async fn surface_restore_edit(app: AppHandle, key: String) -> Result<(), AppError> {
+    #[cfg(not(target_os = "macos"))]
     desktop::advance_capsule_preview();
     desktop::run_capsule_task(move || desktop::restore_stored_surface_edit(&app, &key)).await
 }
@@ -272,6 +285,7 @@ fn surface_capsule_menu(
 #[tauri::command]
 async fn surface_capsule_dismiss(app: AppHandle) -> Result<(), AppError> {
     // 预览窗的隐藏也交给工作线程，避免 WebView2 在同步 IPC 回调里处理窗口消息。
+    #[cfg(not(target_os = "macos"))]
     desktop::advance_capsule_preview();
     desktop::run_capsule_task(move || desktop::dismiss_capsule_preview(&app)).await
 }
@@ -323,6 +337,7 @@ async fn surface_capsule_drag(
 
 #[tauri::command]
 async fn surface_capsule_hide(app: AppHandle, key: String) -> Result<(), AppError> {
+    #[cfg(not(target_os = "macos"))]
     desktop::advance_capsule_preview();
     desktop::run_capsule_task(move || desktop::hide_stored_surface(&app, &key)).await
 }
@@ -632,8 +647,11 @@ fn images_save(request: tauri::ipc::Request<'_>) -> Result<String, AppError> {
                 details: Default::default(),
             })
     };
-    let note_id = header("x-note-id")?;
     let extension = header("x-image-ext")?;
+    if let Ok(id) = header("x-linked-id") {
+        return linked::save_image(&id, data, &extension);
+    }
+    let note_id = header("x-note-id")?;
     default_store()?.save_image(&note_id, data, &extension)
 }
 
@@ -1156,6 +1174,7 @@ pub fn run() {
             notes_move_category,
             linked_bind,
             surface_session_get,
+            surface_display_mode_set,
             surface_session_save,
             surface_edit_mode,
             surface_unlock_button_bounds,

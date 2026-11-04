@@ -24,13 +24,16 @@ const preview = (generation: number, title = "Glass note") => ({
   entry: { key: "note:test", title, preview: "# Markdown", colorKey: 0, expanded: false },
 });
 async function mount() {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   mocks.invoke.mockImplementation((command: string) =>
     Promise.resolve(
       command === "surface_capsule_material"
         ? { kind: "glass", opacity: 0.25 }
         : command === "surface_capsule_preview_state"
           ? preview(1)
-          : undefined,
+          : command === "surface_session_get"
+            ? { key: "note:test", displayMode: null }
+            : undefined,
     ),
   );
   const node = document.createElement("div");
@@ -53,7 +56,8 @@ it("presents committed Markdown without waiting for a hidden WebView animation f
   const node = await mount();
   expect(node.querySelector('[data-testid="markdown"]')?.textContent).toBe("# Markdown");
   expect(mocks.invoke).toHaveBeenCalledWith("surface_capsule_present", { generation: 1 });
-  expect(frame).not.toHaveBeenCalled();
+  // CM may request measurements; presentation must succeed even when none run.
+  expect(node.querySelector("article")?.getAttribute("data-visible")).toBe("true");
   frame.mockRestore();
 });
 it("retains one hidden DOM, ignores late sessions and skips hidden note refreshes", async () => {
@@ -75,4 +79,49 @@ it("retains one hidden DOM, ignores late sessions and skips hidden note refreshe
   );
   expect(node.querySelector("article")?.getAttribute("data-visible")).toBe("true");
   expect(mocks.invoke).toHaveBeenCalledWith("surface_capsule_present", { generation: 3 });
+});
+
+it("胶囊顶边条单个图标依次循环模式并持久化，不触发展开", async () => {
+  const node = await mount();
+  const button = () => node.querySelector<HTMLButtonElement>("header .display-mode-cycle")!;
+  expect(node.querySelectorAll(".display-mode-cycle")).toHaveLength(1);
+  expect(node.querySelector(".display-mode-control")).toBeNull();
+  expect(button().getAttribute("data-display-mode")).toBe("preview");
+  for (const [mode, label] of [
+    ["source", "源码"],
+    ["hybrid", "混合"],
+    ["preview", "预览"],
+  ]) {
+    await act(async () => button().click());
+    expect(mocks.invoke).toHaveBeenLastCalledWith("surface_display_mode_set", {
+      key: "note:test",
+      mode,
+    });
+    expect(button().getAttribute("data-display-mode")).toBe(mode);
+    expect(button().getAttribute("aria-label")).toContain(label);
+    expect(button().textContent).toBe("");
+    expect(node.querySelector(".cm-editor,[contenteditable=true]")).toBeNull();
+  }
+  expect(mocks.invoke.mock.calls.some(([command]) => command === "surface_restore_stored")).toBe(
+    false,
+  );
+});
+
+it("即使开启原位编辑，胶囊正文也只读且不提供铅笔入口", async () => {
+  const node = await mount();
+  await act(async () =>
+    mocks.listeners.get("config-changed")?.({ payload: { inlineEditing: true } }),
+  );
+  expect(node.querySelector('button[aria-label="编辑便签"]')).toBeNull();
+  await act(async () => node.querySelector<HTMLElement>(".preview-body")!.click());
+  expect(node.querySelector(".cm-editor,[contenteditable=true]")).toBeNull();
+  expect(
+    mocks.invoke.mock.calls.some(([command]) =>
+      ["surface_capsule_begin_edit", "notes_update", "linked_save"].includes(command),
+    ),
+  ).toBe(false);
+  await act(async () =>
+    node.querySelector<HTMLButtonElement>('button[aria-label="展开便签"]')!.click(),
+  );
+  expect(mocks.invoke).toHaveBeenCalledWith("surface_restore_stored", { key: "note:test" });
 });

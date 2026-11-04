@@ -17,6 +17,9 @@ impl Locale {
 }
 
 pub fn app_name(locale: Locale) -> &'static str {
+    if cfg!(feature = "test-app") {
+        return "folio(test)";
+    }
     if cfg!(target_os = "macos") {
         return "笺影";
     }
@@ -266,7 +269,9 @@ mod tests {
 
     #[test]
     fn localizes_native_shell_strings_for_supported_locales() {
-        let name = if cfg!(target_os = "macos") {
+        let name = if cfg!(feature = "test-app") {
+            "folio(test)"
+        } else if cfg!(target_os = "macos") {
             "笺影"
         } else {
             "Hermes Surface Dev"
@@ -311,7 +316,9 @@ mod tests {
         assert_eq!(macos_menu_help_label(Locale::ZhCn), "帮助");
         assert_eq!(
             macos_menu_about_label(Locale::ZhCn),
-            if cfg!(target_os = "macos") {
+            if cfg!(feature = "test-app") {
+                "关于folio(test)"
+            } else if cfg!(target_os = "macos") {
                 "关于笺影"
             } else {
                 "关于Hermes Surface Dev"
@@ -319,7 +326,9 @@ mod tests {
         );
         assert_eq!(
             macos_menu_about_label(Locale::EnUs),
-            if cfg!(target_os = "macos") {
+            if cfg!(feature = "test-app") {
+                "About folio(test)"
+            } else if cfg!(target_os = "macos") {
                 "About 笺影"
             } else {
                 "About Hermes Surface Dev"
@@ -328,7 +337,9 @@ mod tests {
         assert_eq!(macos_menu_services_label(Locale::ZhHk), "服務");
         assert_eq!(
             macos_menu_hide_app_label(Locale::ZhCn),
-            if cfg!(target_os = "macos") {
+            if cfg!(feature = "test-app") {
+                "隐藏folio(test)"
+            } else if cfg!(target_os = "macos") {
                 "隐藏笺影"
             } else {
                 "隐藏Hermes Surface Dev"
@@ -337,7 +348,9 @@ mod tests {
         assert_eq!(macos_menu_hide_others_label(Locale::EnUs), "Hide Others");
         assert_eq!(
             macos_menu_quit_app_label(Locale::EnUs),
-            if cfg!(target_os = "macos") {
+            if cfg!(feature = "test-app") {
+                "Quit folio(test)"
+            } else if cfg!(target_os = "macos") {
                 "Quit 笺影"
             } else {
                 "Quit Hermes Surface Dev"

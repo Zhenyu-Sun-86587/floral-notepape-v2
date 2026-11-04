@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "capsule-preview",
+  "description": "胶囊只读预览中的链接",
+  "windows": ["capsule-preview"],
+  "permissions": ["opener:default"]
+}

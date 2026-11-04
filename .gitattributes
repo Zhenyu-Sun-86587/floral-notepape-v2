@@ -1,2 +1,5 @@
 # 统一行尾为 LF，避免 Windows autocrlf 导致格式检查失败
 * text=auto eol=lf
+
+# Markdown 验收样例使用两个行尾空格测试硬换行，保留其语义。
+Docs/fixtures/mac-markdown-acceptance.md whitespace=-blank-at-eol
