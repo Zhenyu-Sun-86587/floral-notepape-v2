@@ -18,4 +18,14 @@
 
 本地 TypeScript、oxlint 和前端生产构建通过；45 文件／201 项前端测试通过，含默认编辑／双击阅读／锁定、实时设置切换、静默恢复不激活，以及设置界面清理回归。测试桩不能证明真实鼠标双击、输入法和像素间距，界面效果继续由用户人工验收。本轮不做 computer use，不新增性能百分比结论。
 
-完整 Xcode 主应用及 WidgetKit 构建、安装、发布结果随后补记。沿用 ad-hoc 签名，最低 macOS 15；超大竖排需 macOS 27。2.1.0 的小组件授权用户已选择稍后更新，本轮不自动授予权限或再次要求立即操作。自动 CI 保持关闭，仅手动构建。test-app 不改造。
+源码 `e0bc7eeb8696ded7a0710851985f117ebd26b31d` 的 [Xcode 27 手动构建 41836550668](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/actions/runs/41836550668) 已成功，包含前端、Rust／原生回归、主应用与 WidgetKit 编译、签名校验及打包。Windows 平台别名前端构建通过，没有 Windows 原生运行验证。
+
+本机已安装 `/Applications/Folio.app` 2.1.1，主应用 arm64、扩展 arm64/x86_64，Bundle ID、App Intents 元数据与 deep strict 签名校验通过。安装替换前后 17 项受保护磁盘文件 SHA-256 一致，包含内部笔记、外部 Markdown 与配置；2.1.0 应用和数据恢复备份位于 `~/Documents/Folio-recovery/`，不上传私人备份。仅终止本项目进程并后台启动新版，未操作桌面界面。
+
+沿用 ad-hoc 签名，最低 macOS 15；超大竖排需 macOS 27。本次启动日志仍出现主应用容器快照写入 `NSCocoaErrorDomain 513`、操作队列 `NSPOSIXErrorDomain 1`，扩展本地读取成功不能证明快照更新与交互通路恢复。2.1.0 的小组件授权用户已选择稍后更新，本轮不自动授予权限或再次要求立即操作，也不把后台启动视为小组件真实链路通过。自动 CI 保持关闭，仅手动构建。test-app 不改造。本次没有新增性能测量或百分比结论。
+
+## 正式产物
+
+- DMG SHA-256：`ec8e3a2a7974fe3448e40c4b79e064b6a0fcdf3b8814f3f9645aa1fb9ddedf75`。
+- Artifact ZIP SHA-256：`0f2194aacf86cb6dabf764f7125a14e5289993c4bc06c1d780a9567c7fafbdfb`。完整下载、ZIP 完整性、解压和 DMG 校验通过。
+- 发布页：[mac-v2.1.1](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/mac-v2.1.1)。发布附件含安装说明、构建信息与校验值；界面和小组件授权继续按上述边界人工验收。
