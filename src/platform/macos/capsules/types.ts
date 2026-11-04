@@ -4,6 +4,9 @@ export interface CapsuleEntry {
   preview: string;
   colorKey: number;
   expanded: boolean;
+  locked?: boolean;
+  imageBaseDir?: string | null;
+  imageRootDir?: string | null;
 }
 export interface CapsuleGroup {
   runtimeId: number;

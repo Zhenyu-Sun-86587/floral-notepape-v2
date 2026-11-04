@@ -218,6 +218,9 @@ fn entries(sessions: &[SurfaceSession], keys: &[String]) -> Result<Vec<CapsuleEn
                 preview: String::new(),
                 color_key: session.capsule_color_key.unwrap_or(0),
                 expanded: session.presentation == crate::surface_sessions::Presentation::Expanded,
+                locked: session.locked,
+                image_base_dir: None,
+                image_root_dir: None,
             })
         })
         .collect())

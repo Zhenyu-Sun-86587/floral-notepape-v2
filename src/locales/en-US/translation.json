@@ -67,6 +67,19 @@
       "important": "Important",
       "warning": "Warning",
       "caution": "Caution"
+    },
+    "displayMode": {
+      "label": "Markdown display mode",
+      "source": "Source",
+      "hybrid": "Hybrid",
+      "preview": "Preview",
+      "sourceDescription": "Show the complete Markdown source",
+      "hybridDescription": "Keep text markers and render images, tables, math and diagrams",
+      "previewDescription": "Render Markdown and reveal the active syntax while editing inline",
+      "cycle": "Display mode: {{current}}. Click to switch to {{next}}",
+      "followDefault": "Follow the default display mode",
+      "followingDefault": "Following the default mode in settings",
+      "reset": "Restore the default display mode"
     }
   },
   "main": {
@@ -167,6 +180,12 @@
     "moveToCategory": "Move to category…"
   },
   "notepad": {
+    "fileConflict": {
+      "message": "The file has changed. Your draft has not been written to the file.",
+      "reload": "Load from disk",
+      "overwrite": "Overwrite file",
+      "keep": "Keep draft and close"
+    },
     "button": {
       "clear": "Clear"
     },
@@ -265,6 +284,7 @@
       "label": "Tile color"
     },
     "tileCtrlClose": "Ctrl+Right-click to close tile",
+    "inlineEditing": "Inline editing (desktop notes)",
     "tileRenderMarkdown": "Render Markdown on tile",
     "tileDoubleClickToEdit": "Double-click text to edit",
     "tileSaveReturnsToPin": "Return to tile after saving",
@@ -438,7 +458,9 @@
         "contain": "Contain",
         "repeat": "Repeat"
       }
-    }
+    },
+    "surfaceDisplayMode": "Default display mode (desktop notes and capsules)",
+    "surfaceDisplayModeHint": "Use the note toolbar icon to cycle through Source, Hybrid and Preview."
   },
   "tile": {
     "empty": "Empty"

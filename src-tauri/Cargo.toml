@@ -15,6 +15,10 @@ default-run = "hermes-surface-dev"
 name = "floral_notepaper_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# Local, separately installed review application. Production defaults stay unchanged.
+test-app = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 serde_json = "1"

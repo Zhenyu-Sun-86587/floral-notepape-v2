@@ -7,7 +7,7 @@ import { toggleTaskMarker } from "../../../features/markdown/taskMarker";
 import { getNote, updateNote } from "../../../features/notes/api";
 import { readLinkedFile, saveLinkedFile } from "../../../features/linked/api";
 
-interface Preview {
+export interface Preview {
   entry: CapsuleEntry;
   side: "left" | "right" | "top";
   generation: number;
@@ -189,7 +189,11 @@ export function useCapsulePreview() {
     if (!visible || !preview || busy || savingTask.current) return;
     const key = preview.entry.key;
     const generation = preview.generation;
-    const optimistic = toggleTaskMarker(preview.entry.preview, offset, checked);
+    // MarkdownSurface's permanent EditorState uses LF even when a bound file
+    // has CRLF. Keep its offsets in that same document; native save preserves
+    // the original file's line endings after the raw conflict check below.
+    const source = preview.entry.preview.replace(/\r\n?/g, "\n");
+    const optimistic = toggleTaskMarker(source, offset, checked);
     if (optimistic == null) return;
     savingTask.current = true;
     taskEpoch.current++;
@@ -206,7 +210,7 @@ export function useCapsulePreview() {
         const latest = await readLinkedFile(id);
         if (latest.content !== preview.entry.preview)
           throw new Error("原文件已变化，请等待预览更新后重试");
-        const next = toggleTaskMarker(latest.content, offset, checked);
+        const next = toggleTaskMarker(latest.content.replace(/\r\n?/g, "\n"), offset, checked);
         if (next == null) return;
         await saveLinkedFile(id, next, latest.revision);
       } else {
@@ -214,7 +218,7 @@ export function useCapsulePreview() {
         const latest = await getNote(id);
         if (latest.content !== preview.entry.preview)
           throw new Error("便签已变化，请等待预览更新后重试");
-        const next = toggleTaskMarker(latest.content, offset, checked);
+        const next = toggleTaskMarker(latest.content.replace(/\r\n?/g, "\n"), offset, checked);
         if (next == null) return;
         await updateNote(
           id,

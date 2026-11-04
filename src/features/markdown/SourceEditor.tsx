@@ -10,7 +10,14 @@ import {
 } from "react";
 import { Compartment, EditorState, Transaction } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  indentWithTab,
+  undo,
+  redo,
+} from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import {
   defaultHighlightStyle,
@@ -23,8 +30,11 @@ import { mathSyntax, sourceChange } from "./sourceDocument";
 import { codeLanguages } from "./codeLanguages";
 import { toggleTaskMarker } from "./taskMarker";
 import "./sourceEditor.css";
+import { livePresentation } from "./livePresentation";
+import { NATIVE_HISTORY_EVENT } from "./nativeEditCommands";
 
 // 保留标准语法分类和字重，但用便签语义色替换仅适合浅色主题的固定颜色。
+const noPresentation: never[] = [];
 const sourceHighlightStyle = HighlightStyle.define(
   defaultHighlightStyle.specs.map((spec) => ({
     ...spec,
@@ -41,9 +51,15 @@ export interface SourceEditorHandle {
   focus(): void;
   setSelectionRange(start: number, end: number): void;
   insertText(text: string): void;
+  prepareInsertion?(): { insert(text: string): void; cancel(): void };
   toggleTask(offset: number, checked: boolean): void;
 }
 export interface Props {
+  presentation?: "source" | "live" | "hybrid";
+  activateOnFocus?: boolean;
+  imageBaseDir?: string;
+  imageRootDir?: string;
+  allowRemoteImages?: boolean;
   content: string;
   editing: boolean;
   markdown: boolean;
@@ -51,6 +67,7 @@ export interface Props {
   fontSize: number;
   editorRef?: Ref<SourceEditorHandle>;
   onChange?: (content: string) => void;
+  onReadTaskToggle?: (offset: number, checked: boolean) => void;
   onActivate?: () => void;
   onDeactivate?: () => void;
   onPaste?: HTMLAttributes<HTMLDivElement>["onPaste"];
@@ -58,6 +75,7 @@ export interface Props {
   onDragOver?: HTMLAttributes<HTMLDivElement>["onDragOver"];
 }
 interface SourceProps extends Props {
+  onScrollIntoView?: () => boolean;
   onDocumentChange?: (value: string) => void;
   onCompositionChange?: (composing: boolean) => void;
   onBlurAnchor?: () => void;
@@ -70,10 +88,36 @@ export function SourceEditor(props: SourceProps) {
   latest.current = props;
   const access = useRef(new Compartment());
   const language = useRef(new Compartment());
+  const presentation = useRef(new Compartment());
+  const liveExtension = useMemo(
+    () =>
+      (props.presentation === "live" || props.presentation === "hybrid") && props.markdown
+        ? livePresentation({
+            showSyntax: props.presentation === "hybrid",
+            tasksLocked: props.locked,
+            onReadTaskToggle: props.onReadTaskToggle,
+            fontSize: props.fontSize,
+            imageBaseDir: props.imageBaseDir,
+            imageRootDir: props.imageRootDir,
+            allowRemoteImages: props.allowRemoteImages,
+          })
+        : noPresentation,
+    [
+      props.presentation,
+      props.locked,
+      props.onReadTaskToggle,
+      props.markdown,
+      props.fontSize,
+      props.imageBaseDir,
+      props.imageRootDir,
+      props.allowRemoteImages,
+    ],
+  );
   const composing = useRef(false);
   const [compositionRevision, setCompositionRevision] = useState(0);
   const syncExternal = useRef(() => {});
   const documentValue = useRef(props.content);
+  const insertions = useRef(new Set<{ from: number; to: number }>());
   const appliedAccess = useRef(!props.editing || !!props.locked);
   const appliedMarkdown = useRef(props.markdown);
   const markdownExtension = useMemo(
@@ -119,6 +163,32 @@ export function SourceEditor(props: SourceProps) {
             scrollIntoView: true,
           });
       },
+      prepareInsertion() {
+        const view = viewRef.current;
+        const position = {
+          from: view?.state.selection.main.from ?? 0,
+          to: view?.state.selection.main.to ?? 0,
+        };
+        insertions.current.add(position);
+        return {
+          cancel: () => {
+            insertions.current.delete(position);
+          },
+          insert: (text: string) => {
+            if (
+              !insertions.current.delete(position) ||
+              !view ||
+              viewRef.current !== view ||
+              latest.current.locked
+            )
+              return;
+            view.dispatch({
+              changes: { from: position.from, to: position.to, insert: text },
+              userEvent: "input.paste",
+            });
+          },
+        };
+      },
       toggleTask(offset, checked) {
         const view = viewRef.current;
         if (!view || latest.current.locked || composing.current) return;
@@ -155,13 +225,21 @@ export function SourceEditor(props: SourceProps) {
       state: EditorState.create({
         doc: latest.current.content,
         extensions: [
+          // Tauri adds a per-document style nonce in packaged WebViews. CM must
+          // use it too, otherwise its layout stylesheet is blocked by CSP.
+          EditorView.cspNonce.of(
+            document.querySelector<HTMLStyleElement>("style[nonce]")?.nonce ?? "",
+          ),
           language.current.of(latest.current.markdown ? markdownExtension : []),
           syntaxHighlighting(sourceHighlightStyle, { fallback: true }),
           history(),
+          presentation.current.of(liveExtension),
           EditorView.lineWrapping,
-          access.current.of(
+          EditorView.scrollHandler.of(() => latest.current.onScrollIntoView?.() ?? false),
+          access.current.of([
             EditorState.readOnly.of(!latest.current.editing || !!latest.current.locked),
-          ),
+            EditorView.editable.of(latest.current.editing && !latest.current.locked),
+          ]),
           keymap.of([
             { key: "Mod-b", run: wrap("**") },
             { key: "Mod-i", run: wrap("*") },
@@ -177,6 +255,10 @@ export function SourceEditor(props: SourceProps) {
           }),
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return;
+            for (const position of insertions.current) {
+              position.from = update.changes.mapPos(position.from, 1);
+              position.to = Math.max(position.from, update.changes.mapPos(position.to, -1));
+            }
             const value = update.state.doc.toString();
             documentValue.current = value;
             if (
@@ -203,17 +285,19 @@ export function SourceEditor(props: SourceProps) {
               return true;
             },
             focus() {
-              if (!latest.current.locked) latest.current.onActivate?.();
+              if (!latest.current.locked && latest.current.activateOnFocus !== false)
+                latest.current.onActivate?.();
               return false;
             },
             blur(event) {
               latest.current.onBlurAnchor?.();
+              if (!latest.current.editing) return false;
               const next = event.relatedTarget as HTMLElement | null;
               // 工具栏/对话框的焦点交接属于编辑会话；IME 临时失焦不结束会话。
               if (
                 !composing.current &&
                 !view.composing &&
-                !next?.closest("button,input,[role=dialog],[role=menu]")
+                !next?.closest("button,input,select,[role=dialog],[role=menu]")
               )
                 latest.current.onDeactivate?.();
               return false;
@@ -243,6 +327,38 @@ export function SourceEditor(props: SourceProps) {
       }),
     });
     viewRef.current = view;
+    const nativeHistory = (event: Event) => {
+      const action = (event as CustomEvent).detail;
+      if (
+        !["undo", "redo"].includes(action) ||
+        latest.current.locked ||
+        composing.current ||
+        view.composing
+      )
+        return;
+      const readOnly = view.state.readOnly;
+      // Reading-mode tasks belong to this history too. Keep the DOM read-only
+      // while allowing only this explicit history transaction, then restore access.
+      if (readOnly)
+        view.dispatch({
+          effects: access.current.reconfigure([
+            EditorState.readOnly.of(false),
+            EditorView.editable.of(false),
+          ]),
+        });
+      try {
+        (action === "undo" ? undo : redo)(view);
+      } finally {
+        if (readOnly)
+          view.dispatch({
+            effects: access.current.reconfigure([
+              EditorState.readOnly.of(true),
+              EditorView.editable.of(false),
+            ]),
+          });
+      }
+    };
+    view.contentDOM.addEventListener(NATIVE_HISTORY_EVENT, nativeHistory);
     syncExternal.current = () => {
       if (composing.current || view.composing) return;
       // 本地输入回传的正文已经是 EditorState 的快照，不再拆分/拼接全文。
@@ -262,6 +378,7 @@ export function SourceEditor(props: SourceProps) {
     latest.current.onDocumentChange?.(documentValue.current);
     return () => {
       disposed = true;
+      view.contentDOM.removeEventListener(NATIVE_HISTORY_EVENT, nativeHistory);
       cancelAnimationFrame(frame);
       syncExternal.current = () => {};
       view.destroy();
@@ -277,7 +394,14 @@ export function SourceEditor(props: SourceProps) {
     const readOnly = !props.editing || !!props.locked;
     if (appliedAccess.current === readOnly) return;
     appliedAccess.current = readOnly;
-    view.dispatch({ effects: access.current.reconfigure(EditorState.readOnly.of(readOnly)) });
+    const hadFocus = view.hasFocus;
+    view.dispatch({
+      effects: access.current.reconfigure([
+        EditorState.readOnly.of(readOnly),
+        EditorView.editable.of(!readOnly),
+      ]),
+    });
+    if (readOnly && hadFocus) view.contentDOM.blur();
   }, [props.editing, props.locked, compositionRevision]);
   useEffect(() => {
     if (
@@ -291,10 +415,16 @@ export function SourceEditor(props: SourceProps) {
       effects: language.current.reconfigure(props.markdown ? markdownExtension : []),
     });
   }, [props.markdown, compositionRevision, markdownExtension]);
+  useLayoutEffect(() => {
+    if (!composing.current && !viewRef.current?.composing)
+      viewRef.current?.dispatch({ effects: presentation.current.reconfigure(liveExtension) });
+  }, [liveExtension, compositionRevision]);
   return (
     <div
       ref={host}
       className="source-editor"
+      data-presentation={props.presentation ?? "source"}
+      data-editing={props.editing && !props.locked}
       data-tile-selectable="true"
       style={{ fontSize: props.fontSize }}
       onPasteCapture={props.onPaste}

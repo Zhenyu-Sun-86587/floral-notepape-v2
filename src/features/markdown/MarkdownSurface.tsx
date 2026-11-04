@@ -1,3 +1,4 @@
+import type { MarkdownDisplayMode } from "./displayMode";
 import {
   useCallback,
   useEffect,
@@ -6,13 +7,16 @@ import {
   useRef,
   useState,
   type MouseEvent,
+  type RefObject,
 } from "react";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { SourceEditor, type Props, type SourceEditorHandle } from "./SourceEditor";
 import { renderedAnchorY, sourceOffsetAtPoint } from "./sourcePosition";
 
-type Anchor = { offset: number; y: number };
+type Anchor = { offset: number; y: number; scrollTop?: number };
 interface SurfaceProps extends Props {
+  displayMode?: MarkdownDisplayMode;
+  scrollContainerRef?: RefObject<HTMLElement | null>;
   activationGesture?: "click" | "doubleClick" | "none";
   imageBaseDir?: string;
   imageRootDir?: string;
@@ -26,8 +30,16 @@ export function MarkdownSurface(props: SurfaceProps) {
   const read = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(props.editing);
   const [composing, setComposing] = useState(false);
+  const [displayMode, setDisplayMode] = useState(props.displayMode);
+  useLayoutEffect(() => {
+    if (!composing && !editor.current?.composing) setDisplayMode(props.displayMode);
+  }, [props.displayMode, composing]);
+  const directSource = displayMode === "source" || displayMode === "hybrid";
+  const editorVisible = active || directSource;
+
   const [presentation, setPresentation] = useState("");
   const entering = useRef<Anchor | null>(null);
+  const pendingScroll = useRef<Anchor | null>(null);
   const anchor = useRef<Anchor | null>(null);
   const latest = useRef(props);
   latest.current = props;
@@ -61,6 +73,9 @@ export function MarkdownSurface(props: SurfaceProps) {
       insertText(text) {
         editor.current?.insertText(text);
       },
+      prepareInsertion() {
+        return editor.current?.prepareInsertion?.() ?? { insert() {}, cancel() {} };
+      },
       toggleTask(offset, checked) {
         editor.current?.toggleTask(offset, checked);
       },
@@ -72,7 +87,10 @@ export function MarkdownSurface(props: SurfaceProps) {
     if (!view || !activeRef.current) return;
     const offset = view.state.selection.main.head;
     const y = view.coordsAtPos(offset)?.top;
-    if (y != null) anchor.current = { offset, y };
+    const scroll =
+      latest.current.scrollContainerRef?.current ??
+      root.current?.closest<HTMLElement>(".overflow-y-auto");
+    if (y != null) anchor.current = { offset, y, scrollTop: scroll?.scrollTop };
   }, []);
   const deactivate = useCallback(() => {
     if (editor.current?.composing) return;
@@ -94,7 +112,7 @@ export function MarkdownSurface(props: SurfaceProps) {
       if (
         editor.current?.view?.hasFocus ||
         root.current?.contains(target) ||
-        target.closest("button,input,[role=dialog],[role=menu]") ||
+        target.closest("button,input,select,[role=dialog],[role=menu]") ||
         document.querySelector('[role="dialog"],[role="menu"]')
       )
         return;
@@ -117,10 +135,10 @@ export function MarkdownSurface(props: SurfaceProps) {
     const handle = editor.current;
     const view = handle?.view;
     if (!view) return;
-    let frame = 0;
-    let measureFrame = 0;
     let cancelled = false;
-    const scroll = root.current?.closest<HTMLElement>(".overflow-y-auto");
+    const scroll =
+      latest.current.scrollContainerRef?.current ??
+      root.current?.closest<HTMLElement>(".overflow-y-auto");
     const correct = (target: Anchor, y: number | null | undefined) => {
       if (!cancelled && scroll && y != null) scroll.scrollTop += y - target.y;
     };
@@ -135,37 +153,43 @@ export function MarkdownSurface(props: SurfaceProps) {
       } else if (entering.current)
         handle.setSelectionRange(entering.current.offset, entering.current.offset);
       entering.current = null;
+      pendingScroll.current = target;
       view.focus();
-      // 隐藏期间 CM 没有可见 viewport；先让目标源码进入 viewport，再按锚点校正。
-      frame = requestAnimationFrame(() => {
-        view.dispatch({ scrollIntoView: true });
-        measureFrame = requestAnimationFrame(() => {
-          view.requestMeasure({
-            read: () => view.coordsAtPos(view.state.selection.main.head)?.top,
-            write: (y) => {
-              if (target) correct(target, y);
-            },
-          });
-        });
-      });
-    } else {
-      frame = requestAnimationFrame(() => {
-        if (anchor.current && read.current)
-          correct(anchor.current, renderedAnchorY(read.current, anchor.current.offset));
-      });
+      // Let CM materialize the target line, but replace its default scrolling
+      // with one anchor correction in that same measurement, before painting.
+      view.dispatch({ scrollIntoView: true });
+      try {
+        const y = view.coordsAtPos(view.state.selection.main.head)?.top;
+        if (target) correct(target, y);
+      } finally {
+        pendingScroll.current = null;
+      }
+    } else if (anchor.current) {
+      if (displayMode === "source" && scroll && anchor.current.scrollTop != null)
+        scroll.scrollTop = anchor.current.scrollTop;
+      else
+        correct(
+          anchor.current,
+          directSource
+            ? view.coordsAtPos(anchor.current.offset)?.top
+            : read.current
+              ? renderedAnchorY(read.current, anchor.current.offset)
+              : null,
+        );
     }
     return () => {
       cancelled = true;
-      cancelAnimationFrame(frame);
-      cancelAnimationFrame(measureFrame);
+      pendingScroll.current = null;
     };
   }, [active]);
 
   // 图片和 Mermaid 可能在切回阅读后才完成布局；用户开始滚动后立即放弃自动校正。
   useEffect(() => {
-    if (active || !read.current || !anchor.current) return;
+    if (active || directSource || !read.current || !anchor.current) return;
     const layer = read.current;
-    const scroll = root.current?.closest<HTMLElement>(".overflow-y-auto");
+    const scroll =
+      latest.current.scrollContainerRef?.current ??
+      root.current?.closest<HTMLElement>(".overflow-y-auto");
     let cancelled = false;
     const stop = () => {
       cancelled = true;
@@ -183,10 +207,11 @@ export function MarkdownSurface(props: SurfaceProps) {
       for (const event of ["wheel", "pointerdown", "keydown", "touchstart"])
         scroll?.removeEventListener(event, stop);
     };
-  }, [active]);
+  }, [active, directSource]);
 
   const activate = (event: MouseEvent<HTMLDivElement>) => {
     if (
+      active ||
       props.locked ||
       event.button !== 0 ||
       (event.target as HTMLElement).closest("a,button,input,summary,[role=button]")
@@ -196,15 +221,33 @@ export function MarkdownSurface(props: SurfaceProps) {
     // 双击会产生原生词语选区，不应阻止显式的双击编辑手势。
     if (
       props.activationGesture !== "doubleClick" &&
-      selection &&
-      !selection.isCollapsed &&
-      read.current?.contains(selection.anchorNode)
+      ((directSource && !editor.current?.view?.state.selection.main.empty) ||
+        (selection && !selection.isCollapsed && read.current?.contains(selection.anchorNode)))
     )
       return;
-    const offset = read.current
-      ? sourceOffsetAtPoint(read.current, event.clientX, event.clientY, event.target as HTMLElement)
-      : null;
-    entering.current = { offset: offset ?? editor.current?.selectionStart ?? 0, y: event.clientY };
+    // Widgets already mapped mousedown to their inner source range. CM's coarse
+    // coordinate hit test would overwrite that with the replacement block's end.
+    const offset = directSource
+      ? (event.target as HTMLElement).closest(".cm-live-block,.cm-live-inline")
+        ? (editor.current?.selectionStart ?? null)
+        : (editor.current?.view?.posAtCoords({ x: event.clientX, y: event.clientY }) ?? null)
+      : read.current
+        ? sourceOffsetAtPoint(
+            read.current,
+            event.clientX,
+            event.clientY,
+            event.target as HTMLElement,
+          )
+        : null;
+    const caret = offset ?? editor.current?.selectionStart ?? 0;
+    entering.current = {
+      offset: caret,
+      y: directSource
+        ? (editor.current?.view?.coordsAtPos(caret)?.top ?? event.clientY)
+        : read.current
+          ? (renderedAnchorY(read.current, caret) ?? event.clientY)
+          : event.clientY,
+    };
     if (props.activationGesture === "doubleClick") {
       event.preventDefault();
       event.stopPropagation();
@@ -216,9 +259,9 @@ export function MarkdownSurface(props: SurfaceProps) {
     <div ref={root} className="markdown-surface" data-tile-selectable="true">
       <div
         ref={read}
-        className={`markdown-read-layer ${active ? "is-inactive" : ""}`}
-        inert={active}
-        aria-hidden={active}
+        className={`markdown-read-layer ${editorVisible ? "is-inactive" : ""}`}
+        inert={editorVisible}
+        aria-hidden={editorVisible}
         onClick={(props.activationGesture ?? "click") === "click" ? activate : undefined}
         onDoubleClick={props.activationGesture === "doubleClick" ? activate : undefined}
       >
@@ -230,7 +273,7 @@ export function MarkdownSurface(props: SurfaceProps) {
             imageBaseDir={props.imageBaseDir}
             imageRootDir={props.imageRootDir}
             allowRemoteImages={props.allowRemoteImages}
-            onTaskToggle={props.locked ? undefined : toggleTask}
+            onTaskToggle={props.locked ? undefined : (props.onReadTaskToggle ?? toggleTask)}
           />
         ) : (
           <div
@@ -246,18 +289,35 @@ export function MarkdownSurface(props: SurfaceProps) {
         )}
       </div>
       <div
-        className={`markdown-edit-layer ${active ? "" : "is-inactive"}`}
-        inert={!active}
-        aria-hidden={!active}
+        className={`markdown-edit-layer ${editorVisible ? "" : "is-inactive"}`}
+        inert={!editorVisible}
+        aria-hidden={!editorVisible}
+        onClick={
+          directSource && (props.activationGesture ?? "click") === "click" ? activate : undefined
+        }
+        onDoubleClick={
+          directSource && props.activationGesture === "doubleClick" ? activate : undefined
+        }
       >
         <SourceEditor
           {...props}
           editing={active}
+          markdown={displayMode === "source" ? false : props.markdown}
+          presentation={
+            displayMode === "hybrid"
+              ? "hybrid"
+              : displayMode === "source"
+                ? "source"
+                : props.presentation
+          }
+          activateOnFocus={!directSource}
           editorRef={editor}
           onDeactivate={deactivate}
+          onReadTaskToggle={props.onReadTaskToggle ?? toggleTask}
           onDocumentChange={documentChanged}
           onCompositionChange={setComposing}
           onBlurAnchor={capture}
+          onScrollIntoView={() => pendingScroll.current !== null}
         />
       </div>
     </div>

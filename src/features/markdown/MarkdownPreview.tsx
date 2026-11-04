@@ -12,12 +12,13 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import type { Components } from "react-markdown";
 import "katex/dist/katex.min.css";
 import remarkAlerts from "./remarkAlerts";
+import remarkHybrid from "./remarkHybrid";
 import { resolveMarkdownImageSrc } from "./imageSrc";
 import { hideLeadingFrontmatter } from "./frontmatter";
 import remarkTaskOffsets from "./remarkTaskOffsets";
 import { highlightCode } from "./highlightCode";
 import { MermaidBlock } from "./MermaidBlock";
-import { rehypeSourcePosition, sourceAttributes } from "./sourcePosition";
+import { rehypeSourcePosition, sourceAttributes, textSourceAttributes } from "./sourcePosition";
 
 function CodeBlock({
   children,
@@ -51,6 +52,8 @@ function CodeBlock({
   return (
     <div {...sourceAttributes(node)} className="markdown-code-block my-3 relative group">
       <pre
+        {...sourceAttributes(node)}
+        {...textSourceAttributes(node)}
         className={`markdown-code-scroll m-0 px-4 rounded bg-paper-warm/80 overflow-x-auto ${
           language ? "pt-8 pb-3" : "py-3"
         }`}
@@ -95,6 +98,7 @@ function extractText(node: React.ReactNode): string {
 
 interface MarkdownPreviewProps {
   content: string;
+  presentation?: "preview" | "hybrid";
   fontSize?: number;
   renderHtml?: boolean;
   sourceMapping?: boolean;
@@ -319,6 +323,7 @@ const staticComponents: Components = {
     return (
       <code
         {...sourceAttributes(node)}
+        {...textSourceAttributes(node)}
         className="px-1.5 py-0.5 text-[0.85em] font-mono bg-paper-warm rounded text-bamboo"
       >
         {children}
@@ -420,6 +425,7 @@ export const MarkdownPreview = memo(function MarkdownPreview({
   fontSize = 14,
   renderHtml = false,
   sourceMapping = false,
+  presentation = "preview",
   imageBaseDir,
   imageRootDir,
   allowRemoteImages = false,
@@ -436,8 +442,14 @@ export const MarkdownPreview = memo(function MarkdownPreview({
   const previewContent = useMemo(() => hideLeadingFrontmatter(content), [content]);
   const sourceOffset = content.length - previewContent.length;
   const remarkPlugins = useMemo(
-    () => [remarkGfm, remarkMath, remarkAlerts, [remarkTaskOffsets, previewContent, sourceOffset]],
-    [previewContent, sourceOffset],
+    () => [
+      remarkGfm,
+      remarkMath,
+      remarkAlerts,
+      [remarkTaskOffsets, previewContent, sourceOffset],
+      ...(presentation === "hybrid" ? [[remarkHybrid, previewContent]] : []),
+    ],
+    [previewContent, sourceOffset, presentation],
   ) as Parameters<typeof Markdown>[0]["remarkPlugins"];
   const rehypePlugins = useMemo(() => {
     const pipeline = renderHtml ? rehypePluginsWithHtml! : rehypePluginsDefault;
@@ -557,7 +569,13 @@ export const MarkdownPreview = memo(function MarkdownPreview({
     [allowRemoteImages, imageBaseDir, imageRootDir, hasTaskAction, handleTaskToggle, sourceOffset],
   );
   return (
-    <div className="font-body markdown-selectable" style={{ fontSize: `${fontSize}px` }}>
+    <div
+      className={`font-body markdown-selectable ${presentation === "hybrid" ? "markdown-hybrid" : ""}`}
+      style={{ fontSize: `${fontSize}px` }}
+    >
+      {presentation === "hybrid" && sourceOffset > 0 && (
+        <div className="whitespace-pre-wrap">{content.slice(0, sourceOffset)}</div>
+      )}
       {previewContent.trim() ? (
         <Markdown
           remarkPlugins={remarkPlugins}
