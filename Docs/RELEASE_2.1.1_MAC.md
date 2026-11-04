@@ -29,3 +29,4 @@
 - DMG SHA-256：`ec8e3a2a7974fe3448e40c4b79e064b6a0fcdf3b8814f3f9645aa1fb9ddedf75`。
 - Artifact ZIP SHA-256：`0f2194aacf86cb6dabf764f7125a14e5289993c4bc06c1d780a9567c7fafbdfb`。完整下载、ZIP 完整性、解压和 DMG 校验通过。
 - 发布页：[mac-v2.1.1](https://github.com/Zhenyu-Sun-86587/floral-notepape-v2/releases/tag/mac-v2.1.1)。发布附件含安装说明、构建信息与校验值；界面和小组件授权继续按上述边界人工验收。
+- PR #28 已合并为 `417f371e0e81e7ef379b5be7652095982b7820c7`，发布 tag 指向该提交，与已构建源码仅文档不同。正式发布的四个附件通过 API 核对大小和 SHA-256，全部与本地一致。GitHub 构建／检查工作流仍为手动停用。
