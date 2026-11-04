@@ -269,6 +269,9 @@ it("macOS 设置仅保留有效的全局显示方式，切换后保留旧兼容�
   );
   expect(host.textContent).not.toContain("列表磁贴渲染 Markdown");
   expect(host.textContent).not.toContain("磁贴渲染 Markdown");
+  expect(host.textContent).not.toContain("原位编辑");
+  expect(host.textContent).toContain("关闭：打开便签即进入编辑");
+  expect(host.textContent).toContain("双击文字区域进入编辑");
   const group = host.querySelector('[role="group"][aria-label="Markdown 显示方式"]')!;
   const hybrid = Array.from(group.querySelectorAll("button")).find(
     (button) => button.textContent === "混合",
@@ -311,4 +314,65 @@ it("closing a linked note waits for image insertion and saves its reference", as
   expect(mocks.invoke.mock.calls.find(([c]) => c === "linked_save")![1].content).toContain(
     "floral-image-saved.png",
   );
+});
+
+it.each([
+  [false, false, true],
+  [true, false, false],
+  [false, true, false],
+])(
+  "Mac note opening: double-click=%s, locked=%s, editing=%s",
+  async (doubleClick, locked, editing) => {
+    const original = mocks.invoke.getMockImplementation()!;
+    mocks.invoke.mockImplementation((command: string, args: any, options: any) => {
+      if (command === "config_get")
+        return Promise.resolve({
+          ...config,
+          tileDoubleClickToEdit: doubleClick,
+          inlineEditing: true,
+        });
+      if (command === "surface_session_get") return Promise.resolve({ key: args.key, locked });
+      return original(command, args, options);
+    });
+    await act(async () =>
+      root.render(<NotePad initialBindingId="binding-test" initialSurfaceMode="tile" />),
+    );
+    expect(mocks.tile.editing).toBe(editing);
+    expect(mocks.tile.doubleClickToEdit).toBe(doubleClick);
+    if (locked)
+      expect(mocks.invoke.mock.calls.some(([c, a]) => c === "surface_edit_mode" && a.editing)).toBe(
+        false,
+      );
+  },
+);
+
+it("changing the Mac double-click preference updates the open note", async () => {
+  await act(async () =>
+    root.render(<NotePad initialBindingId="binding-test" initialSurfaceMode="tile" />),
+  );
+  expect(mocks.tile.editing).toBe(true);
+  await act(async () =>
+    mocks.listeners.get("config-changed")!({ payload: { tileDoubleClickToEdit: true } }),
+  );
+  expect(mocks.tile.editing).toBe(false);
+  await act(async () =>
+    mocks.listeners.get("config-changed")!({ payload: { tileDoubleClickToEdit: false } }),
+  );
+  expect(mocks.tile.editing).toBe(true);
+});
+
+it("silent Mac restore starts editable without native focus activation", async () => {
+  const old = window.location.href;
+  window.history.replaceState({}, "", "/?silentRestore=1");
+  try {
+    await act(async () =>
+      root.render(<NotePad initialBindingId="binding-test" initialSurfaceMode="tile" />),
+    );
+    expect(mocks.tile.editing).toBe(true);
+    expect(mocks.invoke.mock.calls.some(([c, a]) => c === "surface_edit_mode" && a.editing)).toBe(
+      false,
+    );
+  } finally {
+    window.history.replaceState({}, "", old);
+  }
 });

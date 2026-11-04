@@ -237,19 +237,13 @@ export function SettingsPanel({
               />
             </div>
           )}
+          <ToggleRow
+            label={t("settings.tileDoubleClickToEdit", { defaultValue: "双击文字区域进入编辑" })}
+            checked={config.tileDoubleClickToEdit ?? false}
+            onChange={(checked) => setConfigValue("tileDoubleClickToEdit", checked)}
+          />
           {liveMarkdownEditing && (
-            <ToggleRow
-              label={t("settings.inlineEditing", { defaultValue: "原位编辑（桌面便签与胶囊）" })}
-              checked={config.inlineEditing ?? false}
-              onChange={(checked) => setConfigValue("inlineEditing", checked)}
-            />
-          )}
-          {(!liveMarkdownEditing || !config.inlineEditing) && (
-            <ToggleRow
-              label={t("settings.tileDoubleClickToEdit", { defaultValue: "双击文字区域进入编辑" })}
-              checked={config.tileDoubleClickToEdit ?? false}
-              onChange={(checked) => setConfigValue("tileDoubleClickToEdit", checked)}
-            />
+            <p className="text-[11px] text-ink-faint px-1">{t("settings.tileEditPolicyHint")}</p>
           )}
           <ToggleRow
             label={t("settings.tileSaveReturnsToPin", { defaultValue: "保存后回到磁贴" })}

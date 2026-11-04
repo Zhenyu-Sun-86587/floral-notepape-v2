@@ -284,7 +284,6 @@
       "label": "磁贴颜色"
     },
     "tileCtrlClose": "Ctrl+右键快速关闭磁贴",
-    "inlineEditing": "原位编辑（桌面便签）",
     "tileRenderMarkdown": "磁贴渲染 Markdown",
     "tileDoubleClickToEdit": "双击文字区域进入编辑",
     "tileSaveReturnsToPin": "保存后回到磁贴",
@@ -460,7 +459,8 @@
       }
     },
     "surfaceDisplayMode": "默认显示方式（桌面便签与胶囊）",
-    "surfaceDisplayModeHint": "便签顶边条的图标按源码、混合、预览依次切换。"
+    "surfaceDisplayModeHint": "便签顶边条的图标按源码、混合、预览依次切换。",
+    "tileEditPolicyHint": "开启：先阅读，双击正文进入编辑。关闭：打开便签即进入编辑。胶囊悬停预览保持只读。"
   },
   "tile": {
     "empty": "空"

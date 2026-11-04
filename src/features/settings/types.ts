@@ -55,6 +55,7 @@ export interface AppConfig extends PlatformConfig {
   externalFileAutoSave: boolean;
   rememberSurfaceSize: boolean;
   tileCtrlClose: boolean;
+  /** Legacy compatibility field; Mac editing now follows tileDoubleClickToEdit. */
   inlineEditing?: boolean;
   surfaceDisplayMode?: MarkdownDisplayMode | null;
   tileDoubleClickToEdit: boolean;
