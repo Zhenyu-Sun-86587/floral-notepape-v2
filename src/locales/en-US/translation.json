@@ -284,7 +284,6 @@
       "label": "Tile color"
     },
     "tileCtrlClose": "Ctrl+Right-click to close tile",
-    "inlineEditing": "Inline editing (desktop notes)",
     "tileRenderMarkdown": "Render Markdown on tile",
     "tileDoubleClickToEdit": "Double-click text to edit",
     "tileSaveReturnsToPin": "Return to tile after saving",
@@ -460,7 +459,8 @@
       }
     },
     "surfaceDisplayMode": "Default display mode (desktop notes and capsules)",
-    "surfaceDisplayModeHint": "Use the note toolbar icon to cycle through Source, Hybrid and Preview."
+    "surfaceDisplayModeHint": "Use the note toolbar icon to cycle through Source, Hybrid and Preview.",
+    "tileEditPolicyHint": "On: read first, then double-click text to edit. Off: open notes in editing mode. Capsule hover previews stay read-only."
   },
   "tile": {
     "empty": "Empty"

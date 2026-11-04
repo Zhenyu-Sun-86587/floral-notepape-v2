@@ -284,7 +284,6 @@
       "label": "磁貼顏色"
     },
     "tileCtrlClose": "Ctrl+右鍵快速關閉磁貼",
-    "inlineEditing": "原位編輯（桌面便箋）",
     "tileRenderMarkdown": "磁貼渲染 Markdown",
     "tileDoubleClickToEdit": "雙擊文字區域進入編輯",
     "tileSaveReturnsToPin": "儲存後回到磁貼",
@@ -441,7 +440,8 @@
       }
     },
     "surfaceDisplayMode": "預設顯示方式（桌面便箋與膠囊）",
-    "surfaceDisplayModeHint": "便箋頂邊列的圖示依原始碼、混合、預覽順序切換。"
+    "surfaceDisplayModeHint": "便箋頂邊列的圖示依原始碼、混合、預覽順序切換。",
+    "tileEditPolicyHint": "開啟：先閱讀，雙擊正文進入編輯。關閉：開啟便箋即進入編輯。膠囊懸停預覽保持唯讀。"
   },
   "tile": {
     "empty": "空"

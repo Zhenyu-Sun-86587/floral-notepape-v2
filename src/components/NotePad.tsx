@@ -206,7 +206,6 @@ export function NotePad({
   const [appearanceTheme, setAppearanceTheme] = useState<ThemeOption>("system");
   const [tileRenderMarkdown, setTileRenderMarkdown] = useState(false);
   const [allowRemoteImages, setAllowRemoteImages] = useState(false);
-  const [inlineEditing, setInlineEditing] = useState(false);
   const [configuredDisplayMode, setConfiguredDisplayMode] = useState<MarkdownDisplayMode | null>(
     null,
   );
@@ -319,7 +318,6 @@ export function NotePad({
           setAppearanceConfig(loadedConfig.appearance);
           setAppearanceTheme(loadedConfig.theme);
           setTileRenderMarkdown(loadedConfig.tileRenderMarkdown ?? false);
-          setInlineEditing(loadedConfig.inlineEditing ?? false);
           setConfiguredDisplayMode(loadedConfig.surfaceDisplayMode ?? null);
           setAllowRemoteImages(loadedConfig.allowRemoteImages ?? false);
           setTileDoubleClickToEdit(loadedConfig.tileDoubleClickToEdit ?? false);
@@ -528,7 +526,6 @@ export function NotePad({
       theme?: ThemeOption;
       tileRenderMarkdown?: boolean;
       allowRemoteImages?: boolean;
-      inlineEditing?: boolean;
       surfaceDisplayMode?: MarkdownDisplayMode | null;
       tileDoubleClickToEdit?: boolean;
       tileSaveReturnsToPin?: boolean;
@@ -542,7 +539,6 @@ export function NotePad({
       setAppearanceConfig(event.payload.appearance);
       if (event.payload.theme) setAppearanceTheme(event.payload.theme);
       setConfiguredDisplayMode(event.payload.surfaceDisplayMode ?? null);
-      if (event.payload.inlineEditing != null) setInlineEditing(event.payload.inlineEditing);
       if (event.payload.tileRenderMarkdown != null)
         setTileRenderMarkdown(event.payload.tileRenderMarkdown);
       if (event.payload.allowRemoteImages != null)
@@ -1065,7 +1061,7 @@ export function NotePad({
     (event: MouseEvent<HTMLElement>) => {
       if (tileClickTimerRef.current) clearTimeout(tileClickTimerRef.current);
       const textTarget = isTileTextHit(event);
-      if (liveMarkdownEditing && inlineEditing && textTarget) return;
+      if (liveMarkdownEditing && textTarget) return;
       if (
         !shouldEnterPadFromTileOnDoubleClick(
           !textTarget || tileDoubleClickToEdit,
@@ -1080,7 +1076,7 @@ export function NotePad({
       event.stopPropagation();
       void startTileWriting();
     },
-    [clearPendingTileDrag, startTileWriting, tileDoubleClickToEdit, inlineEditing],
+    [clearPendingTileDrag, startTileWriting, tileDoubleClickToEdit],
   );
 
   useEffect(
@@ -1264,12 +1260,38 @@ export function NotePad({
   startTileWritingRef.current = startTileWriting;
   useEffect(() => {
     if (!bootstrapReady || surfaceMode !== "tile") return;
-    void invoke<boolean>("surface_take_edit_request")
-      .then((requested) => {
-        if (requested) void startTileWritingRef.current();
-      })
-      .catch(() => undefined);
-  }, [bootstrapReady, surfaceMode]);
+    let cancelled = false;
+    const applyPolicy = async () => {
+      const key = initialBindingId
+        ? `linked:${initialBindingId}`
+        : `note:${editingNoteIdRef.current ?? initialNoteId ?? ""}`;
+      const [requested, session] = await Promise.all([
+        invoke<boolean>("surface_take_edit_request"),
+        liveMarkdownEditing ? getSurfaceSession(key) : Promise.resolve(null),
+      ]);
+      if (cancelled || session?.locked) return;
+      if (requested) {
+        await startTileWritingRef.current();
+      } else if (liveMarkdownEditing && !tileDoubleClickToEdit) {
+        // Restored background notes are editable without activating every window.
+        if (new URLSearchParams(window.location.search).has("silentRestore")) setTileWriting(true);
+        else await startTileWritingRef.current();
+      } else if (liveMarkdownEditing) {
+        await finishTileWritingRef.current();
+      }
+    };
+    void applyPolicy().catch((error) => showToast(getErrorMessage(error)));
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    bootstrapReady,
+    surfaceMode,
+    tileDoubleClickToEdit,
+    tileLocked,
+    initialBindingId,
+    initialNoteId,
+  ]);
   useEffect(() => {
     if (surfaceMode !== "tile") return undefined;
     const unlisten = getCurrentWindow().listen("surface-hide-request", () => {
@@ -1506,7 +1528,6 @@ export function NotePad({
           locked={tileLocked || resolvingLinkedConflict}
           onEditorActivate={() => void startTileWriting()}
           doubleClickToEdit={tileDoubleClickToEdit}
-          inlineEditing={inlineEditing}
           onEditorDeactivate={() => void finishTileWriting()}
           onEditorPaste={imagePasteHandler}
           onEditorDrop={imageDropHandler}

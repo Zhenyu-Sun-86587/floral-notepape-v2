@@ -42,7 +42,6 @@ export interface TileProps extends Omit<
   contentEditorRef?: Ref<SourceEditorHandle>;
   onEditorActivate?: () => void;
   doubleClickToEdit?: boolean;
-  inlineEditing?: boolean;
   displayMode?: MarkdownDisplayMode;
   onEditorDeactivate?: () => void;
   locked?: boolean;
@@ -93,7 +92,6 @@ export function Tile({
   contentEditorRef,
   onEditorActivate,
   doubleClickToEdit = false,
-  inlineEditing = false,
   displayMode,
   onEditorDeactivate,
   locked,
@@ -140,6 +138,7 @@ export function Tile({
     >
       <div
         ref={scrollContainerRef}
+        data-note-body={contentEditorRef ? "true" : undefined}
         className={`px-4 pt-4 pb-4 ${notice ? "flex-1 min-h-0" : "h-full"} overflow-y-auto scrollbar-hidden`}
       >
         {editing && titleEditable ? (
@@ -165,7 +164,7 @@ export function Tile({
             <Suspense fallback={<div className="min-h-[8rem]" />}>
               <MarkdownSurface
                 displayMode={displayMode}
-                presentation={liveMarkdownEditing && inlineEditing ? "live" : "source"}
+                presentation={liveMarkdownEditing ? "live" : "source"}
                 scrollContainerRef={
                   typeof scrollContainerRef === "object"
                     ? (scrollContainerRef ?? undefined)
@@ -180,11 +179,15 @@ export function Tile({
                 onChange={onContentChange}
                 onActivate={onEditorActivate}
                 activationGesture={
-                  (liveMarkdownEditing ? inlineEditing : singleClickToEdit)
-                    ? "click"
-                    : doubleClickToEdit
+                  liveMarkdownEditing
+                    ? doubleClickToEdit
                       ? "doubleClick"
-                      : "none"
+                      : "click"
+                    : singleClickToEdit
+                      ? "click"
+                      : doubleClickToEdit
+                        ? "doubleClick"
+                        : "none"
                 }
                 onDeactivate={onEditorDeactivate}
                 imageBaseDir={imageBaseDir}

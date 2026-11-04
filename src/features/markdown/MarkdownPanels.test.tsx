@@ -58,7 +58,6 @@ const show = (mode: MarkdownDisplayMode, editing = false) =>
       content={source}
       displayMode={mode}
       renderMarkdown={mode !== "source"}
-      inlineEditing
       editing={editing}
       contentEditorRef={ref}
       imageBaseDir="/qa"

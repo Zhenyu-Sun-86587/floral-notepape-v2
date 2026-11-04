@@ -38,3 +38,22 @@
   :is([data-note-toolbar], [data-note-header], [data-note-display-title]) {
   display: none !important;
 }
+
+/* AppKit already reserves the title bar. Avoid stacking body padding and the
+   first Markdown heading's section spacing below it. Keep later headings spaced. */
+:root[data-native-note-shell="true"] [data-note-body="true"] {
+  padding-top: 6px;
+}
+:root[data-native-note-shell="true"]
+  [data-note-body="true"]
+  .cm-content
+  > .cm-line:first-child.cm-live-heading {
+  padding-top: 0 !important;
+}
+:root[data-native-note-shell="true"]
+  [data-note-body="true"]
+  .markdown-read-layer
+  .markdown-selectable
+  > :first-child {
+  margin-top: 0;
+}
