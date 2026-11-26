@@ -1111,6 +1111,8 @@ fn toggle_app_visibility(app: &AppHandle) {
             }
         }
 
+        #[cfg(target_os = "macos")]
+        let _ = crate::macos_lifecycle::sync_dock_visibility(app);
         if let Some(label) = focus_target {
             if let Some(window) = app.get_webview_window(&label) {
                 let _ = window.set_focus();
@@ -1141,6 +1143,8 @@ fn toggle_app_visibility(app: &AppHandle) {
         }
     }
 
+    #[cfg(target_os = "macos")]
+    let _ = crate::macos_lifecycle::sync_dock_visibility(app);
     if labels.is_empty() {
         if let Err(error) = show_main_window(app) {
             eprintln!("failed to show main window from visibility toggle: {error}");
@@ -1475,7 +1479,7 @@ fn hide_fullscreen_window(window: &Window) {
         if FULLSCREEN_HIDING.swap(false, Ordering::SeqCst) {
             if let Some(w) = retained.get_webview_window(&label) {
                 if w.hide().is_ok() {
-                    let _ = retained.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                    let _ = crate::macos_lifecycle::sync_dock_visibility(&retained);
                 }
             }
         }
@@ -1674,11 +1678,8 @@ fn toggle_close_to_tray(_app: &AppHandle) -> Result<AppConfig, Box<dyn Error>> {
 
 pub fn show_main_window(app: &AppHandle) -> Result<(), AppError> {
     #[cfg(target_os = "macos")]
-    {
-        if crate::macos_lifecycle::cancel_or_defer_main_close() {
-            return Ok(());
-        }
-        app.set_activation_policy(tauri::ActivationPolicy::Regular)?;
+    if crate::macos_lifecycle::cancel_or_defer_main_close() {
+        return Ok(());
     }
     clear_hidden_window_state(app);
     let locale = configured_locale();
@@ -1687,6 +1688,8 @@ pub fn show_main_window(app: &AppHandle) -> Result<(), AppError> {
         window.set_title(locales::main_window_title(locale))?;
         window.unminimize()?;
         window.show()?;
+        #[cfg(target_os = "macos")]
+        crate::macos_lifecycle::sync_dock_visibility(app)?;
         window.set_focus()?;
         return Ok(());
     }
@@ -1716,6 +1719,8 @@ pub fn show_main_window(app: &AppHandle) -> Result<(), AppError> {
     if let Some(window) = app.get_webview_window(&label) {
         window.unminimize()?;
         window.show()?;
+        #[cfg(target_os = "macos")]
+        crate::macos_lifecycle::sync_dock_visibility(app)?;
         window.set_focus()?;
     }
     Ok(())

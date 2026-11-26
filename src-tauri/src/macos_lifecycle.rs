@@ -6,6 +6,31 @@ use std::sync::{
 };
 use tauri::{Emitter, Manager};
 
+pub fn sync_dock_visibility(app: &tauri::AppHandle) -> tauri::Result<()> {
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        use objc2::MainThreadMarker;
+        use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
+
+        // Read the live window on the AppKit thread. Queued open/close requests
+        // can run in a different order from the requests that scheduled them.
+        let main_in_dock = handle.get_webview_window("main").is_some_and(|window| {
+            window.is_visible().unwrap_or(false) || window.is_minimized().unwrap_or(false)
+        });
+        let policy = if main_in_dock {
+            NSApplicationActivationPolicy::Regular
+        } else {
+            NSApplicationActivationPolicy::Accessory
+        };
+        let native = NSApplication::sharedApplication(
+            MainThreadMarker::new().expect("Dock policy runs on the AppKit thread"),
+        );
+        if native.activationPolicy() != policy && !native.setActivationPolicy(policy) {
+            eprintln!("AppKit rejected Folio's Dock policy change");
+        }
+    })
+}
+
 static PREPARING: AtomicBool = AtomicBool::new(false);
 static QUIT_REQUESTED: AtomicBool = AtomicBool::new(false);
 #[derive(Default)]
@@ -49,7 +74,7 @@ pub fn main_destroyed(app: &tauri::AppHandle) {
         reopen
     };
     if !crate::desktop::app_is_exiting(app) {
-        let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+        let _ = sync_dock_visibility(app);
         if reopen {
             let app = app.clone();
             tauri::async_runtime::spawn_blocking(move || {

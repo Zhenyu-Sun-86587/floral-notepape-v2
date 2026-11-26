@@ -22,16 +22,36 @@ export function SlidingButtonGroup<T extends string>({
   useLayoutEffect(() => {
     const btn = buttonsRef.current.get(value);
     if (!btn) return;
-    setPos({
-      left: btn.offsetLeft,
-      top: btn.offsetTop,
-      width: btn.offsetWidth,
-      height: btn.offsetHeight,
-    });
-  }, [value]);
+    const update = () => {
+      const next = {
+        left: btn.offsetLeft,
+        top: btn.offsetTop,
+        width: btn.offsetWidth,
+        height: btn.offsetHeight,
+      };
+      setPos((prev) =>
+        prev.left === next.left &&
+        prev.top === next.top &&
+        prev.width === next.width &&
+        prev.height === next.height
+          ? prev
+          : next,
+      );
+    };
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    // A sibling's width changes the selected button's offset even if its own
+    // size stays the same, for example when a translated label or font loads.
+    const observer = new ResizeObserver(update);
+    for (const button of buttonsRef.current.values()) {
+      observer.observe(button, { box: "border-box" });
+    }
+    return () => observer.disconnect();
+  }, [options, value]);
 
   useEffect(() => {
-    requestAnimationFrame(() => setAnimated(true));
+    const frame = requestAnimationFrame(() => setAnimated(true));
+    return () => cancelAnimationFrame(frame);
   }, []);
 
   const transition = animated
@@ -54,8 +74,9 @@ export function SlidingButtonGroup<T extends string>({
             else buttonsRef.current.delete(option.value);
           }}
           type="button"
+          aria-pressed={value === option.value}
           onClick={() => onChange(option.value)}
-          className={`relative z-[1] flex-1 rounded-md text-[11px] transition-colors duration-200 cursor-pointer ${buttonClassName} ${
+          className={`relative z-[1] flex flex-1 items-center justify-center rounded-md text-center text-[11px] leading-normal transition-colors duration-200 cursor-pointer ${buttonClassName} ${
             value === option.value
               ? "text-bamboo font-medium"
               : "text-ink-ghost hover:text-ink-faint"

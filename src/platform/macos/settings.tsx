@@ -269,9 +269,6 @@ export function MaterialSettings({
           }
         />
       </label>
-      <p className="text-[10px] text-ink-faint">
-        原生玻璃也有系统折射；背景浓度调整染色与扩散，不控制系统折射强度。想去除玻璃变形请选择“磨砂”。回弹只影响交互动画，不是另一种静态材质。
-      </p>
       {fluid && (
         <div className="space-y-2 text-[11px] text-ink-soft">
           <p>
@@ -326,15 +323,6 @@ export function MaterialSettings({
           <p>如系统要求，授权后重启应用。便签与胶囊都切回原生背景后停止采样。</p>
         </div>
       )}
-      <p className="text-[10px] text-ink-faint">
-        原生背景优先适合日常使用。桌面折射开销随可见便签数量增加；不可见窗口暂停绘制，没有可见折射窗口时停止采样。动画只在交互期间运行。
-      </p>
-      <p className="text-[10px] text-ink-faint">
-        数值越低越通透，文字不随背景变淡。玻璃保留系统折射；系统“减少动态效果”时关闭融合动画。
-      </p>
-      <p className="text-[10px] text-ink-faint">
-        应用于主窗口、便签、胶囊与悬停预览的整块背景。液态玻璃需要 macOS 26；较旧系统自动使用磨砂。
-      </p>
     </div>
   );
 }

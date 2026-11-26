@@ -1,8 +1,7 @@
 import { MaterialSettings } from "#platform-settings";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { AppConfig, AppearanceTokens } from "../features/settings/types";
 import { resolveAppearance } from "../features/settings/theme";
-import { getMaterialStatus, type MaterialStatus } from "#platform-material";
 import { exportThemeFile, importThemeFile } from "../features/settings/themeFile";
 import { showToast } from "./Toast";
 import { chooseBackgroundImage } from "../features/settings/api";
@@ -34,12 +33,6 @@ const numberFields: Array<[keyof AppearanceTokens, string, number, number, numbe
 
 export function AppearanceSection({ config, noteId, onChange }: Props) {
   const [scope, setScope] = useState<"global" | "note">("global");
-  const [materialStatus, setMaterialStatus] = useState<MaterialStatus>(getMaterialStatus);
-  useEffect(() => {
-    const update = () => setMaterialStatus(getMaterialStatus());
-    window.addEventListener("native-material-status", update);
-    return () => window.removeEventListener("native-material-status", update);
-  }, []);
   const activeNoteId = scope === "note" ? noteId : undefined;
   const overrides = activeNoteId
     ? (config.appearance?.notes?.[activeNoteId] ?? {})
@@ -130,13 +123,6 @@ export function AppearanceSection({ config, noteId, onChange }: Props) {
         </button>
       </div>
       <MaterialSettings config={config} onChange={onChange} />
-      <p className="text-[10px] text-ink-ghost">
-        {materialStatus === "active"
-          ? "系统已接受原生材质请求；实际磨砂效果以桌面观察为准"
-          : materialStatus === "unavailable"
-            ? "当前环境不可用，已降级为半透明背景"
-            : "原生材质未启用"}
-      </p>
       {colorFields.map(([key, label]) => (
         <div key={key} className="flex items-center gap-2">
           <label className="w-20 shrink-0 text-[11px] text-ink-faint">{label}</label>

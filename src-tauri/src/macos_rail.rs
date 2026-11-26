@@ -28,6 +28,33 @@ use std::{
     },
 };
 use tauri::{Manager, Window};
+
+thread_local! {
+    static CLICKED_CAPSULE_BOUNDS: Cell<Option<NSRect>> = const { Cell::new(None) };
+}
+
+fn contains_point(rect: NSRect, point: NSPoint) -> bool {
+    point.x >= rect.origin.x
+        && point.y >= rect.origin.y
+        && point.x < rect.origin.x + rect.size.width
+        && point.y < rect.origin.y + rect.size.height
+}
+
+// Resaving a note can recreate the rail controls under a stationary pointer.
+// Keep the click guard outside the view so those synthetic enters cannot open a preview.
+pub fn hover_suppressed_after_click() -> bool {
+    CLICKED_CAPSULE_BOUNDS.with(|bounds| {
+        let Some(rect) = bounds.get() else {
+            return false;
+        };
+        if contains_point(rect, NSEvent::mouseLocation()) {
+            return true;
+        }
+        bounds.set(None);
+        false
+    })
+}
+
 struct ButtonState {
     app: tauri::AppHandle,
     label: String,
@@ -78,13 +105,21 @@ define_class!(
             press_feedback(&s.label, false);
             if !s.pressed.replace(false) || s.dragged.get() || s.group { return; }
             let point = self.convertPoint_fromView(event.locationInWindow(), None);
-            let size = self.bounds().size;
-            if point.x < 0.0 || point.y < 0.0 || point.x > size.width || point.y > size.height { return; }
+            if !contains_point(self.visibleRect(), point) { return; }
             self.activate(sel!(activate:), None);
         }
         #[unsafe(method(activate:))]
         fn activate(&self, _: Option<&objc2::runtime::AnyObject>) {
             let s = self.ivars(); if s.group { return; }
+            s.epoch.fetch_add(1, Ordering::SeqCst);
+            if s.expanded {
+                if let Some(window) = self.window() {
+                    let rect = window.convertRectToScreen(self.convertRect_toView(self.visibleRect(), None));
+                    if contains_point(rect, NSEvent::mouseLocation()) {
+                        CLICKED_CAPSULE_BOUNDS.with(|bounds| bounds.set(Some(rect)));
+                    }
+                }
+            }
             let app = s.app.clone(); let key = s.key.clone();
             tauri::async_runtime::spawn(async move { let _ = crate::surface_toggle_capsule(app, key).await; });
         }
@@ -95,7 +130,8 @@ define_class!(
         }
         #[unsafe(method(mouseEntered:))]
         fn entered(&self, _: &NSEvent) {
-            let s = self.ivars(); if s.group || s.expanded { return; }
+            let s = self.ivars();
+            if s.group || s.expanded || s.pressed.get() || hover_suppressed_after_click() { return; }
             let epoch = s.epoch.fetch_add(1, Ordering::SeqCst) + 1;
             let token = s.epoch.clone(); let app = s.app.clone(); let key = s.key.clone(); let label = s.label.clone();
             let (x,y) = self.window().and_then(|w| w.contentView()).map(|root| {
