@@ -3278,7 +3278,7 @@ export function MainWindow({
                 options={viewModeOptions}
                 value={viewMode}
                 onChange={setViewMode}
-                buttonClassName="px-3 py-1"
+                buttonClassName="h-7 px-3"
               />
             </div>
 

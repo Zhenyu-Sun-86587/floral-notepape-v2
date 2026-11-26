@@ -18,6 +18,7 @@ pub fn install_pointer_monitor(app: &tauri::AppHandle) {
             | NSEventMask::ScrollWheel;
         let global_app = app.clone();
         let global = block2::RcBlock::new(move |_: NonNull<NSEvent>| {
+            crate::macos_rail::hover_suppressed_after_click();
             crate::desktop::capsule_pointer_moved(&global_app);
         });
         if let Some(token) = NSEvent::addGlobalMonitorForEventsMatchingMask_handler(mask, &global) {
@@ -25,6 +26,7 @@ pub fn install_pointer_monitor(app: &tauri::AppHandle) {
         }
         let local_app = app.clone();
         let local = block2::RcBlock::new(move |event: NonNull<NSEvent>| {
+            crate::macos_rail::hover_suppressed_after_click();
             crate::desktop::capsule_pointer_moved(&local_app);
             event.as_ptr()
         });

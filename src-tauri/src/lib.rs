@@ -225,6 +225,8 @@ async fn surface_capsule_preview(
 async fn surface_toggle_capsule(app: AppHandle, key: String) -> Result<(), AppError> {
     desktop::run_capsule_task(move || {
         if surface_sessions::get(&key)?.presentation == surface_sessions::Presentation::Expanded {
+            #[cfg(target_os = "macos")]
+            let _ = desktop::dismiss_capsule_preview(&app);
             // 交给便签保存流程收回，不能直接销毁可能含未保存内容的窗口。
             app.emit_to(desktop::surface_label(&key), "surface-store-request", ())?;
             Ok(())
@@ -1284,14 +1286,7 @@ pub fn run() {
         }
         #[cfg(target_os = "macos")]
         if matches!(&_event, tauri::RunEvent::Ready) {
-            let visible = _app_handle
-                .get_webview_window("main")
-                .is_some_and(|w| w.is_visible().unwrap_or(false));
-            let _ = _app_handle.set_activation_policy(if visible {
-                tauri::ActivationPolicy::Regular
-            } else {
-                tauri::ActivationPolicy::Accessory
-            });
+            let _ = macos_lifecycle::sync_dock_visibility(_app_handle);
         }
         #[cfg(target_os = "macos")]
         if let tauri::RunEvent::Opened { urls } = &_event {
@@ -1319,6 +1314,7 @@ pub fn run() {
             if desktop::lightweight_mode_enabled()
                 && _app_handle.get_webview_window("main").is_none()
             {
+                let _ = macos_lifecycle::sync_dock_visibility(_app_handle);
                 return;
             }
             // 用户点 Dock 是主动找回列表；桌面便签可见不能阻止主窗重开。
